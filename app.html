@@ -22,6 +22,12 @@
   
   CHANGELOG:
   v2.0.9 (15/12/2024) - CORREÇÕES CRÍTICAS: Coordenadas + Curadoria Fina
+  v2.0.10 (29/12/2025) - CORREÇÃO: Farol de Recife -> Mucuripe
+    CORREÇÃO DE DADOS GEOGRÁFICOS:
+    * Farol de Recife (Fortaleza) renomeado para "Farol do Mucuripe (Novo)"
+    * Rótulo anterior estava incorreto para a região geográfica (Ceará)
+    * Ajustada altura para 72m (era 701m incorreto)
+
     CORREÇÕES BASEADAS NA PLANILHA DHN OFICIAL:
     
     1. CORREÇÃO CRÍTICA - FAROL DE SÃO TOMÉ:
@@ -438,23 +444,27 @@
   
 ════════════════════════════════════════════════════════════════════════════════
 -->
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Sistema profissional de planejamento de viagem marítima costeira do Brasil">
   <meta name="author" content="Jossian Brito (Charlie Bravo)">
-  <meta name="keywords" content="navegação costeira, planejamento de viagem, faróis, Brasil, OpenSeaMap, GPX, rebocadores">
-  
+  <meta name="keywords"
+    content="navegação costeira, planejamento de viagem, faróis, Brasil, OpenSeaMap, GPX, rebocadores">
+
   <title>Coastal Navigator Brasil v2.0.9 - Planejamento de Viagem</title>
-  
+
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  
+
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
-  
+  <link
+    href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+
   <style>
     /*
     ══════════════════════════════════════════════════════════════════════════
@@ -469,30 +479,30 @@
       --chart-white: #F5F5F5;
       --warning-red: #D32F2F;
       --success-green: #4CAF50;
-      
+
       /* Cores Secundárias */
       --deck-gray: #37474F;
       --sea-foam: #00BCD4;
       --sunset-orange: #FF6F00;
       --night-navy: #0D47A1;
-      
+
       /* Tipografia */
       --font-display: 'Orbitron', monospace;
       --font-body: 'Rajdhani', sans-serif;
-      
+
       /* Espaçamento */
       --spacing-xs: 4px;
       --spacing-sm: 8px;
       --spacing-md: 16px;
       --spacing-lg: 24px;
       --spacing-xl: 32px;
-      
+
       /* Transições */
       --transition-fast: 0.2s ease;
       --transition-normal: 0.3s ease;
       --transition-slow: 0.5s ease;
     }
-    
+
     /*
     ══════════════════════════════════════════════════════════════════════════
       RESET E BASE
@@ -503,14 +513,14 @@
       padding: 0;
       box-sizing: border-box;
     }
-    
+
     body {
       font-family: var(--font-body);
       background: var(--deep-ocean);
       color: var(--chart-white);
       overflow: hidden;
     }
-    
+
     /*
     ══════════════════════════════════════════════════════════════════════════
       LAYOUT PRINCIPAL - Container da Aplicação
@@ -522,7 +532,7 @@
       height: 100vh;
       width: 100vw;
     }
-    
+
     /*
     ══════════════════════════════════════════════════════════════════════════
       HEADER - Barra de Controles
@@ -535,7 +545,7 @@
       z-index: 1000;
       border-bottom: 2px solid var(--navigation-blue);
     }
-    
+
     .header-content {
       display: flex;
       justify-content: space-between;
@@ -545,13 +555,13 @@
       max-width: 1400px;
       margin: 0 auto;
     }
-    
+
     .logo {
       display: flex;
       align-items: center;
       gap: var(--spacing-sm);
     }
-    
+
     .logo h1 {
       font-family: var(--font-display);
       font-size: clamp(1.2rem, 3vw, 1.8rem);
@@ -559,19 +569,19 @@
       text-shadow: 0 0 10px rgba(255, 167, 38, 0.5);
       letter-spacing: 2px;
     }
-    
+
     .logo .version {
       font-size: 0.7rem;
       color: var(--sea-foam);
       font-weight: 600;
     }
-    
+
     .controls {
       display: flex;
       gap: var(--spacing-sm);
       flex-wrap: wrap;
     }
-    
+
     .btn {
       background: var(--navigation-blue);
       color: white;
@@ -588,42 +598,42 @@
       gap: 6px;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
     }
-    
+
     .btn:hover {
       background: #1565C0;
       transform: translateY(-2px);
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     }
-    
+
     .btn:active {
       transform: translateY(0);
     }
-    
+
     .btn-primary {
       background: var(--lighthouse-amber);
       color: var(--deep-ocean);
     }
-    
+
     .btn-primary:hover {
       background: #FF9800;
     }
-    
+
     .btn-success {
       background: var(--success-green);
     }
-    
+
     .btn-success:hover {
       background: #45a049;
     }
-    
+
     .btn-danger {
       background: var(--warning-red);
     }
-    
+
     .btn-danger:hover {
       background: #C62828;
     }
-    
+
     /*
     ══════════════════════════════════════════════════════════════════════════
       MODAL - Configuração de Viagem
@@ -642,11 +652,11 @@
       align-items: center;
       animation: fadeIn var(--transition-normal);
     }
-    
+
     .modal-overlay.active {
       display: flex;
     }
-    
+
     .modal {
       background: linear-gradient(135deg, var(--deck-gray), var(--deep-ocean));
       border: 2px solid var(--navigation-blue);
@@ -659,7 +669,7 @@
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
       animation: slideUp var(--transition-normal);
     }
-    
+
     .modal-header {
       display: flex;
       justify-content: space-between;
@@ -668,13 +678,13 @@
       border-bottom: 2px solid var(--lighthouse-amber);
       padding-bottom: var(--spacing-md);
     }
-    
+
     .modal-header h2 {
       font-family: var(--font-display);
       color: var(--lighthouse-amber);
       font-size: 1.5rem;
     }
-    
+
     .modal-close {
       background: var(--warning-red);
       color: white;
@@ -689,16 +699,16 @@
       justify-content: center;
       transition: all var(--transition-fast);
     }
-    
+
     .modal-close:hover {
       background: #C62828;
       transform: rotate(90deg);
     }
-    
+
     .form-group {
       margin-bottom: var(--spacing-md);
     }
-    
+
     .form-group label {
       display: block;
       margin-bottom: var(--spacing-xs);
@@ -706,7 +716,7 @@
       color: var(--sea-foam);
       font-size: 0.95rem;
     }
-    
+
     .form-group input,
     .form-group select {
       width: 100%;
@@ -719,26 +729,26 @@
       font-size: 1rem;
       transition: all var(--transition-fast);
     }
-    
+
     .form-group input:focus,
     .form-group select:focus {
       outline: none;
       border-color: var(--lighthouse-amber);
       box-shadow: 0 0 0 3px rgba(255, 167, 38, 0.2);
     }
-    
+
     .form-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: var(--spacing-md);
     }
-    
+
     .form-help {
       font-size: 0.85rem;
       color: #90CAF9;
       margin-top: var(--spacing-xs);
     }
-    
+
     .modal-footer {
       display: flex;
       gap: var(--spacing-md);
@@ -746,7 +756,7 @@
       padding-top: var(--spacing-md);
       border-top: 1px solid rgba(255, 255, 255, 0.1);
     }
-    
+
     /*
     ══════════════════════════════════════════════════════════════════════════
       MAPA - Área Principal (CORRIGIDO v2.0.2 para Mobile)
@@ -758,9 +768,10 @@
       overflow: hidden;
       /* CORREÇÃO v2.0.2: Altura mínima para mobile */
       min-height: 400px;
-      height: calc(100vh - 200px); /* Viewport height menos header/footer */
+      height: calc(100vh - 200px);
+      /* Viewport height menos header/footer */
     }
-    
+
     #map {
       width: 100%;
       height: 100%;
@@ -771,7 +782,7 @@
       top: 0;
       left: 0;
     }
-    
+
     /*
     ══════════════════════════════════════════════════════════════════════════
       PAINEL DE INFORMAÇÕES LATERAL
@@ -790,16 +801,16 @@
       overflow-y: auto;
       border-left: 2px solid var(--navigation-blue);
     }
-    
+
     .info-panel.active {
       right: 0;
     }
-    
+
     .info-section {
       padding: var(--spacing-lg);
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
-    
+
     .info-title {
       font-family: var(--font-display);
       font-size: 1.1rem;
@@ -809,7 +820,7 @@
       align-items: center;
       gap: var(--spacing-sm);
     }
-    
+
     .waypoint-item,
     .lighthouse-item {
       background: rgba(255, 255, 255, 0.05);
@@ -819,30 +830,30 @@
       border-left: 3px solid var(--navigation-blue);
       transition: all var(--transition-fast);
     }
-    
+
     .waypoint-item:hover,
     .lighthouse-item:hover {
       background: rgba(255, 255, 255, 0.1);
       border-left-color: var(--lighthouse-amber);
     }
-    
+
     .item-name {
       font-weight: 700;
       font-size: 1.05rem;
       margin-bottom: var(--spacing-xs);
       color: var(--sea-foam);
     }
-    
+
     .item-details {
       font-size: 0.9rem;
       line-height: 1.6;
       color: #CFD8DC;
     }
-    
+
     .item-details strong {
       color: var(--chart-white);
     }
-    
+
     /*
     ══════════════════════════════════════════════════════════════════════════
       TRIP INFO BAR - Barra de Informações da Viagem
@@ -859,27 +870,27 @@
       justify-content: space-between;
       font-size: 0.9rem;
     }
-    
+
     .trip-info-bar.active {
       display: flex;
     }
-    
+
     .trip-info-item {
       display: flex;
       align-items: center;
       gap: var(--spacing-xs);
     }
-    
+
     .trip-info-label {
       color: var(--sea-foam);
       font-weight: 600;
     }
-    
+
     .trip-info-value {
       color: var(--chart-white);
       font-weight: 700;
     }
-    
+
     /*
     ══════════════════════════════════════════════════════════════════════════
       FOOTER - Barra de Status
@@ -896,26 +907,26 @@
       border-top: 2px solid var(--navigation-blue);
       font-size: 0.9rem;
     }
-    
+
     .status-item {
       display: flex;
       align-items: center;
       gap: var(--spacing-xs);
     }
-    
+
     .status-value {
       font-weight: 700;
       color: var(--lighthouse-amber);
     }
-    
+
     .status-warning {
       color: var(--warning-red);
     }
-    
+
     .status-success {
       color: var(--success-green);
     }
-    
+
     /*
     ══════════════════════════════════════════════════════════════════════════
       LIGHTHOUSE MARKER - Customização
@@ -929,16 +940,19 @@
       border-radius: 50%;
       animation: pulse 2s infinite;
     }
-    
+
     @keyframes pulse {
-      0%, 100% {
+
+      0%,
+      100% {
         box-shadow: 0 0 0 0 rgba(255, 167, 38, 0.7);
       }
+
       50% {
         box-shadow: 0 0 0 10px rgba(255, 167, 38, 0);
       }
     }
-    
+
     /*
     ══════════════════════════════════════════════════════════════════════════
       ANIMAÇÕES
@@ -948,22 +962,24 @@
       from {
         opacity: 0;
       }
+
       to {
         opacity: 1;
       }
     }
-    
+
     @keyframes slideUp {
       from {
         transform: translateY(50px);
         opacity: 0;
       }
+
       to {
         transform: translateY(0);
         opacity: 1;
       }
     }
-    
+
     /*
     ══════════════════════════════════════════════════════════════════════════
       RESPONSIVIDADE - Mobile First
@@ -974,42 +990,42 @@
         width: 100%;
         justify-content: center;
       }
-      
+
       .btn {
         flex: 1;
         justify-content: center;
         font-size: 0.85rem;
         padding: 8px 12px;
       }
-      
+
       .info-panel {
         width: 90vw;
         right: -90vw;
       }
-      
+
       .modal {
         width: 95%;
         padding: var(--spacing-lg);
       }
-      
+
       .form-row {
         grid-template-columns: 1fr;
       }
-      
+
       .trip-info-bar {
         font-size: 0.8rem;
       }
     }
-    
+
     @media (max-width: 480px) {
       .logo h1 {
         font-size: 1rem;
       }
-      
+
       .app-header {
         padding: var(--spacing-sm);
       }
-      
+
       .btn {
         font-size: 0.8rem;
         padding: 6px 10px;
@@ -1017,6 +1033,7 @@
     }
   </style>
 </head>
+
 <body>
   <div class="app-container">
     <!-- 
@@ -1029,7 +1046,7 @@
         <div class="logo">
           <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.0.9</span></h1>
         </div>
-        
+
         <div class="controls">
           <button class="btn btn-primary" onclick="openTripModal()">
             🚢 Nova Viagem
@@ -1055,7 +1072,7 @@
         </div>
       </div>
     </header>
-    
+
     <!-- 
     ══════════════════════════════════════════════════════════════════════════
       TRIP INFO BAR - Informações da Viagem Atual
@@ -1083,7 +1100,7 @@
         <span class="trip-info-value" id="infoSpeed">-</span>
       </div>
     </div>
-    
+
     <!-- 
     ══════════════════════════════════════════════════════════════════════════
       MAPA - Carta Náutica Digital
@@ -1091,31 +1108,31 @@
     -->
     <main class="map-container">
       <div id="map"></div>
-      
+
       <!-- Painel de Informações Lateral -->
       <aside class="info-panel" id="infoPanel">
         <div class="info-section">
           <h2 class="info-title">📍 Waypoints</h2>
           <div id="waypoints-list"></div>
         </div>
-        
+
         <div class="info-section">
           <h2 class="info-title">🗺️ Derrota</h2>
           <div id="route-info"></div>
         </div>
-        
+
         <div class="info-section">
           <h2 class="info-title">⛽ Combustível</h2>
           <div id="fuel-info"></div>
         </div>
-        
+
         <div class="info-section">
           <h2 class="info-title">💡 Faróis Próximos</h2>
           <div id="lighthouses-list"></div>
         </div>
       </aside>
     </main>
-    
+
     <!-- 
     ══════════════════════════════════════════════════════════════════════════
       FOOTER - Barra de Status
@@ -1126,33 +1143,33 @@
         <span>📍 Waypoints:</span>
         <span class="status-value" id="waypoint-count">0</span>
       </div>
-      
+
       <div class="status-item">
         <span>📏 Distância Total:</span>
         <span class="status-value" id="total-distance">0 NM</span>
       </div>
-      
+
       <div class="status-item">
         <span>⏱️ Tempo Estimado:</span>
         <span class="status-value" id="total-time">0h</span>
       </div>
-      
+
       <div class="status-item">
         <span>⛽ Combustível:</span>
         <span class="status-value" id="fuel-remaining">0 L</span>
       </div>
-      
+
       <div class="status-item">
         <span>💡 Faróis:</span>
         <span class="status-value">69</span>
       </div>
-      
+
       <div class="status-item">
         <span>© 2024 Jossian Brito</span>
       </div>
     </footer>
   </div>
-  
+
   <!-- 
   ══════════════════════════════════════════════════════════════════════════
     MODAL - Configuração de Viagem
@@ -1164,52 +1181,52 @@
         <h2>🚢 Configuração de Viagem</h2>
         <button class="modal-close" onclick="closeTripModal()">×</button>
       </div>
-      
+
       <form id="tripForm" onsubmit="saveTripData(event)">
         <div class="form-group">
           <label for="vesselName">Nome da Embarcação</label>
           <input type="text" id="vesselName" required placeholder="Ex: RT ATLÂNTICO">
           <div class="form-help">Nome do rebocador ou embarcação</div>
         </div>
-        
+
         <div class="form-row">
           <div class="form-group">
             <label for="origin">Porto de Origem</label>
             <input type="text" id="origin" required placeholder="Ex: Fortaleza">
           </div>
-          
+
           <div class="form-group">
             <label for="destination">Porto de Destino</label>
             <input type="text" id="destination" required placeholder="Ex: Santos">
           </div>
         </div>
-        
+
         <div class="form-group">
           <label for="departureDate">Data e Hora de Saída</label>
           <input type="datetime-local" id="departureDate" required>
           <div class="form-help">Data e hora local de partida</div>
         </div>
-        
+
         <div class="form-row">
           <div class="form-group">
             <label for="speedKnots">Velocidade Média (nós)</label>
             <input type="number" id="speedKnots" required min="1" max="50" step="0.1" placeholder="Ex: 10.5">
             <div class="form-help">Velocidade média de navegação</div>
           </div>
-          
+
           <div class="form-group">
             <label for="fuelConsumption">Consumo (L/h)</label>
             <input type="number" id="fuelConsumption" required min="0" step="0.1" placeholder="Ex: 85.5">
             <div class="form-help">Consumo em litros por hora</div>
           </div>
         </div>
-        
+
         <div class="form-group">
           <label for="fuelInitial">Saldo Inicial de Combustível (L)</label>
           <input type="number" id="fuelInitial" required min="0" step="1" placeholder="Ex: 50000">
           <div class="form-help">Quantidade de combustível a bordo</div>
         </div>
-        
+
         <div class="modal-footer">
           <button type="button" class="btn btn-danger" onclick="closeTripModal()" style="flex: 1;">
             Cancelar
@@ -1221,13 +1238,13 @@
       </form>
     </div>
   </div>
-  
+
   <!-- Input oculto para importação GPX -->
   <input type="file" id="gpxFile" accept=".gpx" style="display: none;" onchange="importGPX(event)">
-  
+
   <!-- Leaflet JavaScript Library -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  
+
   <script>
     /*
     ══════════════════════════════════════════════════════════════════════════
@@ -1249,11 +1266,11 @@
     
     ══════════════════════════════════════════════════════════════════════════
     */
-    
+
     // ═══════════════════════════════════════════════════════════════════════
     // VARIÁVEIS GLOBAIS - Estado da Aplicação
     // ═══════════════════════════════════════════════════════════════════════
-    
+
     /*
     VARIÁVEIS DE ESTADO:
     
@@ -1278,11 +1295,11 @@
     let route = null;           // Linha da rota no mapa
     let tripData = null;        // Dados da viagem atual
     let waypointCounter = 1;    // Contador para nomes de waypoints
-    
+
     // ═══════════════════════════════════════════════════════════════════════
     // DATABASE DE FARÓIS - 69 Faróis da Costa Brasileira
     // ═══════════════════════════════════════════════════════════════════════
-    
+
     /*
     ESTRUTURA DE DADOS - FARÓIS:
     
@@ -1313,7 +1330,7 @@
       { name: "Farol de Mundaú", lat: -3.1763, lng: -39.362, height: 21, range: 14, character: "Fl W 10s" }, // DHN
       { name: "Farol de Paracuru", lat: -3.3972, lng: -39.0163, height: 21, range: 27, character: "Fl W 10s" }, // DHN
       { name: "Farol de Mucuripe", lat: -3.676, lng: -38.488, height: 1, range: 43, character: "Fl W 10s" }, // DHN
-      { name: "Farol de Recife", lat: -3.7082, lng: -38.4937, height: 701, range: 17, character: "Fl W 10s" }, // DHN
+      { name: "Farol do Mucuripe (Novo)", lat: -3.7082, lng: -38.4937, height: 72, range: 21, character: "Fl W 10s" }, // Corrigido a pedido do usuário (era Farol de Recife)
       { name: "Farol de Fernando de Noronha", lat: -3.85, lng: -32.4167, height: 58, range: 30, character: "Fl(3)W 15s" }, // Validated - Ilha de Fernando de Noronha - importante para navegação
       { name: "Farol de Rocas", lat: -3.856, lng: -33.8175, height: 51, range: 13, character: "Fl W 10s" }, // DHN
       { name: "Farol de Orange", lat: 4.431, lng: -51.541, height: 110, range: 18, character: "Fl(2) W 14s" }, // DHN
@@ -1370,12 +1387,12 @@
       { name: "Farol de Martin Vaz", lat: -20.5, lng: -28.85, height: 42, range: 23, character: "Fl W 8s" }, // Validated - Arquipélago Martin Vaz - navegação oceânica
       { name: "Farol de Trindade", lat: -20.5167, lng: -29.3167, height: 58, range: 28, character: "Fl(4)W 15s" }, // Validated - Ilha Trindade - navegação oceânica
 
-];
-    
+    ];
+
     // ═══════════════════════════════════════════════════════════════════════
     // INICIALIZAÇÃO DO MAPA
     // ═══════════════════════════════════════════════════════════════════════
-    
+
     /*
     FUNÇÃO: initMap()
     
@@ -1390,37 +1407,37 @@
     */
     function initMap() {
       console.log('🗺️ Iniciando mapa...');
-      
+
       // CORREÇÃO v2.0.2: Verificar dimensões do container antes de criar mapa
       const mapContainer = document.getElementById('map');
       const containerHeight = mapContainer.offsetHeight;
       const containerWidth = mapContainer.offsetWidth;
-      
+
       console.log('📐 Dimensões do container:');
       console.log('   Largura:', containerWidth, 'px');
       console.log('   Altura:', containerHeight, 'px');
-      
+
       if (containerHeight === 0 || containerWidth === 0) {
         console.warn('⚠️ Container com dimensões zero! Forçando altura...');
         mapContainer.style.height = '400px';
         mapContainer.style.minHeight = '400px';
       }
-      
+
       // Criar mapa centrado na costa brasileira (Fortaleza, CE)
       map = L.map('map').setView([-3.7147, -38.4781], 6);
-      
+
       // Camada base OpenStreetMap
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors',
         maxZoom: 19
       }).addTo(map);
-      
+
       // Camada OpenSeaMap (marcações náuticas)
       L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
         attribution: '© OpenSeaMap contributors',
         maxZoom: 18
       }).addTo(map);
-      
+
       // Adicionar marcadores dos faróis
       lighthouses.forEach(lh => {
         const marker = L.circleMarker([lh.lat, lh.lng], {
@@ -1432,7 +1449,7 @@
           fillOpacity: 0.8,
           className: 'lighthouse-marker'
         }).addTo(map);
-        
+
         // Popup com informações do farol
         marker.bindPopup(`
           <div style="font-family: 'Rajdhani', sans-serif; min-width: 200px;">
@@ -1444,65 +1461,65 @@
           </div>
         `);
       });
-      
+
       // Event listener para clique no mapa (adicionar waypoint)
       // CORREÇÃO v2.0.1: Otimizado para mobile com proteção contra múltiplos cliques
       let isProcessingWaypoint = false;
       let processingTimeout = null;
-      
+
       function handleMapClick(e) {
         console.log('🗺️ Mapa clicado/tocado:', e.latlng);
         console.log('   isProcessingWaypoint:', isProcessingWaypoint);
-        
+
         // Proteção: Se já está processando, ignorar
         if (isProcessingWaypoint) {
           console.log('⏳ Já processando waypoint, ignorando clique...');
           console.log('   Aguardando liberação da flag...');
           return;
         }
-        
+
         if (!tripData) {
           console.log('❌ tripData não configurado');
           alert('⚠️ Configure os dados da viagem primeiro!\nClique em "🚢 Nova Viagem" para começar.');
           return;
         }
-        
+
         // Marcar como processando
         isProcessingWaypoint = true;
         console.log('🔒 Flag de processamento ativada');
         console.log('   Timestamp:', Date.now());
-        
+
         // NOVO v2.0.3: Timeout de segurança (se demorar >2s, liberar automaticamente)
         processingTimeout = setTimeout(() => {
           console.warn('⚠️ TIMEOUT: Liberando flag após 2 segundos');
           isProcessingWaypoint = false;
         }, 2000);
-        
+
         // Criar waypoint
         try {
           console.log('📍 Criando waypoint em:', e.latlng.lat, e.latlng.lng);
           const beforeLength = waypoints.length;
-          
+
           createWaypoint(e.latlng.lat, e.latlng.lng);
-          
+
           const afterLength = waypoints.length;
           console.log('✅ createWaypoint() retornou');
           console.log('   Waypoints antes:', beforeLength);
           console.log('   Waypoints depois:', afterLength);
-          
+
           if (afterLength === beforeLength) {
             console.error('❌ ERRO: createWaypoint não adicionou waypoint!');
             console.error('   Array não cresceu!');
           } else {
             console.log('✅ Waypoint adicionado com sucesso! Array cresceu de', beforeLength, 'para', afterLength);
           }
-          
+
         } catch (error) {
           console.error('❌ EXCEÇÃO em createWaypoint:', error);
           console.error('   Stack:', error.stack);
           alert('ERRO ao criar waypoint: ' + error.message);
         }
-        
+
         // Liberar flag após pequeno delay
         setTimeout(() => {
           clearTimeout(processingTimeout);
@@ -1512,51 +1529,51 @@
           console.log('   Waypoints atuais:', waypoints.length);
         }, 300);
       }
-      
+
       // Adicionar listeners para click E tap (mobile)
       map.on('click', handleMapClick);
       map.on('tap', handleMapClick);  // Específico para mobile
-      
+
       console.log('✅ Event listeners do mapa configurados (click + tap)');
-      
+
       updateWaypointsList();
       updateRouteInfo();
       updateFuelInfo();
       updateNearestLighthouses();
       updateStatus();
-      
+
       // ═════════════════════════════════════════════════════════════════════
       // CORREÇÃO v2.0.2: Forçar renderização do mapa em mobile
       // ═════════════════════════════════════════════════════════════════════
       console.log('🗺️ Configurando renderização para mobile...');
-      
+
       // Forçar redimensionamento após inicialização
       setTimeout(() => {
         map.invalidateSize();
         console.log('✅ Mapa redimensionado (invalidateSize)');
       }, 250);
-      
+
       // Listener para resize da janela (importante para mobile)
-      window.addEventListener('resize', function() {
+      window.addEventListener('resize', function () {
         console.log('📐 Janela redimensionada, ajustando mapa...');
         map.invalidateSize();
       });
-      
+
       // Listener para mudança de orientação (rotation em mobile)
-      window.addEventListener('orientationchange', function() {
+      window.addEventListener('orientationchange', function () {
         console.log('🔄 Orientação mudou, ajustando mapa...');
         setTimeout(() => {
           map.invalidateSize();
         }, 100);
       });
-      
+
       console.log('✅ Listeners de renderização mobile configurados');
     }
-    
+
     // ═══════════════════════════════════════════════════════════════════════
     // DEBUG - v2.0.3
     // ═══════════════════════════════════════════════════════════════════════
-    
+
     function showDebugInfo() {
       console.log('═══════════════════════════════════════════════════════════');
       console.log('🐛 DEBUG INFO - Estado Atual do Sistema');
@@ -1576,7 +1593,7 @@
         console.log(`  ${i}: ID ${wm.id}`);
       });
       console.log('═══════════════════════════════════════════════════════════');
-      
+
       let msg = '🐛 DEBUG INFO\n\n';
       msg += `waypoints.length: ${waypoints.length}\n`;
       msg += `waypointMarkers.length: ${waypointMarkers.length}\n`;
@@ -1600,14 +1617,14 @@
       } else {
         msg += '  ✅ Contagem consistente\n';
       }
-      
+
       alert(msg);
     }
-    
+
     // ═══════════════════════════════════════════════════════════════════════
     // GERENCIAMENTO DE MODAL
     // ═══════════════════════════════════════════════════════════════════════
-    
+
     function openTripModal() {
       document.getElementById('tripModal').classList.add('active');
       // Definir data/hora atual como padrão
@@ -1615,14 +1632,14 @@
       const localDateTime = now.toISOString().slice(0, 16);
       document.getElementById('departureDate').value = localDateTime;
     }
-    
+
     function closeTripModal() {
       document.getElementById('tripModal').classList.remove('active');
     }
-    
+
     function saveTripData(event) {
       event.preventDefault();
-      
+
       // Coletar dados do formulário
       tripData = {
         vesselName: document.getElementById('vesselName').value,
@@ -1633,7 +1650,7 @@
         fuelConsumption: parseFloat(document.getElementById('fuelConsumption').value),
         fuelInitial: parseFloat(document.getElementById('fuelInitial').value)
       };
-      
+
       // Atualizar interface
       document.getElementById('infoVessel').textContent = tripData.vesselName;
       document.getElementById('infoOrigin').textContent = tripData.origin;
@@ -1641,17 +1658,17 @@
       document.getElementById('infoDeparture').textContent = tripData.departureDate.toLocaleString('pt-BR');
       document.getElementById('infoSpeed').textContent = tripData.speedKnots + ' kts';
       document.getElementById('tripInfoBar').classList.add('active');
-      
+
       closeTripModal();
       alert('✅ Viagem configurada!\n\nAgora você pode adicionar waypoints clicando no mapa.');
-      
+
       console.log('Dados da viagem salvos:', tripData);
     }
-    
+
     // ═══════════════════════════════════════════════════════════════════════
     // CRIAÇÃO DE WAYPOINTS
     // ═══════════════════════════════════════════════════════════════════════
-    
+
     /*
     FUNÇÃO: createWaypoint(lat, lng)
     
@@ -1670,15 +1687,15 @@
       console.log('   - waypoints.length:', waypoints.length);
       console.log('   - waypointCounter:', waypointCounter);
       console.log('   - tripData:', tripData ? 'Configurado' : 'NÃO configurado');
-      
+
       if (!tripData) {
         console.log('❌ ABORTADO: tripData não configurado');
         alert('⚠️ Configure os dados da viagem primeiro!');
         return;
       }
-      
+
       console.log('✅ tripData OK, criando objeto waypoint...');
-      
+
       // Criar objeto waypoint
       const waypoint = {
         id: Date.now(),
@@ -1694,30 +1711,30 @@
         nearestLighthouse: null,
         lighthouseVisible: false
       };
-      
+
       console.log('✅ Objeto waypoint criado:', waypoint.name, 'ID:', waypoint.id);
-      
+
       // Se não é o primeiro waypoint, calcular distâncias e tempos
       if (waypoints.length > 0) {
         const prevWp = waypoints[waypoints.length - 1];
-        
+
         // Calcular distância até waypoint anterior
         waypoint.distance = calculateDistance(prevWp.lat, prevWp.lng, lat, lng);
-        
+
         // Calcular distância total acumulada
         waypoint.totalDistance = prevWp.totalDistance + waypoint.distance;
-        
+
         // Calcular tempo de viagem até este waypoint (em horas)
         waypoint.timeFromPrevious = waypoint.distance / tripData.speedKnots;
-        
+
         // Calcular ETA
         const timeOffset = waypoint.timeFromPrevious * 60 * 60 * 1000; // ms
         waypoint.eta = new Date(prevWp.eta ? prevWp.eta.getTime() + timeOffset : tripData.departureDate.getTime() + timeOffset);
-        
+
         // Calcular consumo de combustível
         waypoint.fuelUsed = prevWp.fuelUsed + (waypoint.timeFromPrevious * tripData.fuelConsumption);
         waypoint.fuelRemaining = tripData.fuelInitial - waypoint.fuelUsed;
-        
+
         // Validar se há combustível suficiente
         if (waypoint.fuelRemaining < 0) {
           alert(`⚠️ COMBUSTÍVEL INSUFICIENTE!\n\nO combustível acabaria antes de chegar a ${waypoint.name}.\n\nCombustível necessário: ${waypoint.fuelUsed.toFixed(0)} L\nCombustível disponível: ${tripData.fuelInitial.toFixed(0)} L\n\nDeficit: ${Math.abs(waypoint.fuelRemaining).toFixed(0)} L`);
@@ -1728,18 +1745,18 @@
         waypoint.eta = tripData.departureDate;
         waypoint.totalDistance = 0;
       }
-      
+
       // Encontrar farol mais próximo
       const nearest = findNearestLighthouse(lat, lng);
       waypoint.nearestLighthouse = nearest.lighthouse;
       const visibility = calculateVisibility(nearest.lighthouse.height);
       waypoint.lighthouseVisible = nearest.distance <= visibility;
-      
+
       // Adicionar ao array
       console.log('➕ ADICIONANDO ao array waypoints...');
       console.log('   waypoints.length ANTES:', waypoints.length);
       console.log('   Array atual:', waypoints.map(wp => wp.name));
-      
+
       try {
         waypoints.push(waypoint);
         console.log('✅ push() executado');
@@ -1748,17 +1765,17 @@
         alert('ERRO ao adicionar waypoint: ' + error.message);
         return;
       }
-      
+
       console.log('   waypoints.length DEPOIS:', waypoints.length);
       console.log('   Array atual:', waypoints.map(wp => wp.name));
-      
+
       // VERIFICAÇÃO CRÍTICA: O waypoint foi realmente adicionado?
       if (waypoints.length === 0) {
         console.error('❌ ERRO CRÍTICO: Array vazio após push!');
         alert('ERRO: Array waypoints está vazio após push!');
         return;
       }
-      
+
       const lastWaypoint = waypoints[waypoints.length - 1];
       if (lastWaypoint.id !== waypoint.id) {
         console.error('❌ ERRO CRÍTICO: Waypoint adicionado não é o último!');
@@ -1767,14 +1784,14 @@
         alert('ERRO: Waypoint não foi adicionado corretamente!');
         return;
       }
-      
+
       console.log('✅ Waypoint verificado no array! ID:', lastWaypoint.id);
-      
+
       console.log('🔢 INCREMENTANDO waypointCounter...');
       console.log('   waypointCounter ANTES:', waypointCounter);
       waypointCounter++;
       console.log('   waypointCounter DEPOIS:', waypointCounter);
-      
+
       // Criar marcador visual
       const marker = L.marker([lat, lng], {
         draggable: true,
@@ -1798,43 +1815,43 @@
           iconAnchor: [15, 15]
         })
       }).addTo(map);
-      
+
       // Popup com informações
       marker.bindPopup(getWaypointPopupContent(waypoint));
-      
+
       // Event listener para arrastar
-      marker.on('dragend', function(e) {
+      marker.on('dragend', function (e) {
         const newPos = e.target.getLatLng();
         updateWaypointPosition(waypoint.id, newPos.lat, newPos.lng);
       });
-      
+
       // Event listener para clique (excluir)
-      marker.on('contextmenu', function() {
+      marker.on('contextmenu', function () {
         if (confirm(`Excluir ${waypoint.name}?`)) {
           deleteWaypoint(waypoint.id);
         }
       });
-      
+
       waypointMarkers.push({
         id: waypoint.id,
         marker: marker
       });
-      
+
       // Criar/atualizar rota automaticamente
       createRoute();
-      
+
       // Atualizar interface
       updateWaypointsList();
       updateRouteInfo();
       updateFuelInfo();
       updateNearestLighthouses();
       updateStatus();
-      
+
       // Mostrar botão de relatório se houver waypoints
       if (waypoints.length >= 2) {
         document.getElementById('reportBtn').style.display = 'flex';
       }
-      
+
       console.log('✅ createWaypoint() CONCLUÍDO COM SUCESSO!');
       console.log('📊 Estado final:');
       console.log('   - waypoints.length:', waypoints.length);
@@ -1842,18 +1859,18 @@
       console.log('   - waypointCounter:', waypointCounter);
       console.log('   - Lista de waypoints:', waypoints.map(wp => wp.name));
       console.log('═══════════════════════════════════════════════════════════');
-      
+
       // FEEDBACK VISUAL: Alert de sucesso
       const waypointName = waypoint.name;
       const totalWaypoints = waypoints.length;
       console.log(`🎉 SUCESSO: ${waypointName} criado! Total: ${totalWaypoints}`);
-      
+
       // Opcional: Vibração em mobile (se suportado)
       if ('vibrate' in navigator) {
         navigator.vibrate(50);
       }
     }
-    
+
     function getWaypointPopupContent(wp) {
       return `
         <div style="font-family: 'Rajdhani', sans-serif; min-width: 250px;">
@@ -1870,23 +1887,23 @@
         </div>
       `;
     }
-    
+
     function updateWaypointPosition(id, newLat, newLng) {
       const index = waypoints.findIndex(wp => wp.id === id);
       if (index === -1) return;
-      
+
       waypoints[index].lat = newLat;
       waypoints[index].lng = newLng;
-      
+
       // Recalcular tudo a partir deste waypoint
       recalculateFromWaypoint(index);
-      
+
       // Atualizar popup
       const marker = waypointMarkers.find(wm => wm.id === id);
       if (marker) {
         marker.marker.setPopupContent(getWaypointPopupContent(waypoints[index]));
       }
-      
+
       createRoute();
       updateWaypointsList();
       updateRouteInfo();
@@ -1894,28 +1911,28 @@
       updateNearestLighthouses();
       updateStatus();
     }
-    
+
     function recalculateFromWaypoint(startIndex) {
       for (let i = startIndex; i < waypoints.length; i++) {
         const wp = waypoints[i];
-        
+
         if (i > 0) {
           const prevWp = waypoints[i - 1];
-          
+
           // Recalcular distância
           wp.distance = calculateDistance(prevWp.lat, prevWp.lng, wp.lat, wp.lng);
           wp.totalDistance = prevWp.totalDistance + wp.distance;
-          
+
           // Recalcular tempo
           wp.timeFromPrevious = wp.distance / tripData.speedKnots;
           const timeOffset = wp.timeFromPrevious * 60 * 60 * 1000;
           wp.eta = new Date(prevWp.eta.getTime() + timeOffset);
-          
+
           // Recalcular combustível
           wp.fuelUsed = prevWp.fuelUsed + (wp.timeFromPrevious * tripData.fuelConsumption);
           wp.fuelRemaining = tripData.fuelInitial - wp.fuelUsed;
         }
-        
+
         // Recalcular farol mais próximo
         const nearest = findNearestLighthouse(wp.lat, wp.lng);
         wp.nearestLighthouse = nearest.lighthouse;
@@ -1923,75 +1940,75 @@
         wp.lighthouseVisible = nearest.distance <= visibility;
       }
     }
-    
+
     function deleteWaypoint(id) {
       const index = waypoints.findIndex(wp => wp.id === id);
       if (index === -1) return;
-      
+
       // Remover do array
       waypoints.splice(index, 1);
-      
+
       // Remover marcador do mapa
       const markerIndex = waypointMarkers.findIndex(wm => wm.id === id);
       if (markerIndex !== -1) {
         map.removeLayer(waypointMarkers[markerIndex].marker);
         waypointMarkers.splice(markerIndex, 1);
       }
-      
+
       // Recalcular a partir do waypoint anterior
       if (index > 0 && waypoints.length > index) {
         recalculateFromWaypoint(index);
       }
-      
+
       // Atualizar rota
       createRoute();
-      
+
       // Atualizar interface
       updateWaypointsList();
       updateRouteInfo();
       updateFuelInfo();
       updateNearestLighthouses();
       updateStatus();
-      
+
       // Ocultar botão de relatório se não houver waypoints suficientes
       if (waypoints.length < 2) {
         document.getElementById('reportBtn').style.display = 'none';
       }
     }
-    
+
     // ═══════════════════════════════════════════════════════════════════════
     // CRIAÇÃO AUTOMÁTICA DE ROTA
     // ═══════════════════════════════════════════════════════════════════════
-    
+
     function createRoute() {
       // Remover rota anterior se existir
       if (route) {
         map.removeLayer(route);
         route = null;
       }
-      
+
       // Criar nova rota se houver 2+ waypoints
       if (waypoints.length >= 2) {
         const latLngs = waypoints.map(wp => [wp.lat, wp.lng]);
-        
+
         route = L.polyline(latLngs, {
           color: '#FFA726',
           weight: 3,
           opacity: 0.8,
           smoothFactor: 1
         }).addTo(map);
-        
+
         // CORREÇÃO v2.0.4: Removido route.setText() que causava erro
         // setText() requer plugin Leaflet.textPath que não está carregado
         // Setas de direção são decorativas e não essenciais
         console.log('✅ Rota criada com', waypoints.length, 'waypoints');
       }
     }
-    
+
     // ═══════════════════════════════════════════════════════════════════════
     // ALGORITMOS NÁUTICOS
     // ═══════════════════════════════════════════════════════════════════════
-    
+
     /*
     ALGORITMO: HAVERSINE - Cálculo de Distância Ortodrômica
     
@@ -2016,17 +2033,17 @@
       const R = 3440.065; // Raio da Terra em milhas náuticas
       const dLat = (lat2 - lat1) * Math.PI / 180;
       const dLng = (lng2 - lng1) * Math.PI / 180;
-      
+
       const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                Math.sin(dLng / 2) * Math.sin(dLng / 2);
-      
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       const distance = R * c;
-      
+
       return distance;
     }
-    
+
     /*
     ALGORITMO: Visibilidade Geográfica de Faróis
     
@@ -2050,7 +2067,7 @@
       const visibility = 2.08 * (Math.sqrt(lighthouseHeight) + Math.sqrt(observerHeight));
       return visibility;
     }
-    
+
     /*
     ALGORITMO: Busca de Farol Mais Próximo
     
@@ -2067,7 +2084,7 @@
     function findNearestLighthouse(lat, lng) {
       let minDistance = Infinity;
       let nearest = null;
-      
+
       lighthouses.forEach(lh => {
         const dist = calculateDistance(lat, lng, lh.lat, lh.lng);
         if (dist < minDistance) {
@@ -2075,39 +2092,39 @@
           nearest = lh;
         }
       });
-      
+
       return {
         lighthouse: nearest,
         distance: minDistance
       };
     }
-    
+
     // ═══════════════════════════════════════════════════════════════════════
     // IMPORT/EXPORT GPX
     // ═══════════════════════════════════════════════════════════════════════
-    
+
     function importGPX(event) {
       const file = event.target.files[0];
       if (!file) return;
-      
+
       if (!tripData) {
         alert('⚠️ Configure os dados da viagem antes de importar GPX!');
         return;
       }
-      
+
       console.log('═══════════════════════════════════════════════════════════');
       console.log('📥 IMPORTANDO GPX:', file.name);
       console.log('═══════════════════════════════════════════════════════════');
-      
+
       const reader = new FileReader();
-      
-      reader.onload = function(e) {
+
+      reader.onload = function (e) {
         const gpxText = e.target.result;
         console.log('✅ Arquivo lido, tamanho:', gpxText.length, 'caracteres');
-        
+
         const parser = new DOMParser();
         const gpxDoc = parser.parseFromString(gpxText, 'text/xml');
-        
+
         // Verificar erros de parsing
         const parseError = gpxDoc.querySelector('parsererror');
         if (parseError) {
@@ -2115,7 +2132,7 @@
           alert('❌ Erro ao ler arquivo GPX!\nFormato inválido.');
           return;
         }
-        
+
         // Extrair pontos - suporta 3 formatos GPX
         // <wpt> = Waypoints (pontos individuais)
         // <rtept> = Route points (pontos de rota planejada)
@@ -2123,56 +2140,56 @@
         const wpts = gpxDoc.getElementsByTagName('wpt');
         const rtepts = gpxDoc.getElementsByTagName('rtept');
         const trkpts = gpxDoc.getElementsByTagName('trkpt');
-        
+
         console.log('📍 Pontos encontrados no GPX:');
         console.log('   - Waypoints (<wpt>):', wpts.length);
         console.log('   - Route points (<rtept>):', rtepts.length);
         console.log('   - Track points (<trkpt>):', trkpts.length);
-        
+
         // Combinar todos os pontos em um único array
         const allPoints = [...Array.from(wpts), ...Array.from(rtepts), ...Array.from(trkpts)];
         const totalPoints = allPoints.length;
-        
+
         console.log('   - TOTAL de pontos:', totalPoints);
-        
+
         if (totalPoints === 0) {
           alert('⚠️ Nenhum ponto encontrado no arquivo GPX!\n\nFormatos suportados:\n• <wpt> (waypoints)\n• <rtept> (route points)\n• <trkpt> (track points)');
           return;
         }
-        
+
         // Contar waypoints antes de importar
         const waypointsLengthBefore = waypoints.length;
         console.log('📊 waypoints.length ANTES da importação:', waypointsLengthBefore);
-        
+
         let successCount = 0;
         let failCount = 0;
-        
+
         allPoints.forEach((point, index) => {
           const lat = parseFloat(point.getAttribute('lat'));
           const lng = parseFloat(point.getAttribute('lon'));
-          
+
           // Extrair nome do ponto (tag <n> ou <name>)
           const nameElement = point.querySelector('n') || point.querySelector('name');
           const pointName = nameElement ? nameElement.textContent : `Ponto ${index + 1}`;
-          
+
           console.log(`   ${index + 1}/${totalPoints}: ${pointName} - lat=${lat}, lng=${lng}`);
-          
+
           // Verificar se coordenadas são válidas
           if (isNaN(lat) || isNaN(lng)) {
             console.error(`   ❌ Coordenadas inválidas`);
             failCount++;
             return;
           }
-          
+
           try {
             // Guardar quantidade antes
             const lengthBefore = waypoints.length;
-            
+
             createWaypoint(lat, lng);
-            
+
             // Verificar se waypoint foi adicionado
             const lengthAfter = waypoints.length;
-            
+
             if (lengthAfter > lengthBefore) {
               console.log(`   ✅ Waypoint ${index + 1} (${pointName}) adicionado com sucesso`);
               successCount++;
@@ -2185,10 +2202,10 @@
             failCount++;
           }
         });
-        
+
         const waypointsLengthAfter = waypoints.length;
         const actuallyAdded = waypointsLengthAfter - waypointsLengthBefore;
-        
+
         console.log('');
         console.log('📊 RESULTADO DA IMPORTAÇÃO:');
         console.log('   - Pontos no GPX:', totalPoints);
@@ -2198,7 +2215,7 @@
         console.log('   - waypoints.length DEPOIS:', waypointsLengthAfter);
         console.log('   - Realmente adicionados:', actuallyAdded);
         console.log('═══════════════════════════════════════════════════════════');
-        
+
         if (actuallyAdded === 0) {
           alert(`⚠️ GPX importado mas NENHUM waypoint foi adicionado!\n\nPossíveis causas:\n• Combustível insuficiente para a rota\n• Coordenadas inválidas\n• Erro no formato do arquivo\n\nVerifique o console (F12) para mais detalhes.`);
         } else if (actuallyAdded < totalPoints) {
@@ -2207,27 +2224,27 @@
           alert(`✅ GPX importado com sucesso!\n\n${actuallyAdded} waypoints adicionados.`);
         }
       };
-      
-      reader.onerror = function() {
+
+      reader.onerror = function () {
         console.error('❌ Erro ao ler arquivo');
         alert('❌ Erro ao ler arquivo GPX!');
       };
-      
+
       reader.readAsText(file);
-      
+
       // Reset input
       event.target.value = '';
     }
-    
+
     function exportGPX() {
       if (waypoints.length === 0) {
         alert('⚠️ Adicione waypoints antes de exportar!');
         return;
       }
-      
+
       let gpx = '<?xml version="1.0" encoding="UTF-8"?>\n';
       gpx += '<gpx version="1.1" creator="Coastal Navigator Brasil v2.0">\n';
-      
+
       // Metadata
       if (tripData) {
         gpx += '  <metadata>\n';
@@ -2236,7 +2253,7 @@
         gpx += `    <time>${tripData.departureDate.toISOString()}</time>\n`;
         gpx += '  </metadata>\n';
       }
-      
+
       // Waypoints
       waypoints.forEach(wp => {
         gpx += `  <wpt lat="${wp.lat}" lon="${wp.lng}">\n`;
@@ -2244,25 +2261,25 @@
         gpx += `    <desc>ETA: ${wp.eta.toLocaleString('pt-BR')}</desc>\n`;
         gpx += `  </wpt>\n`;
       });
-      
+
       // Track (rota)
       if (waypoints.length >= 2) {
         gpx += '  <trk>\n';
         gpx += `    <name>Rota ${tripData ? tripData.vesselName : 'Costeira'}</name>\n`;
         gpx += '    <trkseg>\n';
-        
+
         waypoints.forEach(wp => {
           gpx += `      <trkpt lat="${wp.lat}" lon="${wp.lng}">\n`;
           gpx += `        <time>${wp.eta.toISOString()}</time>\n`;
           gpx += `      </trkpt>\n`;
         });
-        
+
         gpx += '    </trkseg>\n';
         gpx += '  </trk>\n';
       }
-      
+
       gpx += '</gpx>';
-      
+
       // Download
       const blob = new Blob([gpx], { type: 'application/gpx+xml' });
       const url = URL.createObjectURL(blob);
@@ -2273,30 +2290,30 @@
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      
+
       alert('✅ Arquivo GPX exportado com sucesso!');
     }
-    
+
     // ═══════════════════════════════════════════════════════════════════════
     // ATUALIZAÇÃO DE INTERFACE
     // ═══════════════════════════════════════════════════════════════════════
-    
+
     function updateWaypointsList() {
       const listElement = document.getElementById('waypoints-list');
-      
+
       if (waypoints.length === 0) {
         listElement.innerHTML = '<p style="color: #888;">Nenhum waypoint adicionado. Clique no mapa para adicionar.</p>';
         return;
       }
-      
+
       let html = '';
-      
+
       waypoints.forEach(wp => {
         html += `
           <div class="waypoint-item" style="cursor: pointer;" onclick="map.setView([${wp.lat}, ${wp.lng}], 10)">
             <div class="item-name">${wp.name}</div>
             <div class="item-details">
-              <strong>ETA:</strong> ${wp.eta ? wp.eta.toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'}) : 'Partida'}<br>
+              <strong>ETA:</strong> ${wp.eta ? wp.eta.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'Partida'}<br>
               <strong>Distância:</strong> ${wp.distance.toFixed(1)} NM (Total: ${wp.totalDistance.toFixed(1)} NM)<br>
               <strong>Combustível restante:</strong> ${wp.fuelRemaining.toFixed(0)} L<br>
               <strong>Farol:</strong> ${wp.nearestLighthouse.name}
@@ -2305,21 +2322,21 @@
           </div>
         `;
       });
-      
+
       listElement.innerHTML = html;
     }
-    
+
     function updateRouteInfo() {
       const infoElement = document.getElementById('route-info');
-      
+
       if (!route || waypoints.length < 2) {
         infoElement.innerHTML = '<p style="color: #888;">Adicione 2+ waypoints para criar rota</p>';
         return;
       }
-      
+
       const lastWp = waypoints[waypoints.length - 1];
       const totalTime = (lastWp.eta - tripData.departureDate) / (1000 * 60 * 60); // horas
-      
+
       let html = `
         <div style="background: rgba(25, 118, 210, 0.1); padding: 12px; border-radius: 6px; margin-bottom: 12px;">
           <strong>Distância Total:</strong> ${lastWp.totalDistance.toFixed(2)} NM<br>
@@ -2329,29 +2346,29 @@
         </div>
         <div style="font-size: 0.85rem;">
       `;
-      
+
       waypoints.forEach((wp, i) => {
         if (i > 0) {
           html += `
             <div style="margin-bottom: 8px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px;">
-              ${waypoints[i-1].name} → ${wp.name}: ${wp.distance.toFixed(1)} NM (${wp.timeFromPrevious.toFixed(1)}h)
+              ${waypoints[i - 1].name} → ${wp.name}: ${wp.distance.toFixed(1)} NM (${wp.timeFromPrevious.toFixed(1)}h)
             </div>
           `;
         }
       });
-      
+
       html += '</div>';
       infoElement.innerHTML = html;
     }
-    
+
     function updateFuelInfo() {
       const infoElement = document.getElementById('fuel-info');
-      
+
       if (!tripData) {
         infoElement.innerHTML = '<p style="color: #888;">Configure a viagem para ver consumo</p>';
         return;
       }
-      
+
       if (waypoints.length === 0) {
         infoElement.innerHTML = `
           <div style="background: rgba(76, 175, 80, 0.1); padding: 12px; border-radius: 6px;">
@@ -2362,11 +2379,11 @@
         `;
         return;
       }
-      
+
       const lastWp = waypoints[waypoints.length - 1];
       const fuelPercentage = (lastWp.fuelRemaining / tripData.fuelInitial) * 100;
       const totalTime = (lastWp.eta - tripData.departureDate) / (1000 * 60 * 60);
-      
+
       let statusColor = '#4CAF50';
       let statusText = 'Normal';
       if (fuelPercentage < 20) {
@@ -2376,7 +2393,7 @@
         statusColor = '#FFA726';
         statusText = 'Atenção';
       }
-      
+
       let html = `
         <div style="background: rgba(${fuelPercentage < 40 ? '255, 167, 38' : '76, 175, 80'}, 0.1); padding: 12px; border-radius: 6px; margin-bottom: 12px;">
           <strong>Saldo Inicial:</strong> ${tripData.fuelInitial.toFixed(0)} L<br>
@@ -2388,24 +2405,24 @@
         <div style="font-size: 0.85rem;">
           <strong>Consumo por Período de 12h:</strong><br>
       `;
-      
+
       // Calcular consumo a cada 12 horas com data/hora real
       let time12h = 0;
       let prevFuel = 0;
       let periodNum = 1;
-      
+
       waypoints.forEach((wp, i) => {
         const wpTime = (wp.eta - tripData.departureDate) / (1000 * 60 * 60);
-        
+
         while (time12h + 12 <= wpTime) {
           time12h += 12;
           const fuelAt12h = time12h * tripData.fuelConsumption;
           const fuel12hPeriod = fuelAt12h - prevFuel;
-          
+
           // NOVO v2.0.5: Calcular data/hora real do período
           const startDate = new Date(tripData.departureDate.getTime() + ((time12h - 12) * 60 * 60 * 1000));
           const endDate = new Date(tripData.departureDate.getTime() + (time12h * 60 * 60 * 1000));
-          
+
           // Formatar data/hora compacto
           const formatDateTime = (date) => {
             const day = String(date.getDate()).padStart(2, '0');
@@ -2414,34 +2431,34 @@
             const minute = String(date.getMinutes()).padStart(2, '0');
             return `${day}/${month} ${hour}:${minute}`;
           };
-          
+
           html += `
             <div style="margin: 6px 0; padding: 6px; background: rgba(0,0,0,0.2); border-radius: 4px;">
               Período ${periodNum}: ${formatDateTime(startDate)} - ${formatDateTime(endDate)}<br>
               Consumo: ${fuel12hPeriod.toFixed(0)} L | Acumulado: ${fuelAt12h.toFixed(0)} L
             </div>
           `;
-          
+
           prevFuel = fuelAt12h;
           periodNum++;
         }
       });
-      
+
       html += '</div>';
       infoElement.innerHTML = html;
     }
-    
+
     function updateNearestLighthouses() {
       const listElement = document.getElementById('lighthouses-list');
-      
+
       if (waypoints.length === 0) {
         listElement.innerHTML = '<p style="color: #888;">Adicione waypoints para ver faróis próximos</p>';
         return;
       }
-      
+
       // Coletar faróis únicos próximos
       const nearbyLighthouses = new Set();
-      
+
       waypoints.forEach(wp => {
         if (wp.nearestLighthouse) {
           const dist = calculateDistance(wp.lat, wp.lng, wp.nearestLighthouse.lat, wp.nearestLighthouse.lng);
@@ -2453,22 +2470,22 @@
           }
         }
       });
-      
+
       if (nearbyLighthouses.size === 0) {
         listElement.innerHTML = '<p style="color: #888;">Nenhum farol próximo (raio 50 NM)</p>';
         return;
       }
-      
+
       const lighthousesArray = Array.from(nearbyLighthouses).map(item => JSON.parse(item));
       lighthousesArray.sort((a, b) => a.distance - b.distance);
-      
+
       let html = '';
-      
+
       lighthousesArray.forEach(item => {
         const lh = item.lighthouse;
         const distance = item.distance;
         const visibility = calculateVisibility(lh.height);
-        
+
         html += `
           <div class="lighthouse-item" style="cursor: pointer;" onclick="map.setView([${lh.lat}, ${lh.lng}], 12)">
             <div class="item-name">💡 ${lh.name}</div>
@@ -2481,25 +2498,25 @@
           </div>
         `;
       });
-      
+
       listElement.innerHTML = html;
     }
-    
+
     function updateStatus() {
       document.getElementById('waypoint-count').textContent = waypoints.length;
-      
+
       if (waypoints.length >= 2 && tripData) {
         const lastWp = waypoints[waypoints.length - 1];
         const totalTime = (lastWp.eta - tripData.departureDate) / (1000 * 60 * 60);
-        
+
         document.getElementById('total-distance').textContent = lastWp.totalDistance.toFixed(1) + ' NM';
         document.getElementById('total-time').textContent = totalTime.toFixed(1) + 'h';
         document.getElementById('fuel-remaining').textContent = lastWp.fuelRemaining.toFixed(0) + ' L';
-        
+
         // Mudar cor se combustível crítico
         const fuelElement = document.getElementById('fuel-remaining');
         const fuelPercentage = (lastWp.fuelRemaining / tripData.fuelInitial) * 100;
-        
+
         if (fuelPercentage < 20) {
           fuelElement.className = 'status-value status-warning';
         } else if (fuelPercentage < 40) {
@@ -2514,59 +2531,59 @@
         document.getElementById('fuel-remaining').textContent = tripData ? tripData.fuelInitial.toFixed(0) + ' L' : '0 L';
       }
     }
-    
+
     function toggleInfo() {
       const panel = document.getElementById('infoPanel');
       panel.classList.toggle('active');
     }
-    
+
     function clearAll() {
       if (!confirm('⚠️ Deseja realmente limpar toda a derrota?\n\nEsta ação não pode ser desfeita.')) {
         return;
       }
-      
+
       // Remover marcadores
       waypointMarkers.forEach(wm => {
         map.removeLayer(wm.marker);
       });
-      
+
       // Remover rota
       if (route) {
         map.removeLayer(route);
         route = null;
       }
-      
+
       // Limpar arrays
       waypoints = [];
       waypointMarkers = [];
       waypointCounter = 1;
-      
+
       // Atualizar interface
       updateWaypointsList();
       updateRouteInfo();
       updateFuelInfo();
       updateNearestLighthouses();
       updateStatus();
-      
+
       document.getElementById('reportBtn').style.display = 'none';
-      
+
       alert('✅ Derrota limpa!\n\nPronto para novo planejamento.');
     }
-    
+
     // ═══════════════════════════════════════════════════════════════════════
     // GERAÇÃO DE RELATÓRIO HTML
     // ═══════════════════════════════════════════════════════════════════════
-    
+
     function generateReport() {
       if (waypoints.length < 2) {
         alert('⚠️ Adicione pelo menos 2 waypoints para gerar relatório!');
         return;
       }
-      
+
       const lastWp = waypoints[waypoints.length - 1];
       const totalTime = (lastWp.eta - tripData.departureDate) / (1000 * 60 * 60);
       const fuelPercentage = (lastWp.fuelRemaining / tripData.fuelInitial) * 100;
-      
+
       let report = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -2825,7 +2842,7 @@
           </tr>
         </thead>
         <tbody>`;
-      
+
       waypoints.forEach((wp, i) => {
         report += `
           <tr>
@@ -2842,7 +2859,7 @@
             </td>
           </tr>`;
       });
-      
+
       report += `
         </tbody>
       </table>
@@ -2860,22 +2877,22 @@
           </tr>
         </thead>
         <tbody>`;
-      
+
       // Calcular consumo a cada 12 horas com data/hora real
       let time12h = 0;
       let prevFuel = 0;
       let periodNum = 1;
-      
+
       while (time12h < totalTime) {
         const nextTime = Math.min(time12h + 12, totalTime);
         const periodDuration = nextTime - time12h;
         const fuelAtEnd = nextTime * tripData.fuelConsumption;
         const periodFuel = fuelAtEnd - prevFuel;
-        
+
         // NOVO v2.0.5: Calcular data/hora real do período
         const startDate = new Date(tripData.departureDate.getTime() + (time12h * 60 * 60 * 1000));
         const endDate = new Date(tripData.departureDate.getTime() + (nextTime * 60 * 60 * 1000));
-        
+
         // Formatar data/hora (formato compacto: dd/MM HH:mm)
         const formatDateTime = (date) => {
           const day = String(date.getDate()).padStart(2, '0');
@@ -2884,7 +2901,7 @@
           const minute = String(date.getMinutes()).padStart(2, '0');
           return `${day}/${month} ${hour}:${minute}`;
         };
-        
+
         report += `
           <tr>
             <td><strong>Período ${periodNum}</strong></td>
@@ -2892,12 +2909,12 @@
             <td>${periodFuel.toFixed(0)} L</td>
             <td>${fuelAtEnd.toFixed(0)} L</td>
           </tr>`;
-        
+
         time12h = nextTime;
         prevFuel = fuelAtEnd;
         periodNum++;
       }
-      
+
       report += `
         </tbody>
       </table>
@@ -2916,7 +2933,7 @@
           </tr>
         </thead>
         <tbody>`;
-      
+
       // Listar faróis únicos referenciados
       const uniqueLighthouses = new Map();
       waypoints.forEach(wp => {
@@ -2927,7 +2944,7 @@
           });
         }
       });
-      
+
       uniqueLighthouses.forEach(item => {
         const lh = item.lighthouse;
         report += `
@@ -2939,7 +2956,7 @@
             <td>${lh.character}</td>
           </tr>`;
       });
-      
+
       report += `
         </tbody>
       </table>
@@ -2948,7 +2965,7 @@
     <div class="section">
       <div class="section-title">⚠️ OBSERVAÇÕES E RECOMENDAÇÕES</div>
       <div style="padding: 15px; background: #f5f5f5; border-left: 4px solid #FFA726;">`;
-      
+
       if (fuelPercentage < 20) {
         report += `
         <p style="color: #D32F2F; font-weight: 700; margin-bottom: 10px;">
@@ -2971,7 +2988,7 @@
           ✓ Margem de combustível adequada (${fuelPercentage.toFixed(1)}%)
         </p>`;
       }
-      
+
       report += `
         <p style="margin-bottom: 10px;">
           • Verificar condições meteorológicas antes da partida<br>
@@ -2997,7 +3014,7 @@
   </div>
 </body>
 </html>`;
-      
+
       // Criar e baixar arquivo
       const blob = new Blob([report], { type: 'text/html' });
       const url = URL.createObjectURL(blob);
@@ -3008,15 +3025,15 @@
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      
+
       alert('✅ Relatório HTML gerado com sucesso!\n\nO arquivo foi baixado e pode ser aberto em qualquer navegador ou impresso.');
     }
-    
+
     // ═══════════════════════════════════════════════════════════════════════
     // INICIALIZAÇÃO QUANDO PÁGINA CARREGA
     // ═══════════════════════════════════════════════════════════════════════
-    
-    document.addEventListener('DOMContentLoaded', function() {
+
+    document.addEventListener('DOMContentLoaded', function () {
       initMap();
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('  Coastal Navigator Brasil v2.0.9 - Inicializado ⚓');
@@ -3041,4 +3058,5 @@
     });
   </script>
 </body>
+
 </html>
