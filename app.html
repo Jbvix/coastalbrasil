@@ -1031,6 +1031,103 @@
         padding: 6px 10px;
       }
     }
+
+    /*
+    ══════════════════════════════════════════════════════════════════════════
+      TOUR / ONBOARDING STYLES
+    ══════════════════════════════════════════════════════════════════════════
+    */
+    .tour-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 9000;
+      display: none;
+      pointer-events: none;
+      /* Allows clicks to pass through to highlighted elements if needed, but we usually block */
+    }
+
+    .tour-overlay.active {
+      display: block;
+      pointer-events: auto;
+    }
+
+    .tour-highlight {
+      position: absolute;
+      border-radius: 4px;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.75);
+      z-index: 9001;
+      transition: all 0.3s ease;
+      pointer-events: none;
+      border: 2px solid var(--lighthouse-amber);
+    }
+
+    .tour-tooltip {
+      position: absolute;
+      background: linear-gradient(135deg, var(--deep-ocean), var(--deck-gray));
+      border: 1px solid var(--navigation-blue);
+      color: var(--chart-white);
+      padding: 20px;
+      border-radius: 8px;
+      width: 300px;
+      max-width: 90vw;
+      /* Responsividade Mobile */
+      z-index: 9002;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      font-family: var(--font-body);
+      transition: all 0.3s ease;
+    }
+
+    .tour-title {
+      font-family: var(--font-display);
+      color: var(--lighthouse-amber);
+      font-size: 1.1rem;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tour-text {
+      font-size: 0.95rem;
+      line-height: 1.5;
+      margin-bottom: 20px;
+      color: #CFD8DC;
+    }
+
+    .tour-controls {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .tour-btn {
+      padding: 6px 12px;
+      border-radius: 4px;
+      border: 1px solid var(--navigation-blue);
+      background: transparent;
+      color: var(--sea-foam);
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+    }
+
+    .tour-btn:hover {
+      background: rgba(25, 118, 210, 0.2);
+    }
+
+    .tour-btn-primary {
+      background: var(--navigation-blue);
+      color: white;
+      border: none;
+    }
+
+    .tour-btn-primary:hover {
+      background: #1565C0;
+    }
   </style>
 </head>
 
@@ -1068,6 +1165,9 @@
           </button>
           <button class="btn" onclick="toggleInfo()">
             ℹ️ Info
+          </button>
+          <button class="btn" onclick="startOnboardingTour()" style="background: #00897B;">
+            ❓ Tour
           </button>
         </div>
       </div>
@@ -1241,6 +1341,21 @@
 
   <!-- Input oculto para importação GPX -->
   <input type="file" id="gpxFile" accept=".gpx" style="display: none;" onchange="importGPX(event)">
+
+  <!-- TOUR ELEMENTS -->
+  <div class="tour-overlay" id="tourOverlay"></div>
+  <div class="tour-highlight" id="tourHighlight"></div>
+  <div class="tour-tooltip" id="tourTooltip">
+    <div class="tour-title" id="tourTitle">Título</div>
+    <div class="tour-text" id="tourText">Texto do passo.</div>
+    <div class="tour-controls">
+      <button class="tour-btn" onclick="endTour()">Pular</button>
+      <div style="display:flex; gap:10px;">
+        <button class="tour-btn" id="tourPrevBtn" onclick="prevTourStep()">Anterior</button>
+        <button class="tour-btn tour-btn-primary" id="tourNextBtn" onclick="nextTourStep()">Próximo</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Leaflet JavaScript Library -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1497,7 +1612,11 @@
             <strong>Alcance:</strong> ${lh.range} NM<br>
             <strong>Característica:</strong> ${lh.character}
           </div>
-        `);
+        `, {
+          autoPan: true,
+          autoPanPadding: [50, 50],
+          maxWidth: 300
+        });
       });
 
       // Event listener para clique no mapa (adicionar waypoint)
@@ -1609,8 +1728,155 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // DEBUG - v2.0.3
+    // TOUR / ONBOARDING SYSTEM
     // ═══════════════════════════════════════════════════════════════════════
+
+    let currentTourStep = 0;
+    const tourSteps = [
+      {
+        target: null, // Center
+        title: "👋 Bem-vindo ao Coastal Navigator",
+        text: "Vamos fazer um tour rápido pelas funcionalidades principais do sistema. O Coastal Navigator ajuda você a planejar rotas costeiras com precisão."
+      },
+      {
+        target: ".btn-primary", // Nova Viagem button
+        title: "🚢 Comece Aqui",
+        text: "Clique em 'Nova Viagem' para configurar sua embarcação, definir origem, destino e dados de combustível. Isso habilita o cálculo de ETA."
+      },
+      {
+        target: null,
+        targetHeaderBtn: "clearAll",
+        title: "🗑️ Limpar Viagem",
+        text: "Use este botão para resetar todos os mapas, waypoints e dados, começando uma rota do zero."
+      },
+      {
+        target: null,
+        targetHeaderBtn: "gpxFile",
+        title: "📁 Importar GPX",
+        text: "Já tem uma rota salva? Importe arquivos GPX para visualizar waypoints e rotas instantaneamente."
+      },
+      {
+        target: null,
+        targetHeaderBtn: "exportGPX",
+        title: "💾 Exportar Dados",
+        text: "Salve o planejamento da sua viagem. A exportação gera um arquivo GPX compatível com a maioria dos GPS maritimos."
+      },
+      {
+        target: "#map", // Map
+        title: "🗺️ Carta Náutica Interativa",
+        text: "Este é o seu mapa principal. Clique em qualquer lugar do oceano para adicionar Waypoints e traçar sua rota automaticamente."
+      },
+      {
+        target: ".info-panel", // Wait, need a visible button? Let's target the Info button
+        targetHeaderBtn: "toggleInfo", // Special handler selector
+        title: "ℹ️ Detalhes da Rota",
+        text: "Use o botão 'Info' ou 'Gerar Relatório' para ver a lista detalhada de waypoints, consumo trecho-a-trecho e saldo de combustível."
+      },
+      {
+        target: ".app-footer", // Footer
+        title: "📊 Monitoramento em Tempo Real",
+        text: "A barra inferior mostra o resumo vital: Distância total, ETA acumulado e status do tanque de combustível. Fique de olho aqui!"
+      }
+    ];
+
+    function startOnboardingTour() {
+      currentTourStep = 0;
+      document.getElementById('tourOverlay').classList.add('active');
+      showTourStep();
+    }
+
+    function endTour() {
+      document.getElementById('tourOverlay').classList.remove('active');
+      document.getElementById('tourHighlight').style.display = 'none';
+      document.getElementById('tourTooltip').style.display = 'none';
+    }
+
+    function showTourStep() {
+      const step = tourSteps[currentTourStep];
+      const highlight = document.getElementById('tourHighlight');
+      const tooltip = document.getElementById('tourTooltip');
+
+      // Update Content
+      document.getElementById('tourTitle').innerHTML = step.title;
+      document.getElementById('tourText').innerHTML = step.text;
+
+      // Button States
+      document.getElementById('tourPrevBtn').style.display = currentTourStep === 0 ? 'none' : 'block';
+      document.getElementById('tourNextBtn').innerText = currentTourStep === tourSteps.length - 1 ? 'Concluir' : 'Próximo';
+
+      // Position logic
+      if (step.target) {
+        let el = document.querySelector(step.target);
+        // Special handle for button check
+        if (step.targetHeaderBtn) {
+          // Find button with specific onclick
+          const btns = document.querySelectorAll('.btn');
+          btns.forEach(b => {
+            if (b.getAttribute('onclick') && b.getAttribute('onclick').includes(step.targetHeaderBtn)) el = b;
+          });
+        }
+
+        if (el) {
+          const rect = el.getBoundingClientRect();
+
+          // Show and Position Highlight
+          highlight.style.display = 'block';
+          highlight.style.width = (rect.width + 10) + 'px';
+          highlight.style.height = (rect.height + 10) + 'px';
+          highlight.style.top = (rect.top - 5) + 'px';
+          highlight.style.left = (rect.left - 5) + 'px';
+
+          // Position Tooltip
+          tooltip.style.display = 'block';
+
+          // Logic to auto-position tooltip (bottom, top, left, right)
+          // Simple: Default bottom, check overflow
+          let topPos = rect.bottom + 15;
+          let leftPos = rect.left + (rect.width / 2) - 150; // Center horiz
+
+          // If too low, put on top
+          if (topPos + 200 > window.innerHeight) {
+            topPos = rect.top - 220; // Move above
+          }
+
+          // Clamp Left
+          if (leftPos < 10) leftPos = 10;
+          const tooltipWidth = Math.min(300, window.innerWidth * 0.9); // 300 or 90% of screen
+          if (leftPos + tooltipWidth > window.innerWidth) leftPos = window.innerWidth - tooltipWidth - 10;
+
+          // Ensure width is set on element if clamped
+          tooltip.style.transform = 'none'; // Clear center transform
+          tooltip.style.width = tooltipWidth + 'px';
+          tooltip.style.top = topPos + 'px';
+          tooltip.style.left = leftPos + 'px';
+          return;
+        }
+      }
+
+      // If no target (Center Modal)
+      highlight.style.display = 'none';
+      tooltip.style.display = 'block';
+      tooltip.style.top = '50%';
+      tooltip.style.left = '50%';
+      tooltip.style.transform = 'translate(-50%, -50%)';
+    }
+
+    function nextTourStep() {
+      if (currentTourStep < tourSteps.length - 1) {
+        currentTourStep++;
+        showTourStep();
+      } else {
+        endTour();
+      }
+    }
+
+    function prevTourStep() {
+      if (currentTourStep > 0) {
+        currentTourStep--;
+        showTourStep();
+      }
+    }
+
 
     function showDebugInfo() {
       console.log('═══════════════════════════════════════════════════════════');
