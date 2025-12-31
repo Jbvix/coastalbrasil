@@ -1145,28 +1145,28 @@
         </div>
 
         <div class="controls">
-          <button class="btn btn-primary" onclick="openTripModal()">
+          <button id="btnNewTrip" class="btn btn-primary" onclick="openTripModal()">
             🚢 Nova Viagem
           </button>
-          <button class="btn btn-danger" onclick="clearAll()">
+          <button id="btnClear" class="btn btn-danger" onclick="clearAll()">
             🗑️ Limpar
           </button>
-          <button class="btn" onclick="document.getElementById('gpxFile').click()">
+          <button id="btnImport" class="btn" onclick="document.getElementById('gpxFile').click()">
             📁 Importar
           </button>
-          <button class="btn" onclick="exportGPX()">
+          <button id="btnExport" class="btn" onclick="exportGPX()">
             💾 Exportar
           </button>
           <button class="btn btn-success" onclick="generateReport()" id="reportBtn" style="display: none;">
             📊 Gerar Relatório
           </button>
-          <button class="btn" onclick="showDebugInfo()" style="background: #9C27B0;">
+          <button id="btnDebug" class="btn" onclick="showDebugInfo()" style="background: #9C27B0;">
             🐛 DEBUG
           </button>
-          <button class="btn" onclick="toggleInfo()">
+          <button id="btnInfo" class="btn" onclick="toggleInfo()">
             ℹ️ Info
           </button>
-          <button class="btn" onclick="startOnboardingTour()" style="background: #00897B;">
+          <button id="btnTour" class="btn" onclick="startOnboardingTour()" style="background: #00897B;">
             ❓ Tour
           </button>
         </div>
@@ -1739,36 +1739,32 @@
         text: "Vamos fazer um tour rápido pelas funcionalidades principais do sistema. O Coastal Navigator ajuda você a planejar rotas costeiras com precisão."
       },
       {
-        target: ".btn-primary", // Nova Viagem button
+        target: "#btnNewTrip", // Nova Viagem button
         title: "🚢 Comece Aqui",
         text: "Clique em 'Nova Viagem' para configurar sua embarcação, definir origem, destino e dados de combustível. Isso habilita o cálculo de ETA."
       },
       {
-        target: null,
-        targetHeaderBtn: "clearAll",
+        target: "#btnClear",
         title: "🗑️ Limpar Viagem",
         text: "Use este botão para resetar todos os mapas, waypoints e dados, começando uma rota do zero."
       },
       {
-        target: null,
-        targetHeaderBtn: "gpxFile",
+        target: "#btnImport",
         title: "📁 Importar GPX",
         text: "Já tem uma rota salva? Importe arquivos GPX para visualizar waypoints e rotas instantaneamente."
       },
       {
-        target: null,
-        targetHeaderBtn: "exportGPX",
+        target: "#btnExport",
         title: "💾 Exportar Dados",
         text: "Salve o planejamento da sua viagem. A exportação gera um arquivo GPX compatível com a maioria dos GPS maritimos."
       },
       {
-        target: "#map", // Map
+        target: null, // Map centered
         title: "🗺️ Carta Náutica Interativa",
         text: "Este é o seu mapa principal. Clique em qualquer lugar do oceano para adicionar Waypoints e traçar sua rota automaticamente."
       },
       {
-        target: ".info-panel", // Wait, need a visible button? Let's target the Info button
-        targetHeaderBtn: "toggleInfo", // Special handler selector
+        target: "#btnInfo", // Info button
         title: "ℹ️ Detalhes da Rota",
         text: "Use o botão 'Info' ou 'Gerar Relatório' para ver a lista detalhada de waypoints, consumo trecho-a-trecho e saldo de combustível."
       },
@@ -1807,14 +1803,6 @@
       // Position logic
       if (step.target) {
         let el = document.querySelector(step.target);
-        // Special handle for button check
-        if (step.targetHeaderBtn) {
-          // Find button with specific onclick
-          const btns = document.querySelectorAll('.btn');
-          btns.forEach(b => {
-            if (b.getAttribute('onclick') && b.getAttribute('onclick').includes(step.targetHeaderBtn)) el = b;
-          });
-        }
 
         if (el) {
           const rect = el.getBoundingClientRect();
