@@ -1824,6 +1824,41 @@
     console.log('═══════════════════════════════════════════════════════════════');
   </script>
 
+  <!-- Request Access Modal -->
+  <div id="request-modal"
+    style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 2000; align-items: center; justify-content: center;">
+    <div
+      style="background: #1B263B; padding: 30px; border-radius: 12px; width: 90%; max-width: 400px; border: 1px solid #415A77; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+      <h3 style="color: #FFA726; margin-bottom: 15px; text-align: center;">Solicitar Acesso</h3>
+      <p style="color: #E0E1DD; text-align: center; margin-bottom: 20px; font-size: 0.9rem;">Por favor, informe seus
+        dados para enviar a solicitação ao Administrador.</p>
+
+      <form id="request-form" onsubmit="event.preventDefault(); gatekeeper.submitRequest();">
+        <div style="margin-bottom: 15px;">
+          <label style="display: block; color: #778DA9; margin-bottom: 5px; font-size: 0.9rem;">Seu Nome <span
+              style="color: #F44336">*</span></label>
+          <input type="text" id="req-name" required
+            style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #415A77; background: rgba(0,0,0,0.2); color: white;">
+        </div>
+
+        <div id="req-email-group" style="margin-bottom: 20px;">
+          <label style="display: block; color: #778DA9; margin-bottom: 5px; font-size: 0.9rem;">Seu Email <span
+              style="color: #F44336">*</span></label>
+          <input type="email" id="req-email"
+            style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #415A77; background: rgba(0,0,0,0.2); color: white;">
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+          <button type="button" onclick="gatekeeper.closeModal()"
+            style="flex: 1; padding: 10px; background: transparent; border: 1px solid #778DA9; color: #778DA9; border-radius: 6px; cursor: pointer;">Cancelar</button>
+          <button type="submit"
+            style="flex: 1; padding: 10px; background: linear-gradient(135deg, #FFA726, #FF9800); border: none; color: #0D1B2A; font-weight: bold; border-radius: 6px; cursor: pointer;">Enviar
+            Solicitação</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script src="assets/js/gatekeeper.js"></script>
 </body>
 

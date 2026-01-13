@@ -74,22 +74,59 @@ class Gatekeeper {
     }
 
     /**
-     * Prompts user for name and opens request link.
+     * Modal Management
      */
     requestAccess(method) {
-        // We need the user's name for the Admin to generate the token
-        const name = prompt("Por favor, digite seu Nome para solicitar o acesso:");
+        this.currentMethod = method;
+        const modal = document.getElementById('request-modal');
+        const emailGroup = document.getElementById('req-email-group');
+        const emailInput = document.getElementById('req-email');
 
-        if (!name || name.trim() === "") return;
+        // Reset form
+        document.getElementById('request-form').reset();
+
+        // Configure View
+        if (method === 'email') {
+            emailGroup.style.display = 'block';
+            emailInput.setAttribute('required', 'true');
+        } else {
+            emailGroup.style.display = 'none';
+            emailInput.removeAttribute('required');
+        }
+
+        modal.style.display = 'flex';
+    }
+
+    closeModal() {
+        document.getElementById('request-modal').style.display = 'none';
+    }
+
+    submitRequest() {
+        const name = document.getElementById('req-name').value.trim();
+        const userEmail = document.getElementById('req-email').value.trim();
+
+        if (!name) return;
 
         const subject = encodeURIComponent("Solicitação de Acesso - Coastal Navigator");
-        const body = encodeURIComponent(`Olá, meu nome é ${name}. Solicito um link de acesso ao sistema Coastal Navigator.`);
 
-        if (method === 'email') {
+        // Message Body construction
+        let bodyText = `Olá, meu nome é ${name}.`;
+        if (this.currentMethod === 'email' && userEmail) {
+            bodyText += ` Meu email é ${userEmail}.`;
+        }
+        bodyText += ` Solicito um link de acesso ao sistema Coastal Navigator.`;
+
+        const body = encodeURIComponent(bodyText);
+
+        if (this.currentMethod === 'email') {
+            // Mailto: Opens user's email client
             window.location.href = `mailto:${this.CONSTANTS.EMAIL}?subject=${subject}&body=${body}`;
-        } else if (method === 'whatsapp') {
+        } else if (this.currentMethod === 'whatsapp') {
+            // WhatsApp: Sends to Admin
             window.open(`https://wa.me/${this.CONSTANTS.WHATSAPP}?text=${body}`, '_blank');
         }
+
+        this.closeModal();
     }
 
     goToAdmin() {
