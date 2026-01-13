@@ -43,17 +43,22 @@
             </div>
 
             <div class="access-request-container">
-                <h3>Solicitar Acesso</h3>
-                <p class="small-text">O link de acesso expira após o primeiro uso.</p>
+                <h3><i class="fa-solid fa-lock"></i> Login Administrativo</h3>
+                <p class="small-text">Área restrita a administradores autorizados.</p>
 
-                <div class="button-group">
-                    <button onclick="accessManager.requestAccess('email')" class="btn btn-email">
-                        <i class="fa-regular fa-envelope"></i> Via Email
-                    </button>
-                    <button onclick="accessManager.requestAccess('whatsapp')" class="btn btn-whatsapp">
-                        <i class="fa-brands fa-whatsapp"></i> Via WhatsApp
-                    </button>
-                </div>
+                <form id="admin-login-form" onsubmit="event.preventDefault(); accessManager.login();">
+                    <div class="input-group" style="margin: 10px 0;">
+                        <input type="text" id="admin-user" placeholder="Usuário" required
+                            style="background: rgba(0,0,0,0.2); border: 1px solid var(--ocean-blue); color: white;">
+                    </div>
+                    <div class="input-group" style="margin: 10px 0;">
+                        <input type="password" id="admin-pass" placeholder="Senha" required
+                            style="background: rgba(0,0,0,0.2); border: 1px solid var(--ocean-blue); color: white;">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 10px;">Entrar</button>
+                    <p id="login-error" style="color: #ff4444; font-size: 0.8rem; margin-top: 10px; display: none;">
+                        Credenciais inválidas.</p>
+                </form>
             </div>
         </div>
     </section>

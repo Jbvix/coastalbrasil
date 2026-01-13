@@ -31,7 +31,11 @@ class AccessManager {
             // Generator Elements
             genUsername: document.getElementById('gen-username'),
             genResult: document.getElementById('gen-result'),
-            genDisplay: document.getElementById('gen-url-display')
+            genDisplay: document.getElementById('gen-url-display'),
+            // Admin Login Elements
+            adminUser: document.getElementById('admin-user'),
+            adminPass: document.getElementById('admin-pass'),
+            loginError: document.getElementById('login-error')
         };
 
         // Attach event listeners
@@ -47,25 +51,28 @@ class AccessManager {
      * Determines current view based on Token and Session state.
      */
     checkState() {
-        // 1. Check if user already has an active session
+        // 1. Check Admin Session
         const session = this.getSession();
-        if (session) {
-            this.showDashboard(session.username);
+        if (session && session.isAdmin) {
+            this.showDashboard('Administrador');
             return;
         }
 
-        // 2. Check if a token is present in URL
-        if (this.token) {
-            if (this.isTokenValid(this.token)) {
-                // Token is valid and unused -> Show Login Modal
-                this.showLoginModal();
-            } else {
-                // Token is invalid or used -> Show Error
-                this.showError('Este link de acesso é inválido ou já foi utilizado.');
-            }
+        // 2. Default -> Show Hero with Login
+        this.showHero();
+    }
+
+    login() {
+        const user = this.elements.adminUser.value;
+        const pass = this.elements.adminPass.value;
+
+        // Hardcoded Credentials
+        if (user === 'admin' && pass === 'coastal2024') {
+            this.createSession('Administrador', true);
+            this.showDashboard('Administrador');
+            this.elements.loginError.style.display = 'none';
         } else {
-            // 3. No token, no session -> Show Hero (Default)
-            this.showHero();
+            this.elements.loginError.style.display = 'block';
         }
     }
 
@@ -114,9 +121,10 @@ class AccessManager {
         }
     }
 
-    createSession(username) {
+    createSession(username, isAdmin = false) {
         const sessionData = {
             username: username,
+            isAdmin: isAdmin,
             loginTime: new Date().toISOString()
         };
         localStorage.setItem(this.STORAGE_KEY_SESSION, JSON.stringify(sessionData));
