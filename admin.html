@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coastal Navigator - Acesso Administrativo</title>
+    <link rel="stylesheet" href="assets/css/admin.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+
+<body>
+
+    <!-- 
+    =============================================================================
+    HERO / PRESENTATION SECTION
+    Visible by default. Hidden if a valid token is being processed or active.
+    =============================================================================
+    -->
+    <section id="hero-section" class="hero">
+        <div class="hero-overlay"></div>
+        <div class="content-wrapper">
+            <div class="logo-container">
+                <i class="fa-solid fa-anchor logo-icon"></i>
+                <h1>Coastal Navigator</h1>
+                <span class="badge">ADMIN PORTAL</span>
+            </div>
+
+            <div class="presentation-text">
+                <h2>Painel de Controle Central</h2>
+                <p>
+                    Bem-vindo ao portal administrativo do Coastal Navigator Brasil.
+                    <strong>Este aplicativo possui finalidade estritamente educativa.</strong>
+                    <br><br>
+                    <span style="color: var(--lighthouse-amber); font-weight: bold;">⚠️ ATENÇÃO: NÃO É UM MEIO DE
+                        NAVEGAÇÃO OFICIAL ⚠️</span>
+                </p>
+                <div class="feature-pills">
+                    <span><i class="fa-solid fa-shield-halved"></i> Acesso Seguro</span>
+                    <span><i class="fa-solid fa-bolt"></i> Token Único</span>
+                    <span><i class="fa-solid fa-user-shield"></i> Monitorado</span>
+                </div>
+            </div>
+
+            <div class="access-request-container">
+                <h3>Solicitar Acesso</h3>
+                <p class="small-text">O link de acesso expira após o primeiro uso.</p>
+
+                <div class="button-group">
+                    <button onclick="accessManager.requestAccess('email')" class="btn btn-email">
+                        <i class="fa-regular fa-envelope"></i> Via Email
+                    </button>
+                    <button onclick="accessManager.requestAccess('whatsapp')" class="btn btn-whatsapp">
+                        <i class="fa-brands fa-whatsapp"></i> Via WhatsApp
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 
+    =============================================================================
+    LOGIN / USERNAME MODAL
+    Shown only when a valid ?token=XYZ is detected but user is not identified yet.
+    =============================================================================
+    -->
+    <div id="login-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <i class="fa-solid fa-user-lock"></i>
+                <h2>Identificação Necessária</h2>
+            </div>
+            <p>Token válido detectado. Por favor, identifique-se para validar o acesso.</p>
+
+            <form id="login-form">
+                <div class="input-group">
+                    <label for="username">Nome de Usuário</label>
+                    <input type="text" id="username" placeholder="Ex: Capitão Silva" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Acessar Painel</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 
+    =============================================================================
+    DASHBOARD SECTION
+    Revealed only after Token Validation AND Username Entry.
+    =============================================================================
+    -->
+    <section id="dashboard-section" class="dashboard hidden">
+        <nav class="dash-nav">
+            <div class="nav-brand">Coastal Admin</div>
+            <div class="user-info">
+                <span id="user-display">Usuário</span>
+                <button onclick="accessManager.logout()" class="btn-sm btn-outline"><i
+                        class="fa-solid fa-right-from-bracket"></i> Sair</button>
+            </div>
+        </nav>
+
+        <div class="dash-content">
+            <div class="status-card success">
+                <div class="icon-box"><i class="fa-solid fa-check-circle"></i></div>
+                <div class="text-box">
+                    <h3>Acesso Autorizado</h3>
+                    <p>Você está conectado ao ambiente seguro.</p>
+                </div>
+            </div>
+
+            <div class="dash-grid">
+                <!-- Placeholder content for admin tools -->
+                <div class="dash-card">
+                    <h4><i class="fa-solid fa-database"></i> Dados de Cartas</h4>
+                    <p>Gerenciar importação de GEOJSON e atualizações.</p>
+                    <button class="btn-text">Acessar</button>
+                </div>
+                <div class="dash-card">
+                    <h4><i class="fa-solid fa-users"></i> Usuários</h4>
+                    <p>Monitor logs de acesso e permissões.</p>
+                    <button class="btn-text">Acessar</button>
+                </div>
+                <div class="dash-card">
+                    <h4><i class="fa-solid fa-file-waveform"></i> Relatórios</h4>
+                    <p>Visualizar métricas de navegação.</p>
+                    <button class="btn-text">Acessar</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 
+    =============================================================================
+    ERROR / EXPIRED VIEW
+    Shown when token is invalid or already used.
+    =============================================================================
+    -->
+    <div id="error-screen" class="full-screen-message hidden">
+        <div class="message-box error">
+            <i class="fa-solid fa-ban"></i>
+            <h2>Acesso Negado</h2>
+            <p id="error-text">O link utilizado é inválido ou já foi utilizado.</p>
+            <a href="admin.html" class="btn btn-outline">Voltar ao Início</a>
+        </div>
+    </div>
+
+    <script src="assets/js/admin.js"></script>
+</body>
+
+</html>
