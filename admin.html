@@ -108,6 +108,33 @@
             </div>
 
             <div class="dash-grid">
+                <!-- Tool: Link Generator -->
+                <div class="dash-card"
+                    style="border-color: var(--lighthouse-amber); background: rgba(255, 167, 38, 0.05);">
+                    <h4 style="color: var(--lighthouse-amber);"><i class="fa-solid fa-key"></i> Gerador de Acesso</h4>
+                    <p>Gera um link exclusivo para o usuário.</p>
+
+                    <div style="margin-top: 15px;">
+                        <input type="text" id="gen-username" placeholder="Nome do Usuário"
+                            style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--ocean-blue); background: rgba(0,0,0,0.3); color: white; margin-bottom: 10px;">
+                        <button onclick="accessManager.generateToken()" class="btn btn-primary"
+                            style="width: 100%; font-size: 0.9rem; padding: 10px;">Gerar Link</button>
+                    </div>
+
+                    <div id="gen-result" class="hidden"
+                        style="margin-top: 15px; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 4px;">
+                        <p style="font-size: 0.8rem; margin-bottom: 5px; color: var(--steel-blue);">Link Gerado:</p>
+                        <input type="text" id="gen-url-display" readonly
+                            style="width: 100%; padding: 5px; background: transparent; border: none; color: var(--success-green); font-family: monospace; font-size: 0.8rem; word-break: break-all;">
+                        <div style="display: flex; gap: 5px; margin-top: 10px;">
+                            <button onclick="accessManager.copyLink()" class="btn-sm btn-outline" style="flex: 1;"><i
+                                    class="fa-regular fa-copy"></i> Copiar</button>
+                            <button onclick="accessManager.shareLink('whatsapp')" class="btn-sm btn-outline"
+                                style="flex: 1;"><i class="fa-brands fa-whatsapp"></i> Enviar</button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Placeholder content for admin tools -->
                 <div class="dash-card">
                     <h4><i class="fa-solid fa-database"></i> Dados de Cartas</h4>

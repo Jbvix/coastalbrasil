@@ -27,7 +27,11 @@ class AccessManager {
             errorText: document.getElementById('error-text'),
             loginForm: document.getElementById('login-form'),
             usernameInput: document.getElementById('username'),
-            userDisplay: document.getElementById('user-display')
+            userDisplay: document.getElementById('user-display'),
+            // Generator Elements
+            genUsername: document.getElementById('gen-username'),
+            genResult: document.getElementById('gen-result'),
+            genDisplay: document.getElementById('gen-url-display')
         };
 
         // Attach event listeners
@@ -72,7 +76,7 @@ class AccessManager {
      */
     isTokenValid(token) {
         if (!token || token.length < 5) return false;
-        
+
         const usedTokens = JSON.parse(localStorage.getItem(this.STORAGE_KEY_USED_TOKENS) || '[]');
         return !usedTokens.includes(token);
     }
@@ -94,7 +98,7 @@ class AccessManager {
     handleLogin(e) {
         e.preventDefault();
         const username = this.elements.usernameInput.value.trim();
-        
+
         if (username && this.token) {
             // 1. Burn the token so it can't be used again
             this.burnToken(this.token);
@@ -129,12 +133,63 @@ class AccessManager {
     }
 
     /**
+     * Generator Tools
+     */
+    generateToken() {
+        const username = this.elements.genUsername.value.trim();
+        if (!username) {
+            alert('Por favor, digite o nome do usuário.');
+            return;
+        }
+
+        // Generate a pseudo-random token (8 chars)
+        const randomStr = Math.random().toString(36).substring(2, 10).toUpperCase();
+        const token = `CN${randomStr}`;
+
+        // Build URL relative to current origin, pointing to index.html
+        const baseUrl = window.location.origin + window.location.pathname.replace('admin.html', 'index.html');
+        const fullUrl = `${baseUrl}?token=${token}&user=${encodeURIComponent(username)}`;
+
+        // Display Result
+        this.elements.genDisplay.value = fullUrl;
+        this.elements.genResult.classList.remove('hidden');
+    }
+
+    copyLink() {
+        const url = this.elements.genDisplay.value;
+        const username = this.elements.genUsername.value;
+        // Extract token from URL for display
+        const tokenMatch = url.match(/token=([^&]*)/);
+        const token = tokenMatch ? tokenMatch[1] : 'N/A';
+
+        const message = `Olá ${username},\n\nSeu acesso ao Coastal Navigator foi aprovado.\n\n🔗 Link de Acesso: ${url}\n🔑 Token: ${token}\n\nClique no link para acessar.`;
+
+        navigator.clipboard.writeText(message).then(() => {
+            alert('Mensagem completa copiada para a área de transferência!');
+        });
+    }
+
+    shareLink(method) {
+        const url = this.elements.genDisplay.value;
+        const username = this.elements.genUsername.value;
+        const tokenMatch = url.match(/token=([^&]*)/);
+        const token = tokenMatch ? tokenMatch[1] : 'N/A';
+
+        const text = `Olá ${username},\n\nSeu acesso ao Coastal Navigator foi aprovado.\n\n🔗 Link de Acesso: ${url}\n🔑 Token: ${token}\n\nClique no link para acessar.`;
+        const encodedMsg = encodeURIComponent(text);
+
+        if (method === 'whatsapp') {
+            window.open(`https://wa.me/?text=${encodedMsg}`, '_blank');
+        }
+    }
+
+    /**
      * Request Access Action
      */
     requestAccess(method) {
         const subject = encodeURIComponent("Solicitação de Acesso Administrativo - Coastal Navigator");
         const body = encodeURIComponent("Olá, solicito um token de acesso administrativo para o sistema Coastal Navigator.");
-        
+
         if (method === 'email') {
             window.location.href = `mailto:${this.CONSTANTS.EMAIL}?subject=${subject}&body=${body}`;
         } else if (method === 'whatsapp') {
@@ -155,7 +210,7 @@ class AccessManager {
         // Let's hide hero to focus attention, or keep it blurred.
         // Implementation: show modal on top of a dark background.
         // For simplicity with current CSS:
-        this.elements.hero.classList.add('hidden'); 
+        this.elements.hero.classList.add('hidden');
         this.elements.loginModal.classList.remove('hidden');
     }
 
