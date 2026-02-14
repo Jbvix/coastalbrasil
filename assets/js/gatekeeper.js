@@ -13,7 +13,7 @@ class Gatekeeper {
         this.CONSTANTS = {
             EMAIL: 'jossiancosta@gmail.com',
             WHATSAPP: '5585997737230',
-            APP_URL: 'https://coastalbrasil.netlify.app/coastal-navigator-brasil-v2-0-5.html'
+            APP_URL: './coastal-navigator-brasil-v2-0-5.html'
         };
 
         this.init();
