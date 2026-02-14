@@ -59,6 +59,12 @@ Para garantir precisão e performance, implementei algumas estratégias chave:
 4.  **Integração UX Mobile:**
     Desenvolvi listeners específicos para eventos de toque (`touchstart`), garantindo que a experiência em tablets e smartphones seja fluida, permitindo zoom e plotagem de rota com precisão mesmo em telas pequenas.
 
+5.  **Controle de Acesso via Token (Serverless):**
+    Para gerenciar o acesso de forma controlada sem depender de um backend complexo, criei um sistema de autenticação descentralizado:
+    *   **Geração de Chaves:** Uma interface administrativa gera URLs únicas contendo tokens criptográficos simples (ex: `?token=CN8A2B`).
+    *   **Validação Client-Side:** O scripts `Gatekeeper` intercepta a entrada, valida o formato do token e verifica sua duplicidade em uma "Blacklist Local" usando `localStorage`.
+    *   **Autonomia:** Isso permite distribuir acessos exclusivos para turmas ou grupos de estudo sem precisar configurar servidores de autenticação (OAuth/JWT), mantendo o projeto 100% estático e gratuito.
+
 
 Convido todos a testarem e contribuírem com feedbacks!
 

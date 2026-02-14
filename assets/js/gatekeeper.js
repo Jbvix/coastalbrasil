@@ -129,6 +129,29 @@ class Gatekeeper {
         this.closeModal();
     }
 
+    /**
+     * Grants access to LinkedIn readers without burning a token.
+     */
+    grantLinkedInAccess() {
+        // Welcome message
+        const userMdg = 'Bem-vindo, Leitor do LinkedIn!';
+
+        // Visual feedback
+        document.body.innerHTML = `
+            <div style="height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0D1B2A;color:#E0E1DD;font-family:sans-serif;">
+                <h1 style="color:#2196F3;">${userMdg}</h1>
+                <p>Liberando acesso exclusivo...</p>
+                <div style="margin-top:20px;width:40px;height:40px;border:4px solid #FFA726;border-top:4px solid transparent;border-radius:50%;animation:spin 1s linear infinite;"></div>
+                <style>@keyframes spin {0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}</style>
+            </div>
+        `;
+
+        // Redirect after short delay
+        setTimeout(() => {
+            window.location.href = this.CONSTANTS.APP_URL;
+        }, 1500);
+    }
+
     goToAdmin() {
         window.location.href = 'admin.html';
     }
