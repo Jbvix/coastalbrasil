@@ -3347,6 +3347,17 @@
       console.log('📥 GPX: Suporta <wpt>, <rtept> e <trkpt>');
       console.log('💡 FARÓIS: Base oficial DHN + oceânicos validados');
       console.log('═══════════════════════════════════════════════════════════════');
+
+      // AUTO-START TOUR (First Visit)
+      const tourSeen = localStorage.getItem('coastal_tour_seen');
+      if (!tourSeen) {
+        console.log('🆕 Primeira visita detectada! Iniciando tour...');
+        // Pequeno delay para garantir que mapa renderizou
+        setTimeout(() => {
+          startOnboardingTour();
+          localStorage.setItem('coastal_tour_seen', 'true');
+        }, 1500);
+      }
     });
   </script>
 </body>
