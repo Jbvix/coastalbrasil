@@ -3348,18 +3348,48 @@
       console.log('💡 FARÓIS: Base oficial DHN + oceânicos validados');
       console.log('═══════════════════════════════════════════════════════════════');
 
-      // AUTO-START TOUR (First Visit)
+      // AUTO-START TOUR (First Visit) - Custom Dialog
       const tourSeen = localStorage.getItem('coastal_tour_seen');
       if (!tourSeen) {
         console.log('🆕 Primeira visita detectada! Solicitando tour...');
-        // Marca como visto imediatamente para não perguntar de novo se recarregar
         localStorage.setItem('coastal_tour_seen', 'true');
         
-        // Pequeno delay para garantir que mapa renderizou antes de perguntar
         setTimeout(() => {
-          if (confirm('👋 Bem-vindo ao Coastal Navigator Brasil!\n\nDeseja fazer um tour rápido (1 minuto) pelas funcionalidades principais?')) {
+          // Injetar modal customizado
+          const promptHtml = `
+            <div id="tourPromptOverlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px);">
+              <div style="background:#0D1B2A;border:2px solid #2196F3;border-radius:8px;padding:25px;max-width:400px;text-align:center;color:#E0E1DD;font-family:'Rajdhani', sans-serif;box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+                <h3 style="color:#2196F3;margin-top:0;font-size:1.5rem;">👋 Bem-vindo ao Coastal Navigator!</h3>
+                <p style="font-size:1.1rem;margin:15px 0 25px;">Deseja fazer um tour rápido (1 minuto) pelas funcionalidades principais?</p>
+                <div style="display:flex;justify-content:center;gap:15px;">
+                  <button id="btnTourDecline" style="padding:10px 20px;border:1px solid #78909C;background:transparent;color:#78909C;border-radius:4px;cursor:pointer;font-family:inherit;font-weight:bold;transition:all 0.2s;">Não, obrigado</button>
+                  <button id="btnTourAccept" style="padding:10px 20px;border:none;background:#2196F3;color:white;border-radius:4px;cursor:pointer;font-family:inherit;font-weight:bold;transition:all 0.2s;box-shadow:0 4px 10px rgba(33,150,243,0.3);">🟢 Iniciar Tour</button>
+                </div>
+              </div>
+            </div>
+          `;
+          document.body.insertAdjacentHTML('beforeend', promptHtml);
+
+          // Listeners
+          const overlay = document.getElementById('tourPromptOverlay');
+          const btnAccept = document.getElementById('btnTourAccept');
+          const btnDecline = document.getElementById('btnTourDecline');
+
+          // Hover effects
+          btnDecline.addEventListener('mouseover', () => btnDecline.style.background = 'rgba(120,144,156,0.1)');
+          btnDecline.addEventListener('mouseout', () => btnDecline.style.background = 'transparent');
+          btnAccept.addEventListener('mouseover', () => btnAccept.style.transform = 'translateY(-2px)');
+          btnAccept.addEventListener('mouseout', () => btnAccept.style.transform = 'translateY(0)');
+
+          btnAccept.addEventListener('click', () => {
+            overlay.remove();
             startOnboardingTour();
-          }
+          });
+
+          btnDecline.addEventListener('click', () => {
+            overlay.remove();
+          });
+
         }, 1500);
       }
     });
