@@ -3357,8 +3357,8 @@
         setTimeout(() => {
           // Injetar modal customizado
           const promptHtml = `
-            <div id="tourPromptOverlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px);">
-              <div style="background:#0D1B2A;border:2px solid #2196F3;border-radius:8px;padding:25px;max-width:400px;text-align:center;color:#E0E1DD;font-family:'Rajdhani', sans-serif;box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+            <div id="tourPromptOverlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:transparent;z-index:9999;display:flex;align-items:center;justify-content:center;pointer-events:none;">
+              <div style="background:#0D1B2A;border:2px solid #2196F3;border-radius:8px;padding:25px;max-width:400px;text-align:center;color:#E0E1DD;font-family:'Rajdhani', sans-serif;box-shadow:0 10px 30px rgba(0,0,0,0.5);pointer-events:auto;">
                 <h3 style="color:#2196F3;margin-top:0;font-size:1.5rem;">👋 Bem-vindo ao Coastal Navigator!</h3>
                 <p style="font-size:1.1rem;margin:15px 0 25px;">Deseja fazer um tour rápido (1 minuto) pelas funcionalidades principais?</p>
                 <div style="display:flex;justify-content:center;gap:15px;">
