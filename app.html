@@ -3351,11 +3351,15 @@
       // AUTO-START TOUR (First Visit)
       const tourSeen = localStorage.getItem('coastal_tour_seen');
       if (!tourSeen) {
-        console.log('🆕 Primeira visita detectada! Iniciando tour...');
-        // Pequeno delay para garantir que mapa renderizou
+        console.log('🆕 Primeira visita detectada! Solicitando tour...');
+        // Marca como visto imediatamente para não perguntar de novo se recarregar
+        localStorage.setItem('coastal_tour_seen', 'true');
+        
+        // Pequeno delay para garantir que mapa renderizou antes de perguntar
         setTimeout(() => {
-          startOnboardingTour();
-          localStorage.setItem('coastal_tour_seen', 'true');
+          if (confirm('👋 Bem-vindo ao Coastal Navigator Brasil!\n\nDeseja fazer um tour rápido (1 minuto) pelas funcionalidades principais?')) {
+            startOnboardingTour();
+          }
         }, 1500);
       }
     });
