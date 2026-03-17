@@ -1173,6 +1173,9 @@
           <button id="btnTour" class="btn" onclick="startOnboardingTour()" style="background: #00897B;">
             ❓ Tour
           </button>
+          <button id="btnExit" class="btn btn-danger" onclick="showExitScreen()">
+            🚪 Sair
+          </button>
         </div>
       </div>
     </header>
@@ -1340,6 +1343,28 @@
           </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Modal Sair/Agradecimento -->
+  <div class="modal-overlay" id="exitModal">
+    <div class="modal" style="text-align: center; max-width: 500px;">
+      <div class="modal-header" style="justify-content: center; border-bottom: none; padding-bottom: 0;">
+        <h2>⚓ Muito Obrigado!</h2>
+      </div>
+      <div style="font-size: 4rem; margin: 20px 0;">🌊</div>
+      <h3 style="color: var(--navigation-blue); margin-bottom: 15px;">Sessão Encerrada</h3>
+      <p style="color: var(--steel-blue); margin-bottom: 25px; line-height: 1.6;">
+        Obrigado por utilizar o Coastal Navigator Brasil para o seu planejamento de viagem marítima. 
+        Esperamos que sua roda tenha sido traçada com sucesso!
+      </p>
+      <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 25px; border: 1px solid rgba(33, 150, 243, 0.3);">
+        <p style="margin-bottom: 5px; color: var(--chart-white);">Dúvidas, sugestões ou suporte técnico?</p>
+        <p><strong><a href="mailto:jossiancosta@gmail.com" style="color: var(--lighthouse-amber); text-decoration: none; font-size: 1.1rem;">jossiancosta@gmail.com</a></strong></p>
+      </div>
+      <div style="display: flex; justify-content: center; gap: 15px;">
+        <button class="btn btn-primary" onclick="closeExitScreen()">Voltar ao Mapa</button>
+      </div>
     </div>
   </div>
 
@@ -1931,6 +1956,15 @@
 
     function closeTripModal() {
       document.getElementById('tripModal').classList.remove('active');
+    }
+
+    // Modal de Saída / Agradecimento
+    function showExitScreen() {
+      document.getElementById('exitModal').classList.add('active');
+    }
+
+    function closeExitScreen() {
+      document.getElementById('exitModal').classList.remove('active');
     }
 
     function saveTripData(event) {
@@ -3306,6 +3340,9 @@
       <p>Sistema de Planejamento de Viagem Marítima</p>
       <p>Desenvolvido por Jossian Brito (Charlie Bravo)</p>
       <p style="margin-top: 10px;">© 2024 - Todos os direitos reservados</p>
+      <div style="margin-top: 15px;">
+        <a href="https://hits.seeyoufarm.com"><img src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fcoastalbrasil.netlify.app&count_bg=%231976D2&title_bg=%230A1929&icon=anchor.svg&icon_color=%23E7E7E7&title=Visitas&edge_flat=false" alt="Visitas"/></a>
+      </div>
     </div>
   </div>
 </body>
