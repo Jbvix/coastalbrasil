@@ -3645,16 +3645,19 @@
       setNavStatus('🧪 SIMULAÇÃO ativa (sem GPS real)', 'nav-warn');
 
       const speed = tripData ? tripData.speedKnots : 10; // nós
+      // Relógio simulado: avança no mesmo fator da distância, p/ consumo/ETA coerentes
+      let simClock = Date.now();
       navSimTimer = setInterval(() => {
         const stepNM = speed * (SIM_TICK_MS / 3600000) * SIM_TIME_FACTOR;
         navSimDist += stepNM;
+        simClock += SIM_TICK_MS * SIM_TIME_FACTOR;
         const pt = pointAlongRoute(navSimDist);
         if (!pt) { stopSimulation(); navAlert('Simulação concluída. Destino alcançado.', null); return; }
         // Pequena oscilação lateral para demonstrar XTE/desvio
         const wobble = Math.sin(navSimDist / 2) * 0.03;
         const off = offsetLatLng(pt.lat, pt.lng, pt.brg + 90, wobble);
         const simSpeedMs = speed / 1.94384;
-        processFix(off.lat, off.lng, 8, simSpeedMs, pt.brg, Date.now());
+        processFix(off.lat, off.lng, 8, simSpeedMs, pt.brg, simClock);
       }, SIM_TICK_MS);
     }
 
