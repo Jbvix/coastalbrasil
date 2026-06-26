@@ -1132,6 +1132,202 @@
     .tour-btn-primary:hover {
       background: #1565C0;
     }
+
+    /* ═══ MÓDULO DE NAVEGAÇÃO GPS ═══ */
+    .btn-nav {
+      background: #00838F;
+    }
+
+    .btn-nav:hover {
+      background: #006064;
+    }
+
+    .btn-nav.active {
+      background: var(--success-green);
+      animation: navBtnPulse 1.6s infinite;
+    }
+
+    @keyframes navBtnPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.6); }
+      50% { box-shadow: 0 0 0 8px rgba(76, 175, 80, 0); }
+    }
+
+    .nav-hud {
+      display: none;
+      position: fixed;
+      bottom: 56px;
+      left: 12px;
+      z-index: 1500;
+      width: 290px;
+      max-width: calc(100vw - 24px);
+      background: rgba(10, 25, 41, 0.94);
+      border: 2px solid var(--success-green);
+      border-radius: 10px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+      font-family: var(--font-body);
+      color: #E3F2FD;
+      backdrop-filter: blur(4px);
+      overflow: hidden;
+    }
+
+    .nav-hud.active {
+      display: block;
+    }
+
+    .nav-hud-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: linear-gradient(135deg, #00695C, #004D40);
+      padding: 8px 10px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .nav-hud-title {
+      font-weight: 700;
+      letter-spacing: 1px;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .nav-pulse {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #69F0AE;
+      box-shadow: 0 0 8px #69F0AE;
+      animation: navBtnPulse 1.6s infinite;
+    }
+
+    .nav-hud-actions {
+      display: flex;
+      gap: 2px;
+    }
+
+    .nav-icon-btn {
+      background: transparent;
+      border: none;
+      color: #E3F2FD;
+      font-size: 1rem;
+      cursor: pointer;
+      padding: 2px 5px;
+      border-radius: 4px;
+    }
+
+    .nav-icon-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .nav-hud-body {
+      padding: 10px;
+    }
+
+    .nav-hud.collapsed .nav-hud-body {
+      display: none;
+    }
+
+    .nav-grid {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .nav-cell {
+      flex: 1;
+      background: rgba(25, 118, 210, 0.12);
+      border: 1px solid rgba(25, 118, 210, 0.4);
+      border-radius: 6px;
+      padding: 6px 8px;
+      display: flex;
+      align-items: baseline;
+      gap: 5px;
+    }
+
+    .nav-cell-wide {
+      flex: 1 1 100%;
+    }
+
+    .nav-label {
+      font-size: 0.7rem;
+      color: var(--lighthouse-amber);
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .nav-val {
+      font-size: 1.5rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: #FFFFFF;
+      line-height: 1;
+    }
+
+    .nav-unit {
+      font-size: 0.75rem;
+      color: #90CAF9;
+    }
+
+    .nav-line {
+      font-size: 0.85rem;
+      margin: 4px 0;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .nav-line strong {
+      color: var(--lighthouse-amber);
+    }
+
+    .nav-divider {
+      height: 1px;
+      background: rgba(255, 255, 255, 0.12);
+      margin: 8px 0;
+    }
+
+    .nav-lh {
+      display: block;
+      background: rgba(255, 167, 38, 0.12);
+      border-left: 3px solid var(--lighthouse-amber);
+      padding: 6px 8px;
+      border-radius: 4px;
+      line-height: 1.35;
+    }
+
+    .nav-lh.alert {
+      animation: navLhFlash 1s ease-in-out 3;
+    }
+
+    @keyframes navLhFlash {
+      0%, 100% { background: rgba(255, 167, 38, 0.12); }
+      50% { background: rgba(255, 167, 38, 0.55); }
+    }
+
+    .nav-status {
+      font-size: 0.72rem;
+      color: #90CAF9;
+      display: block;
+    }
+
+    .nav-warn { color: #FFB74D !important; }
+    .nav-danger { color: #FF5252 !important; }
+    .nav-ok { color: #69F0AE !important; }
+
+    .nav-boat-icon {
+      font-size: 26px;
+      line-height: 1;
+      filter: drop-shadow(0 0 3px #000);
+      transform-origin: center;
+      transition: transform 0.3s linear;
+    }
+
+    @media (max-width: 480px) {
+      .nav-hud { width: calc(100vw - 24px); bottom: 64px; }
+      .nav-val { font-size: 1.3rem; }
+    }
   </style>
 </head>
 
@@ -1160,6 +1356,9 @@
           </button>
           <button id="btnExport" class="btn" onclick="exportGPX()">
             💾 Exportar
+          </button>
+          <button id="btnNav" class="btn btn-nav" onclick="toggleNavigation()">
+            📡 Navegação GPS
           </button>
           <button class="btn btn-success" onclick="generateReport()" id="reportBtn" style="display: none;">
             📊 Gerar Relatório
@@ -1240,7 +1439,42 @@
       </aside>
     </main>
 
-    <!-- 
+    <!--
+    ══════════════════════════════════════════════════════════════════════════
+      HUD DE NAVEGAÇÃO GPS - Painel ao vivo (sobreposto ao mapa)
+    ══════════════════════════════════════════════════════════════════════════
+    -->
+    <div id="navHud" class="nav-hud">
+      <div class="nav-hud-header" onclick="toggleNavHudCollapse()">
+        <span class="nav-hud-title"><span class="nav-pulse"></span> NAVEGANDO</span>
+        <div class="nav-hud-actions">
+          <button class="nav-icon-btn" title="Som dos alertas" onclick="event.stopPropagation(); toggleNavMute()" id="navMuteBtn">🔊</button>
+          <button class="nav-icon-btn" title="Centralizar no barco" onclick="event.stopPropagation(); toggleNavFollow()" id="navFollowBtn">🎯</button>
+          <button class="nav-icon-btn" title="Simular percurso" onclick="event.stopPropagation(); toggleSimulation()" id="navSimBtn">🧪</button>
+          <button class="nav-icon-btn" title="Recolher" id="navCollapseBtn">▾</button>
+        </div>
+      </div>
+      <div class="nav-hud-body" id="navHudBody">
+        <div class="nav-grid">
+          <div class="nav-cell"><span class="nav-label">SOG</span><span class="nav-val" id="navSog">--</span><span class="nav-unit">kt</span></div>
+          <div class="nav-cell"><span class="nav-label">COG</span><span class="nav-val" id="navCog">--</span><span class="nav-unit">°</span></div>
+        </div>
+        <div class="nav-grid">
+          <div class="nav-cell nav-cell-wide"><span class="nav-label">XTE</span><span class="nav-val" id="navXte">--</span><span class="nav-unit" id="navXteSide"></span></div>
+        </div>
+        <div class="nav-line" id="navNextWp">Próximo WP: --</div>
+        <div class="nav-line" id="navEta">ETA destino: --</div>
+        <div class="nav-divider"></div>
+        <div class="nav-line"><span>⛽ Consumido:</span> <strong id="navFuelUsed">0 L</strong></div>
+        <div class="nav-line"><span>🛢️ Saldo:</span> <strong id="navFuelLeft">--</strong></div>
+        <div class="nav-line"><span>↪️ Perda p/ desvio:</span> <strong id="navFuelDev">0 L</strong></div>
+        <div class="nav-divider"></div>
+        <div class="nav-line nav-lh" id="navLighthouse">💡 Nenhum farol no alcance</div>
+        <div class="nav-line nav-status" id="navGpsStatus">Aguardando GPS…</div>
+      </div>
+    </div>
+
+    <!--
     ══════════════════════════════════════════════════════════════════════════
       FOOTER - Barra de Status
     ══════════════════════════════════════════════════════════════════════════
@@ -1965,6 +2199,7 @@
 
     // Modal de Saída / Agradecimento
     function showExitScreen() {
+      if (navActive) stopNavigation();
       document.getElementById('exitModal').classList.add('active');
     }
 
@@ -2377,6 +2612,30 @@
       const distance = R * c;
 
       return distance;
+    }
+
+    /*
+    ALGORITMO: Rumo Verdadeiro (Forward Azimuth)
+
+    Calcula o rumo inicial (em graus, 0-360 a partir do Norte verdadeiro)
+    do ponto 1 para o ponto 2.
+
+    FÓRMULA: θ = atan2( sinΔλ·cosφ2 , cosφ1·sinφ2 − sinφ1·cosφ2·cosΔλ )
+
+    USO: COG (fallback quando o GPS não fornece heading), rumo para o
+    próximo waypoint e marcação para faróis.
+    */
+    function calculateBearing(lat1, lng1, lat2, lng2) {
+      const φ1 = lat1 * Math.PI / 180;
+      const φ2 = lat2 * Math.PI / 180;
+      const Δλ = (lng2 - lng1) * Math.PI / 180;
+
+      const y = Math.sin(Δλ) * Math.cos(φ2);
+      const x = Math.cos(φ1) * Math.sin(φ2) -
+        Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+
+      const θ = Math.atan2(y, x);
+      return (θ * 180 / Math.PI + 360) % 360; // Normaliza 0-360
     }
 
     /*
@@ -2903,6 +3162,536 @@
       document.getElementById('reportBtn').style.display = 'none';
 
       alert('✅ Derrota limpa!\n\nPronto para novo planejamento.');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // MÓDULO DE NAVEGAÇÃO GPS AO VIVO
+    // ═══════════════════════════════════════════════════════════════════════
+    /*
+    Captura a posição do GPS do celular (navigator.geolocation.watchPosition) e
+    deriva, em tempo real:
+      - SOG (velocidade sobre o fundo) e COG (rumo no fundo)
+      - XTE (cross-track error) em relação à perna ativa da rota planejada
+      - ETA dinâmico para o destino com base na posição e velocidade atuais
+      - Consumo acumulado e saldo de combustível
+      - Perda de combustível por desvio (distância extra navegada)
+      - Alertas sonoros (beep + voz pt-BR) de faróis:
+          • início de visibilidade   • de través (abeam)   • fim de visibilidade
+    Também oferece um MODO SIMULAÇÃO que percorre a rota planejada sem GPS real.
+    */
+
+    // Estado da navegação
+    let navActive = false;
+    let navWatchId = null;
+    let navWakeLock = null;
+    let navLastFix = null;          // { lat, lng, t } do último fixo
+    let navActiveLeg = 0;           // índice do WP de origem da perna ativa
+    let navAccumFuel = 0;           // litros consumidos navegando
+    let navDistTraveled = 0;        // distância real percorrida (NM)
+    let navMuted = false;
+    let navFollow = true;           // mapa segue o barco
+    let navMarker = null;           // marcador da embarcação
+    let navAccCircle = null;        // círculo de precisão do GPS
+    let navHudCollapsed = false;
+    const lighthouseNavState = {};  // nome -> { phase, prevRel, abeam }
+
+    // Simulação
+    let navSimActive = false;
+    let navSimTimer = null;
+    let navSimDist = 0;             // distância percorrida na simulação (NM)
+    const SIM_TIME_FACTOR = 40;     // acelera o tempo p/ testar rapidamente
+    const SIM_TICK_MS = 1000;
+
+    const ARRIVAL_RADIUS_NM = 0.3;  // raio para considerar WP cumprido
+    const ABEAM_TOL = 45;           // janela (°) p/ detectar través
+
+    /* Liga/desliga a navegação a partir do botão do header. */
+    function toggleNavigation() {
+      if (navActive) {
+        stopNavigation();
+      } else {
+        startNavigation();
+      }
+    }
+
+    /* Inicia a captura de GPS e exibe o HUD. */
+    function startNavigation() {
+      if (!('geolocation' in navigator)) {
+        alert('⚠️ Este dispositivo/navegador não suporta GPS (Geolocation API).');
+        return;
+      }
+      if (!tripData) {
+        if (!confirm('Você ainda não configurou a viagem (embarcação/combustível).\n\nA navegação funcionará em modo reduzido (sem ETA/consumo).\n\nDeseja continuar mesmo assim?')) {
+          return;
+        }
+      }
+
+      navActive = true;
+      navAccumFuel = 0;
+      navDistTraveled = 0;
+      navLastFix = null;
+      navActiveLeg = 0;
+      for (const k in lighthouseNavState) delete lighthouseNavState[k];
+
+      document.getElementById('btnNav').classList.add('active');
+      document.getElementById('btnNav').innerHTML = '⏹️ Parar Navegação';
+      document.getElementById('navHud').classList.add('active');
+      setNavStatus('Solicitando permissão de GPS…', '');
+
+      // Mantém a tela acesa durante a navegação (quando suportado)
+      requestWakeLock();
+
+      navWatchId = navigator.geolocation.watchPosition(
+        onPositionUpdate,
+        onPositionError,
+        { enableHighAccuracy: true, maximumAge: 1000, timeout: 12000 }
+      );
+
+      navAlert('Navegação iniciada. Bons ventos e mares calmos.', null);
+    }
+
+    /* Encerra a navegação e libera recursos. */
+    function stopNavigation() {
+      navActive = false;
+      if (navWatchId !== null) {
+        navigator.geolocation.clearWatch(navWatchId);
+        navWatchId = null;
+      }
+      stopSimulation();
+      releaseWakeLock();
+
+      if (navMarker) { map.removeLayer(navMarker); navMarker = null; }
+      if (navAccCircle) { map.removeLayer(navAccCircle); navAccCircle = null; }
+
+      document.getElementById('btnNav').classList.remove('active');
+      document.getElementById('btnNav').innerHTML = '📡 Navegação GPS';
+      document.getElementById('navHud').classList.remove('active');
+    }
+
+    /* Callback de erro do GPS. */
+    function onPositionError(err) {
+      const msgs = {
+        1: 'Permissão de GPS negada. Habilite a localização para este site.',
+        2: 'Sinal de GPS indisponível no momento.',
+        3: 'Tempo esgotado ao obter posição.'
+      };
+      setNavStatus('⚠️ ' + (msgs[err.code] || err.message), 'nav-danger');
+    }
+
+    /* Callback de posição do GPS real. */
+    function onPositionUpdate(position) {
+      const c = position.coords;
+      processFix(c.latitude, c.longitude, c.accuracy,
+        c.speed, c.heading, position.timestamp || Date.now());
+    }
+
+    /*
+    Núcleo: processa um fixo de posição (real ou simulado) e atualiza tudo.
+      rawSpeed   em m/s (ou null)    rawHeading em graus (ou null)
+    */
+    function processFix(lat, lng, accuracy, rawSpeed, rawHeading, t) {
+      // --- SOG / COG (com fallback por diferença entre fixos) ---
+      let sog = (typeof rawSpeed === 'number' && isFinite(rawSpeed) && rawSpeed >= 0)
+        ? rawSpeed * 1.94384 : null; // m/s -> nós
+      let cog = (typeof rawHeading === 'number' && isFinite(rawHeading) && rawHeading >= 0)
+        ? rawHeading : null;
+
+      if (navLastFix) {
+        const dtH = Math.max((t - navLastFix.t) / 3600000, 0); // horas
+        const segNM = calculateDistance(navLastFix.lat, navLastFix.lng, lat, lng);
+        if (segNM > 0.0005) navDistTraveled += segNM;
+        // Fallback de velocidade: exige Δt mínimo (~0.5s) p/ não estourar com jitter
+        if (sog === null && dtH > 0.00014) sog = segNM / dtH;
+        // Fallback de rumo: calcula por diferença sempre que há seguimento (>0.8 kt),
+        // pois a 1 fixo/s e baixa velocidade o passo fica abaixo de qualquer limiar de distância.
+        const movingKt = (sog !== null && isFinite(sog)) ? sog : (dtH > 0 ? segNM / dtH : 0);
+        if (cog === null && movingKt > 0.8 && segNM > 0) cog = calculateBearing(navLastFix.lat, navLastFix.lng, lat, lng);
+        // Consumo acumulado por tempo navegando
+        if (tripData && dtH > 0) navAccumFuel += dtH * tripData.fuelConsumption;
+      }
+      if (sog === null || !isFinite(sog) || sog > 100) sog = 0; // descarta leitura implausível
+      if (cog === null) cog = navLastFix && navLastFix.cog != null ? navLastFix.cog : 0;
+      navLastFix = { lat, lng, t, cog };
+
+      // --- Marcador no mapa ---
+      drawBoat(lat, lng, accuracy, cog);
+      if (navFollow) map.panTo([lat, lng], { animate: true, duration: 0.5 });
+
+      // --- HUD: SOG / COG ---
+      document.getElementById('navSog').textContent = sog.toFixed(1);
+      document.getElementById('navCog').textContent = Math.round(cog).toString().padStart(3, '0');
+
+      // --- XTE / progresso / ETA / desvio (precisam de rota) ---
+      if (waypoints.length >= 2) {
+        advanceActiveLeg(lat, lng);
+        const legStart = waypoints[navActiveLeg];
+        const legEnd = waypoints[navActiveLeg + 1];
+        const ct = crossTrackError(lat, lng, legStart, legEnd);
+
+        document.getElementById('navXte').textContent = Math.abs(ct.xte).toFixed(2) + ' NM';
+        document.getElementById('navXteSide').textContent =
+          Math.abs(ct.xte) < 0.02 ? 'no rumo' : (ct.xte > 0 ? '► EB' : '◄ BB');
+
+        // Progresso ao longo da rota e distância restante
+        const along = Math.max(0, Math.min(ct.along, legEnd.totalDistance - legStart.totalDistance));
+        const progressNM = legStart.totalDistance + along;
+        const totalNM = waypoints[waypoints.length - 1].totalDistance;
+        const remainingNM = Math.max(0, totalNM - progressNM);
+
+        const brgNext = calculateBearing(lat, lng, legEnd.lat, legEnd.lng);
+        const distNext = calculateDistance(lat, lng, legEnd.lat, legEnd.lng);
+        document.getElementById('navNextWp').textContent =
+          `Próximo WP: ${legEnd.name} · ${distNext.toFixed(2)} NM · ${Math.round(brgNext).toString().padStart(3, '0')}°`;
+
+        // ETA dinâmico
+        if (sog > 0.5) {
+          const etaH = remainingNM / sog;
+          const eta = new Date(t + etaH * 3600000);
+          document.getElementById('navEta').textContent =
+            `ETA destino: ${eta.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} (${fmtDuration(etaH)})`;
+        } else {
+          document.getElementById('navEta').textContent = 'ETA destino: aguardando movimento…';
+        }
+
+        // Combustível e perda por desvio
+        if (tripData) {
+          const left = tripData.fuelInitial - navAccumFuel;
+          const fuelPerNM = tripData.speedKnots > 0 ? tripData.fuelConsumption / tripData.speedKnots : 0;
+          const extraNM = Math.max(0, navDistTraveled - progressNM);
+          const devFuel = extraNM * fuelPerNM;
+
+          document.getElementById('navFuelUsed').textContent = navAccumFuel.toFixed(0) + ' L';
+          document.getElementById('navFuelDev').textContent = '+' + devFuel.toFixed(0) + ' L';
+          const leftEl = document.getElementById('navFuelLeft');
+          leftEl.textContent = left.toFixed(0) + ' L';
+
+          // Alertas de saldo de combustível
+          const needRemaining = remainingNM * fuelPerNM;
+          if (left < 0 || left < needRemaining) {
+            leftEl.className = 'nav-danger';
+            setNavStatus('⛽ Combustível insuficiente para a rota restante!', 'nav-danger');
+          } else if (left < tripData.fuelInitial * 0.2) {
+            leftEl.className = 'nav-warn';
+          } else {
+            leftEl.className = 'nav-ok';
+          }
+        }
+      } else {
+        document.getElementById('navNextWp').textContent = 'Próximo WP: (sem rota planejada)';
+        document.getElementById('navEta').textContent = 'ETA destino: --';
+      }
+
+      // --- Alertas de faróis ---
+      checkLighthouseAlerts(lat, lng, cog);
+
+      if (!navSimActive) setNavStatus(
+        `GPS ok · precisão ±${accuracy ? Math.round(accuracy) : '?'} m`,
+        accuracy && accuracy > 50 ? 'nav-warn' : 'nav-ok');
+    }
+
+    /* Avança a perna ativa quando o barco chega ao próximo waypoint. */
+    function advanceActiveLeg(lat, lng) {
+      while (navActiveLeg < waypoints.length - 2) {
+        const next = waypoints[navActiveLeg + 1];
+        if (calculateDistance(lat, lng, next.lat, next.lng) <= ARRIVAL_RADIUS_NM) {
+          navActiveLeg++;
+        } else {
+          break;
+        }
+      }
+    }
+
+    /*
+    Cross-Track Error (great-circle).
+      xte   > 0 = à direita (estibordo) da derrota · < 0 = à esquerda (bombordo)
+      along = distância projetada ao longo da perna (along-track)
+    */
+    function crossTrackError(lat, lng, start, end) {
+      const R = 3440.065; // NM
+      const d13 = calculateDistance(start.lat, start.lng, lat, lng) / R; // angular
+      const θ13 = calculateBearing(start.lat, start.lng, lat, lng) * Math.PI / 180;
+      const θ12 = calculateBearing(start.lat, start.lng, end.lat, end.lng) * Math.PI / 180;
+
+      const xtAng = Math.asin(Math.sin(d13) * Math.sin(θ13 - θ12));
+      const atAng = Math.acos(Math.cos(d13) / Math.cos(xtAng));
+      return { xte: xtAng * R, along: (isNaN(atAng) ? 0 : atAng * R) };
+    }
+
+    /*
+    Máquina de estados de alertas de faróis.
+    Fases por farol: FORA → VISIVEL → (TRAVES) → FORA
+    Dispara alerta sonoro (beep + voz) em cada transição relevante.
+    */
+    function checkLighthouseAlerts(lat, lng, cog) {
+      let activeLh = null;
+      let activeDist = Infinity;
+
+      lighthouses.forEach(lh => {
+        const dist = calculateDistance(lat, lng, lh.lat, lh.lng);
+        // Alcance efetivo = menor entre alcance luminoso (carta) e geográfico (altura)
+        const range = Math.min(lh.range, calculateVisibility(lh.height));
+        let st = lighthouseNavState[lh.name];
+        if (!st) { st = { phase: 'FORA', prevRel: null, abeam: false }; lighthouseNavState[lh.name] = st; }
+
+        if (st.phase === 'FORA') {
+          if (dist <= range) {
+            st.phase = 'VISIVEL';
+            st.abeam = false;
+            navAlert(`${lh.name} à vista. Característica ${speakChar(lh.character)}. Distância ${dist.toFixed(0)} milhas.`, 'visible');
+            flashLighthouseCard();
+          }
+        } else { // VISIVEL
+          const brg = calculateBearing(lat, lng, lh.lat, lh.lng);
+          const rel = (brg - cog + 360) % 360;
+          // Detecta cruzamento do través (90° = EB, 270° = BB)
+          if (!st.abeam && st.prevRel !== null) {
+            const side = crossedAbeam(st.prevRel, rel);
+            if (side) {
+              st.abeam = true;
+              navAlert(`${lh.name} de través a ${side === 'EB' ? 'estibordo' : 'bombordo'}. Distância ${dist.toFixed(1)} milhas.`, 'abeam');
+              flashLighthouseCard();
+            }
+          }
+          st.prevRel = rel;
+
+          if (dist > range * 1.05) {
+            st.phase = 'FORA';
+            st.prevRel = null;
+            navAlert(`${lh.name} fora de alcance.`, 'lost');
+          }
+        }
+
+        if ((st.phase === 'VISIVEL') && dist < activeDist) {
+          activeDist = dist;
+          activeLh = { lh, dist, st };
+        }
+      });
+
+      // Atualiza o card de farol no HUD
+      const el = document.getElementById('navLighthouse');
+      if (activeLh) {
+        const { lh, dist, st } = activeLh;
+        const brg = calculateBearing(lat, lng, lh.lat, lh.lng);
+        const rel = (brg - cog + 360) % 360;
+        const relTxt = st.abeam ? 'de través' : (rel < 180 ? `${Math.round(rel)}° EB` : `${Math.round(360 - rel)}° BB`);
+        el.innerHTML = `💡 <strong>${lh.name}</strong> — ${lh.character}<br>` +
+          `dist ${dist.toFixed(1)} NM · marcação ${Math.round(brg).toString().padStart(3, '0')}° (${relTxt})`;
+      } else {
+        el.textContent = '💡 Nenhum farol no alcance';
+      }
+    }
+
+    /* Detecta a passagem pelo través: cruzamento de 90° (EB) ou 270° (BB). */
+    function crossedAbeam(prev, cur) {
+      const angDiff = (a, b) => ((a - b + 540) % 360) - 180; // -180..180
+      for (const target of [{ a: 90, s: 'EB' }, { a: 270, s: 'BB' }]) {
+        const d1 = angDiff(prev, target.a);
+        const d2 = angDiff(cur, target.a);
+        if ((d1 < 0) !== (d2 < 0) && Math.abs(d1) < ABEAM_TOL && Math.abs(d2) < ABEAM_TOL) {
+          return target.s;
+        }
+      }
+      return null;
+    }
+
+    // ─── Áudio: beep (Web Audio) + voz (SpeechSynthesis pt-BR) ───
+    let navAudioCtx = null;
+
+    function playBeep(type) {
+      try {
+        navAudioCtx = navAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        const tones = { visible: [880], abeam: [988, 1319], lost: [440] };
+        const seq = tones[type] || [660];
+        seq.forEach((freq, i) => {
+          const osc = navAudioCtx.createOscillator();
+          const gain = navAudioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = freq;
+          const start = navAudioCtx.currentTime + i * 0.18;
+          gain.gain.setValueAtTime(0.001, start);
+          gain.gain.exponentialRampToValueAtTime(0.4, start + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + 0.16);
+          osc.connect(gain); gain.connect(navAudioCtx.destination);
+          osc.start(start); osc.stop(start + 0.18);
+        });
+      } catch (e) { /* áudio indisponível */ }
+    }
+
+    function speak(text) {
+      if (!('speechSynthesis' in window)) return;
+      try {
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'pt-BR';
+        u.rate = 1.0;
+        window.speechSynthesis.speak(u);
+      } catch (e) { /* TTS indisponível */ }
+    }
+
+    /* Alerta combinado (respeita o mudo). beepType null = só voz. */
+    function navAlert(text, beepType) {
+      console.log('🔔 NAV:', text);
+      if (navMuted) return;
+      if (beepType) playBeep(beepType);
+      speak(text);
+    }
+
+    /* Lê a característica luminosa de forma mais natural na voz (ex.: "Fl(2) W 10s"). */
+    function speakChar(ch) {
+      if (!ch) return '';
+      let s = ch;
+      s = s.replace(/LFl/g, 'lampejo longo').replace(/Fl/g, 'lampejos')
+        .replace(/Oc/g, 'ocultações').replace(/Iso/g, 'isofase').replace(/Q/g, 'rápido');
+      s = s.replace(/\((\d+)\)/g, ' grupo de $1');     // (2) -> grupo de 2
+      s = s.replace(/(?<=\s|^)W(?=\s|$)/g, 'branco')
+        .replace(/(?<=\s|^)R(?=\s|$)/g, 'vermelho')
+        .replace(/(?<=\s|^)G(?=\s|$)/g, 'verde');
+      s = s.replace(/(\d+(?:\.\d+)?)\s*s\b/g, '$1 segundos'); // 10s -> 10 segundos
+      return s.replace(/\s+/g, ' ').trim();
+    }
+
+    // ─── UI auxiliares do HUD ───
+    function toggleNavMute() {
+      navMuted = !navMuted;
+      document.getElementById('navMuteBtn').textContent = navMuted ? '🔇' : '🔊';
+      if (!navMuted) navAlert('Som ativado.', null);
+    }
+
+    function toggleNavFollow() {
+      navFollow = !navFollow;
+      const b = document.getElementById('navFollowBtn');
+      b.style.opacity = navFollow ? '1' : '0.4';
+    }
+
+    function toggleNavHudCollapse() {
+      navHudCollapsed = !navHudCollapsed;
+      document.getElementById('navHud').classList.toggle('collapsed', navHudCollapsed);
+      document.getElementById('navCollapseBtn').textContent = navHudCollapsed ? '▴' : '▾';
+    }
+
+    function flashLighthouseCard() {
+      const el = document.getElementById('navLighthouse');
+      el.classList.remove('alert');
+      void el.offsetWidth; // reinicia a animação
+      el.classList.add('alert');
+    }
+
+    function setNavStatus(text, cls) {
+      const el = document.getElementById('navGpsStatus');
+      el.textContent = text;
+      el.className = 'nav-line nav-status ' + (cls || '');
+    }
+
+    /* Desenha/atualiza o marcador da embarcação rotacionado pelo COG. */
+    function drawBoat(lat, lng, accuracy, cog) {
+      if (!navMarker) {
+        const icon = L.divIcon({
+          className: '',
+          html: '<div class="nav-boat-icon">⬆️</div>',
+          iconSize: [26, 26],
+          iconAnchor: [13, 13]
+        });
+        navMarker = L.marker([lat, lng], { icon, zIndexOffset: 1000, interactive: false }).addTo(map);
+      } else {
+        navMarker.setLatLng([lat, lng]);
+      }
+      const el = navMarker.getElement();
+      if (el) {
+        const arrow = el.querySelector('.nav-boat-icon');
+        if (arrow) arrow.style.transform = `rotate(${cog}deg)`;
+      }
+      if (accuracy) {
+        if (!navAccCircle) {
+          navAccCircle = L.circle([lat, lng], { radius: accuracy, color: '#4CAF50', weight: 1, fillColor: '#4CAF50', fillOpacity: 0.08, interactive: false }).addTo(map);
+        } else {
+          navAccCircle.setLatLng([lat, lng]);
+          navAccCircle.setRadius(accuracy);
+        }
+      }
+    }
+
+    function fmtDuration(hours) {
+      const totalMin = Math.round(hours * 60);
+      const h = Math.floor(totalMin / 60);
+      const m = totalMin % 60;
+      return h > 0 ? `${h}h${m.toString().padStart(2, '0')}m` : `${m}m`;
+    }
+
+    // ─── Screen Wake Lock (mantém a tela acesa) ───
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator) {
+          navWakeLock = await navigator.wakeLock.request('screen');
+        }
+      } catch (e) { /* sem suporte/permissão */ }
+    }
+
+    function releaseWakeLock() {
+      if (navWakeLock) { navWakeLock.release().catch(() => { }); navWakeLock = null; }
+    }
+
+    // ─── MODO SIMULAÇÃO (sem GPS real) ───
+    /* Percorre a rota planejada para testar HUD e alertas no cais. */
+    function toggleSimulation() {
+      if (navSimActive) { stopSimulation(); return; }
+      if (waypoints.length < 2) {
+        alert('⚠️ A simulação precisa de uma rota com pelo menos 2 waypoints.');
+        return;
+      }
+      navSimActive = true;
+      navSimDist = 0;
+      navLastFix = null;
+      navActiveLeg = 0;
+      document.getElementById('navSimBtn').style.background = 'rgba(255,167,38,0.4)';
+      setNavStatus('🧪 SIMULAÇÃO ativa (sem GPS real)', 'nav-warn');
+
+      const speed = tripData ? tripData.speedKnots : 10; // nós
+      navSimTimer = setInterval(() => {
+        const stepNM = speed * (SIM_TICK_MS / 3600000) * SIM_TIME_FACTOR;
+        navSimDist += stepNM;
+        const pt = pointAlongRoute(navSimDist);
+        if (!pt) { stopSimulation(); navAlert('Simulação concluída. Destino alcançado.', null); return; }
+        // Pequena oscilação lateral para demonstrar XTE/desvio
+        const wobble = Math.sin(navSimDist / 2) * 0.03;
+        const off = offsetLatLng(pt.lat, pt.lng, pt.brg + 90, wobble);
+        const simSpeedMs = speed / 1.94384;
+        processFix(off.lat, off.lng, 8, simSpeedMs, pt.brg, Date.now());
+      }, SIM_TICK_MS);
+    }
+
+    function stopSimulation() {
+      if (navSimTimer) { clearInterval(navSimTimer); navSimTimer = null; }
+      if (navSimActive) {
+        navSimActive = false;
+        const b = document.getElementById('navSimBtn');
+        if (b) b.style.background = 'transparent';
+      }
+    }
+
+    /* Retorna o ponto (lat,lng,rumo) a uma distância dNM do início da rota. */
+    function pointAlongRoute(dNM) {
+      const total = waypoints[waypoints.length - 1].totalDistance;
+      if (dNM >= total) return null;
+      for (let i = 1; i < waypoints.length; i++) {
+        if (dNM <= waypoints[i].totalDistance) {
+          const a = waypoints[i - 1], b = waypoints[i];
+          const legLen = b.totalDistance - a.totalDistance;
+          const f = legLen > 0 ? (dNM - a.totalDistance) / legLen : 0;
+          return {
+            lat: a.lat + (b.lat - a.lat) * f,
+            lng: a.lng + (b.lng - a.lng) * f,
+            brg: calculateBearing(a.lat, a.lng, b.lat, b.lng)
+          };
+        }
+      }
+      return null;
+    }
+
+    /* Desloca um ponto por dNM milhas náuticas num dado rumo (aprox. plana). */
+    function offsetLatLng(lat, lng, brg, dNM) {
+      const rad = brg * Math.PI / 180;
+      const dLat = (dNM / 60) * Math.cos(rad);
+      const dLng = (dNM / 60) * Math.sin(rad) / Math.cos(lat * Math.PI / 180);
+      return { lat: lat + dLat, lng: lng + dLng };
     }
 
     // ═══════════════════════════════════════════════════════════════════════
