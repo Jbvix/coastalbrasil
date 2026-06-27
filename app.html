@@ -1337,6 +1337,37 @@
       animation: navBtnPulse 1.6s infinite;
     }
 
+    /* Itens do gerenciador de compartilhamentos */
+    .share-item {
+      background: rgba(25, 118, 210, 0.1);
+      border: 1px solid rgba(25, 118, 210, 0.4);
+      border-radius: 6px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+    }
+    .share-item-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .share-item-head strong { color: var(--lighthouse-amber); }
+    .share-link-row {
+      display: flex;
+      gap: 6px;
+    }
+    .share-link-row input {
+      flex: 1;
+      min-width: 0;
+      padding: 7px 8px;
+      border-radius: 5px;
+      border: 1px solid var(--navigation-blue);
+      background: var(--deep-ocean);
+      color: #E3F2FD;
+      font-size: 0.78rem;
+    }
+    .share-link-row .btn { flex: 0 0 auto; width: 46px; justify-content: center; padding: 7px 0; }
+
     .nav-warn { color: #FFB74D !important; }
     .nav-danger { color: #FF5252 !important; }
     .nav-ok { color: #69F0AE !important; }
@@ -1543,20 +1574,19 @@
     <div class="modal-overlay" id="shareModal">
       <div class="modal">
         <div class="modal-header">
-          <h2>📤 Compartilhar Navegação</h2>
+          <h2>📤 Compartilhamentos</h2>
           <button class="modal-close" onclick="closeShareModal()">×</button>
         </div>
         <div style="padding: 4px 0 8px;">
-          <p style="color: var(--lighthouse-amber); margin-bottom: 10px;">
-            Envie este link para quem está em terra. A pessoa verá sua embarcação e os dados de navegação ao vivo (somente leitura).
+          <p style="color: var(--lighthouse-amber); margin-bottom: 10px; font-size: 0.88rem;">
+            Crie links individuais (ex.: Família, Armador, Base). Cada um pode ser copiado e <strong>revogado separadamente</strong>. Quem abrir o link vê sua embarcação ao vivo (somente leitura).
           </p>
-          <input type="text" id="shareLinkInput" readonly
-            style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--navigation-blue); background: var(--deep-ocean); color: #E3F2FD; font-size: 0.85rem;">
-          <div class="form-help" id="shareTokenHelp" style="margin-top: 6px;"></div>
-          <div style="display: flex; gap: 8px; margin-top: 12px;">
-            <button class="btn btn-success" onclick="copyShareLink()" style="flex: 2;">📋 Copiar link</button>
-            <button class="btn btn-danger" onclick="stopSharing()" style="flex: 1;">⏹️ Parar</button>
+          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <input type="text" id="shareLabelInput" placeholder="Nome (ex.: Família)" maxlength="24"
+              style="flex: 1; padding: 10px; border-radius: 6px; border: 1px solid var(--navigation-blue); background: var(--deep-ocean); color: #E3F2FD; font-size: 0.9rem;">
+            <button class="btn btn-success" onclick="createShare()" style="flex: 0 0 auto;">+ Criar</button>
           </div>
+          <div id="shareList"></div>
         </div>
       </div>
     </div>
@@ -3363,7 +3393,10 @@
       navDistTraveled = 0;
       navLastFix = null;
       navActiveLeg = 0;
+      _lastBroadcastMs = 0;
       for (const k in lighthouseNavState) delete lighthouseNavState[k];
+      ensureAllShareChannels();   // (re)liga os canais dos compartilhamentos existentes
+      updateShareButtons();
 
       document.getElementById('btnNav').classList.add('active');
       document.getElementById('btnNav').innerHTML = '⏹️ Parar Navegação';
@@ -3391,6 +3424,8 @@
       }
       stopSimulation();
       releaseWakeLock();
+      closeShareChannels();   // para de transmitir (compartilhamentos seguem salvos p/ retomar)
+      updateShareButtons();
 
       if (navMarker) { map.removeLayer(navMarker); navMarker = null; }
       if (navAccCircle) { map.removeLayer(navAccCircle); navAccCircle = null; }
@@ -3520,8 +3555,14 @@
         `GPS ok · precisão ±${accuracy ? Math.round(accuracy) : '?'} m`,
         accuracy && accuracy > 50 ? 'nav-warn' : 'nav-ok');
 
-      // --- Espelhamento: transmite telemetria para observadores em terra ---
-      if (mirrorChannel) broadcastTelemetry(lat, lng, cog, sog, accuracy);
+      // --- Espelhamento: transmite telemetria (throttle p/ economizar cota) ---
+      if (mirrorShares.length) {
+        const nowMs = Date.now();
+        if (nowMs - _lastBroadcastMs >= MIRROR_INTERVAL_MS) {
+          broadcastTelemetry(lat, lng, cog, sog, accuracy);
+          _lastBroadcastMs = nowMs;
+        }
+      }
     }
 
     /* Avança a perna ativa quando o barco chega ao próximo waypoint. */
@@ -3923,10 +3964,13 @@
     const SUPA_URL = 'https://nsbeddfkcdyssrirrhzt.supabase.co';
     const SUPA_KEY = 'sb_publishable_RJjmXL721BwcD8fHfF0jyw_zHtlBlTb';
     let supaClient = null;
-    let mirrorChannel = null;   // canal de transmissão (lado embarcação)
-    let mirrorToken = null;     // token da sessão de compartilhamento
+    let mirrorShares = [];      // [{ token, label, channel }] — compartilhamentos nomeados individuais
+    let mirrorToken = null;     // token do lado OBSERVADOR (?watch=)
     let watchMode = false;      // true quando aberto como observador (?watch=)
     let mirrorRouteLayer = null;
+    let _lastBroadcastMs = 0;            // throttle de transmissão
+    const MIRROR_INTERVAL_MS = 3000;     // transmite no máx. 1x a cada 3s (economiza cota do Supabase)
+    const SHARES_KEY = 'coastal_nav_shares';
 
     function getSupa() {
       if (!supaClient) {
@@ -3945,60 +3989,122 @@
       return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
     }
 
-    /* Liga/desliga o compartilhamento (lado embarcação). */
-    function toggleShare() {
-      if (mirrorChannel) { openShareModal(); return; }
+    // ─── Registro persistente de compartilhamentos ───
+    function loadShares() {
+      try {
+        const arr = JSON.parse(localStorage.getItem(SHARES_KEY) || '[]');
+        mirrorShares = arr.map(x => ({ token: x.token, label: x.label, channel: null }));
+      } catch (e) { mirrorShares = []; }
+    }
+    function persistShares() {
+      try { localStorage.setItem(SHARES_KEY, JSON.stringify(mirrorShares.map(s => ({ token: s.token, label: s.label })))); } catch (e) { }
+    }
+
+    // ─── Canais (criados sob demanda; ativos enquanto navegando) ───
+    function ensureShareChannel(s) {
+      if (s.channel) return;
       const supa = getSupa();
-      if (!supa) { alert('⚠️ Biblioteca de tempo real indisponível (sem conexão).'); return; }
-      if (!navActive) { alert('Inicie a navegação antes de compartilhar.'); return; }
-
-      mirrorToken = mirrorToken || genToken();
-      mirrorChannel = supa.channel('coastal-nav-' + mirrorToken, { config: { broadcast: { self: false } } });
-      mirrorChannel.subscribe(status => {
-        console.log('📤 Canal de compartilhamento:', status);
+      if (!supa) return;
+      s.channel = supa.channel('coastal-nav-' + s.token, { config: { broadcast: { self: false } } });
+      s.channel.subscribe(() => { });
+    }
+    function ensureAllShareChannels() { mirrorShares.forEach(ensureShareChannel); }
+    function closeShareChannels() {
+      mirrorShares.forEach(s => {
+        if (s.channel) { try { getSupa().removeChannel(s.channel); } catch (e) { } s.channel = null; }
       });
-      document.getElementById('navShareBtn').style.background = 'rgba(105,240,174,0.5)';
-      const big = document.getElementById('navShareBig');
-      big.classList.add('sharing');
-      big.textContent = '📤 Compartilhando — ver link';
-      openShareModal();
     }
 
-    /* Encerra o compartilhamento. */
-    function stopSharing() {
-      if (mirrorChannel) {
-        try { getSupa().removeChannel(mirrorChannel); } catch (e) { }
-        mirrorChannel = null;
-      }
-      const b = document.getElementById('navShareBtn');
-      if (b) b.style.background = 'transparent';
-      const big = document.getElementById('navShareBig');
-      if (big) { big.classList.remove('sharing'); big.textContent = '📤 Compartilhar navegação'; }
-      closeShareModal();
-    }
-
-    function openShareModal() {
-      const base = location.origin + location.pathname;
-      const link = `${base}?watch=${mirrorToken}`;
-      document.getElementById('shareLinkInput').value = link;
-      document.getElementById('shareTokenHelp').textContent = 'Token: ' + mirrorToken;
+    /* Abre o gerenciador de compartilhamentos. (chamado pelos botões 📤) */
+    function toggleShare() { openShareManager(); }
+    function openShareManager() {
+      if (watchMode) return;
+      ensureAllShareChannels();
+      renderShareList();
       document.getElementById('shareModal').classList.add('active');
     }
-
     function closeShareModal() {
       document.getElementById('shareModal').classList.remove('active');
     }
 
-    function copyShareLink() {
-      const input = document.getElementById('shareLinkInput');
-      input.select();
-      input.setSelectionRange(0, 99999);
-      const done = () => { const b = event.target; const o = b.textContent; b.textContent = '✅ Copiado!'; setTimeout(() => b.textContent = o, 1500); };
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(input.value).then(done).catch(() => { document.execCommand('copy'); done(); });
-      } else {
-        document.execCommand('copy'); done();
+    /* Cria um novo compartilhamento nomeado (token + canal próprios). */
+    function createShare() {
+      const supa = getSupa();
+      if (!supa) { alert('⚠️ Tempo real indisponível (sem conexão).'); return; }
+      const input = document.getElementById('shareLabelInput');
+      const label = (input.value || '').trim() || ('Link ' + (mirrorShares.length + 1));
+      const s = { token: genToken(), label, channel: null };
+      mirrorShares.push(s);
+      ensureShareChannel(s);
+      persistShares();
+      input.value = '';
+      renderShareList();
+      updateShareButtons();
+    }
+
+    /* Revoga um compartilhamento específico (fecha o canal; quem tem o link para de receber). */
+    function revokeShare(token) {
+      const i = mirrorShares.findIndex(s => s.token === token);
+      if (i === -1) return;
+      const s = mirrorShares[i];
+      if (s.channel) { try { getSupa().removeChannel(s.channel); } catch (e) { } }
+      mirrorShares.splice(i, 1);
+      persistShares();
+      renderShareList();
+      updateShareButtons();
+    }
+
+    function shareLinkFor(token) {
+      return `${location.origin + location.pathname}?watch=${token}`;
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    /* Renderiza a lista de compartilhamentos no modal. */
+    function renderShareList() {
+      const el = document.getElementById('shareList');
+      if (!el) return;
+      if (!mirrorShares.length) {
+        el.innerHTML = '<p style="color:#90CAF9;font-size:.85rem;margin:8px 0;">Nenhum compartilhamento criado. Crie um link acima para alguém acompanhar em terra.</p>';
+        return;
       }
+      const navMsg = navActive ? '' : '<p style="color:#FFB74D;font-size:.78rem;margin:0 0 8px;">⚠️ A transmissão começa quando você iniciar a Navegação GPS.</p>';
+      el.innerHTML = navMsg + mirrorShares.map(s => `
+        <div class="share-item">
+          <div class="share-item-head">
+            <strong>${escapeHtml(s.label)}</strong>
+            <button class="nav-icon-btn" title="Revogar este acesso" onclick="revokeShare('${s.token}')">🗑️</button>
+          </div>
+          <div class="share-link-row">
+            <input type="text" readonly value="${shareLinkFor(s.token)}" onclick="this.select()">
+            <button class="btn" onclick="copyShareLinkText('${shareLinkFor(s.token)}', event)" title="Copiar">📋</button>
+          </div>
+        </div>`).join('');
+    }
+
+    function copyShareLinkText(link, ev) {
+      const btn = ev && ev.target;
+      const done = () => { if (btn) { const o = btn.textContent; btn.textContent = '✅'; setTimeout(() => btn.textContent = o, 1500); } };
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(link).then(done).catch(done);
+      } else {
+        const t = document.createElement('textarea'); t.value = link; document.body.appendChild(t); t.select();
+        try { document.execCommand('copy'); } catch (e) { } document.body.removeChild(t); done();
+      }
+    }
+
+    /* Atualiza os botões 📤 conforme a quantidade de compartilhamentos. */
+    function updateShareButtons() {
+      const n = mirrorShares.length;
+      const big = document.getElementById('navShareBig');
+      if (big) {
+        big.classList.toggle('sharing', n > 0);
+        big.textContent = n > 0 ? `📤 Compartilhando (${n}) — gerenciar` : '📤 Compartilhar navegação';
+      }
+      const ic = document.getElementById('navShareBtn');
+      if (ic) ic.style.background = n > 0 ? 'rgba(105,240,174,0.5)' : 'transparent';
     }
 
     /* Captura um instantâneo do HUD para espelhar exatamente a mesma tela. */
@@ -4013,19 +4119,18 @@
       };
     }
 
-    /* Transmite posição + telemetria + rota para os observadores. */
+    /* Transmite posição + telemetria + rota para TODOS os compartilhamentos ativos. */
     function broadcastTelemetry(lat, lng, cog, sog, accuracy) {
-      try {
-        mirrorChannel.send({
-          type: 'broadcast', event: 'tele',
-          payload: {
-            lat, lng, cog, sog, accuracy,
-            hud: currentHudSnapshot(),
-            route: waypoints.map(w => [w.lat, w.lng]),
-            vessel: tripData ? tripData.vesselName : null
-          }
-        });
-      } catch (e) { /* envio falhou; segue navegando */ }
+      const payload = {
+        lat, lng, cog, sog, accuracy,
+        hud: currentHudSnapshot(),
+        route: waypoints.map(w => [w.lat, w.lng]),
+        vessel: tripData ? tripData.vesselName : null
+      };
+      mirrorShares.forEach(s => {
+        if (!s.channel) return;
+        try { s.channel.send({ type: 'broadcast', event: 'tele', payload }); } catch (e) { /* segue */ }
+      });
     }
 
     // ─── Lado OBSERVADOR (terra) ───
@@ -4566,6 +4671,10 @@
         console.log('👁️ Modo espelho ativo — acompanhando embarcação via token.');
         return;
       }
+
+      // Lado embarcação: carrega compartilhamentos salvos
+      loadShares();
+      updateShareButtons();
 
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('  Coastal Navigator Brasil v2.0.9 - Inicializado ⚓');
