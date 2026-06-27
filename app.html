@@ -1352,6 +1352,7 @@
       margin-bottom: 6px;
     }
     .share-item-head strong { color: var(--lighthouse-amber); }
+    .share-meta { font-size: 0.74rem; color: #90CAF9; margin-bottom: 6px; }
     .share-link-row {
       display: flex;
       gap: 6px;
@@ -1415,6 +1416,27 @@
     .mirror-conn.ok { background: var(--success-green); }
     .mirror-conn.off { background: var(--warning-red); }
     #mirrorBannerToken { font-weight: 700; letter-spacing: 1px; margin-left: 6px; }
+
+    .mirror-blocked {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 3000;
+      background: rgba(10, 25, 41, 0.97);
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .mirror-blocked.active { display: flex; }
+    .mirror-blocked-box {
+      text-align: center;
+      max-width: 420px;
+      color: #E3F2FD;
+      font-family: var(--font-body);
+    }
+    .mirror-blocked-icon { font-size: 64px; margin-bottom: 12px; }
+    .mirror-blocked-box h2 { color: var(--lighthouse-amber); margin-bottom: 10px; }
+    .mirror-blocked-box p { color: #90CAF9; line-height: 1.5; }
   </style>
 </head>
 
@@ -1563,6 +1585,15 @@
       </div>
     </div>
 
+    <!-- Tela de bloqueio do observador (link revogado/expirado/inválido) -->
+    <div id="mirrorBlocked" class="mirror-blocked">
+      <div class="mirror-blocked-box">
+        <div class="mirror-blocked-icon" id="mbIcon">🔒</div>
+        <h2 id="mbTitle">Acesso indisponível</h2>
+        <p id="mbMsg"></p>
+      </div>
+    </div>
+
     <!-- Banner do MODO ESPELHO (observador em terra) -->
     <div id="mirrorBanner" class="mirror-banner">
       👁️ <strong>MODO ESPELHO</strong> — acompanhando a embarcação ao vivo
@@ -1581,10 +1612,17 @@
           <p style="color: var(--lighthouse-amber); margin-bottom: 10px; font-size: 0.88rem;">
             Crie links individuais (ex.: Família, Armador, Base). Cada um pode ser copiado e <strong>revogado separadamente</strong>. Quem abrir o link vê sua embarcação ao vivo (somente leitura).
           </p>
-          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-            <input type="text" id="shareLabelInput" placeholder="Nome (ex.: Família)" maxlength="24"
-              style="flex: 1; padding: 10px; border-radius: 6px; border: 1px solid var(--navigation-blue); background: var(--deep-ocean); color: #E3F2FD; font-size: 0.9rem;">
-            <button class="btn btn-success" onclick="createShare()" style="flex: 0 0 auto;">+ Criar</button>
+          <input type="text" id="shareLabelInput" placeholder="Nome (ex.: Família)" maxlength="24"
+            style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--navigation-blue); background: var(--deep-ocean); color: #E3F2FD; font-size: 0.9rem; margin-bottom: 8px;">
+          <div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center;">
+            <label for="shareExpiry" style="font-size: 0.82rem; color: #90CAF9;">Validade:</label>
+            <select id="shareExpiry" style="padding: 9px; border-radius: 6px; border: 1px solid var(--navigation-blue); background: var(--deep-ocean); color: #E3F2FD; font-size: 0.85rem;">
+              <option value="24">24 horas</option>
+              <option value="6">6 horas</option>
+              <option value="168">7 dias</option>
+              <option value="0">Sem expiração</option>
+            </select>
+            <button class="btn btn-success" onclick="createShare()" style="flex: 1;">+ Criar</button>
           </div>
           <div id="shareList"></div>
         </div>
@@ -3964,10 +4002,12 @@
     const SUPA_URL = 'https://nsbeddfkcdyssrirrhzt.supabase.co';
     const SUPA_KEY = 'sb_publishable_RJjmXL721BwcD8fHfF0jyw_zHtlBlTb';
     let supaClient = null;
-    let mirrorShares = [];      // [{ token, label, channel }] — compartilhamentos nomeados individuais
+    let mirrorShares = [];      // [{ token, label, channel, expiresAt, viewers }]
     let mirrorToken = null;     // token do lado OBSERVADOR (?watch=)
     let watchMode = false;      // true quando aberto como observador (?watch=)
     let mirrorRouteLayer = null;
+    let viewerChannel = null;        // canal do observador (terra)
+    let viewerRecheckTimer = null;   // revalida periodicamente revogação/expiração
     let _lastBroadcastMs = 0;            // throttle de transmissão
     const MIRROR_INTERVAL_MS = 3000;     // transmite no máx. 1x a cada 3s (economiza cota do Supabase)
     const SHARES_KEY = 'coastal_nav_shares';
@@ -3993,11 +4033,11 @@
     function loadShares() {
       try {
         const arr = JSON.parse(localStorage.getItem(SHARES_KEY) || '[]');
-        mirrorShares = arr.map(x => ({ token: x.token, label: x.label, channel: null }));
+        mirrorShares = arr.map(x => ({ token: x.token, label: x.label, expiresAt: x.expiresAt || null, channel: null, viewers: 0 }));
       } catch (e) { mirrorShares = []; }
     }
     function persistShares() {
-      try { localStorage.setItem(SHARES_KEY, JSON.stringify(mirrorShares.map(s => ({ token: s.token, label: s.label })))); } catch (e) { }
+      try { localStorage.setItem(SHARES_KEY, JSON.stringify(mirrorShares.map(s => ({ token: s.token, label: s.label, expiresAt: s.expiresAt || null })))); } catch (e) { }
     }
 
     // ─── Canais (criados sob demanda; ativos enquanto navegando) ───
@@ -4005,7 +4045,22 @@
       if (s.channel) return;
       const supa = getSupa();
       if (!supa) return;
+      // Garante a linha no banco (idempotente) — habilita revogação/expiração no servidor
+      if (!s._dbSynced) {
+        s._dbSynced = true;
+        try {
+          supa.rpc('create_nav_share', {
+            p_token: s.token, p_label: s.label,
+            p_vessel: tripData ? tripData.vesselName : null, p_expires: s.expiresAt || null
+          }).then(() => { }, () => { });
+        } catch (e) { }
+      }
       s.channel = supa.channel('coastal-nav-' + s.token, { config: { broadcast: { self: false } } });
+      // Presença (Nível 2): conta observadores conectados a este compartilhamento
+      s.channel.on('presence', { event: 'sync' }, () => {
+        try { s.viewers = Object.keys(s.channel.presenceState()).length; } catch (e) { s.viewers = 0; }
+        if (document.getElementById('shareModal').classList.contains('active')) renderShareList();
+      });
       s.channel.subscribe(() => { });
     }
     function ensureAllShareChannels() { mirrorShares.forEach(ensureShareChannel); }
@@ -4027,23 +4082,32 @@
       document.getElementById('shareModal').classList.remove('active');
     }
 
-    /* Cria um novo compartilhamento nomeado (token + canal próprios). */
-    function createShare() {
+    /* Cria um novo compartilhamento nomeado (token + canal + linha no banco). */
+    async function createShare() {
       const supa = getSupa();
       if (!supa) { alert('⚠️ Tempo real indisponível (sem conexão).'); return; }
       const input = document.getElementById('shareLabelInput');
       const label = (input.value || '').trim() || ('Link ' + (mirrorShares.length + 1));
-      const s = { token: genToken(), label, channel: null };
+      const hours = parseInt((document.getElementById('shareExpiry') || {}).value || '24', 10);
+      const expiresAt = hours > 0 ? new Date(Date.now() + hours * 3600000).toISOString() : null;
+      const s = { token: genToken(), label, expiresAt, channel: null, viewers: 0, _dbSynced: true };
       mirrorShares.push(s);
-      ensureShareChannel(s);
       persistShares();
       input.value = '';
       renderShareList();
       updateShareButtons();
+      // Registra no banco (habilita revogação/expiração) e liga o canal de transmissão
+      try {
+        await supa.rpc('create_nav_share', {
+          p_token: s.token, p_label: s.label,
+          p_vessel: tripData ? tripData.vesselName : null, p_expires: expiresAt
+        });
+      } catch (e) { s._dbSynced = false; }
+      ensureShareChannel(s);
     }
 
-    /* Revoga um compartilhamento específico (fecha o canal; quem tem o link para de receber). */
-    function revokeShare(token) {
+    /* Revoga um compartilhamento específico (servidor + fecha canal; quem tem o link perde o acesso). */
+    async function revokeShare(token) {
       const i = mirrorShares.findIndex(s => s.token === token);
       if (i === -1) return;
       const s = mirrorShares[i];
@@ -4052,6 +4116,8 @@
       persistShares();
       renderShareList();
       updateShareButtons();
+      const supa = getSupa();
+      if (supa) { try { await supa.rpc('revoke_nav_share', { p_token: token }); } catch (e) { } }
     }
 
     function shareLinkFor(token) {
@@ -4071,17 +4137,24 @@
         return;
       }
       const navMsg = navActive ? '' : '<p style="color:#FFB74D;font-size:.78rem;margin:0 0 8px;">⚠️ A transmissão começa quando você iniciar a Navegação GPS.</p>';
-      el.innerHTML = navMsg + mirrorShares.map(s => `
+      const fmtExp = iso => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      el.innerHTML = navMsg + mirrorShares.map(s => {
+        const expired = s.expiresAt && new Date(s.expiresAt) <= new Date();
+        const expTxt = expired ? '⏳ expirado' : (s.expiresAt ? 'expira ' + fmtExp(s.expiresAt) : 'sem expiração');
+        const viewers = navActive ? ` · 👁️ ${s.viewers || 0} acompanhando` : '';
+        return `
         <div class="share-item">
           <div class="share-item-head">
             <strong>${escapeHtml(s.label)}</strong>
             <button class="nav-icon-btn" title="Revogar este acesso" onclick="revokeShare('${s.token}')">🗑️</button>
           </div>
+          <div class="share-meta">${expTxt}${viewers}</div>
           <div class="share-link-row">
             <input type="text" readonly value="${shareLinkFor(s.token)}" onclick="this.select()">
             <button class="btn" onclick="copyShareLinkText('${shareLinkFor(s.token)}', event)" title="Copiar">📋</button>
           </div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
     }
 
     function copyShareLinkText(link, ev) {
@@ -4150,17 +4223,77 @@
       document.getElementById('navShareBig').style.display = 'none';
       document.getElementById('navSimBtn').style.display = 'none';
       document.querySelector('.nav-hud-title').innerHTML = '<span class="nav-pulse"></span> ESPELHO';
-
-      const supa = getSupa();
-      if (!supa) { setMirrorConn('sem conexão', 'off'); return true; }
-
-      const ch = supa.channel('coastal-nav-' + token, { config: { broadcast: { self: false } } });
-      ch.on('broadcast', { event: 'tele' }, ({ payload }) => applyMirrorTelemetry(payload));
-      ch.subscribe(status => {
-        if (status === 'SUBSCRIBED') setMirrorConn('aguardando embarcação…', 'ok');
-        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setMirrorConn('erro de conexão', 'off');
-      });
+      setMirrorConn('validando acesso…', '');
+      validateAndStartViewer(token);
       return true;
+    }
+
+    /* Valida o token no servidor antes de assinar (Nível 3). */
+    async function validateAndStartViewer(token) {
+      const supa = getSupa();
+      if (!supa) { setMirrorConn('sem validação (offline)', 'off'); subscribeViewer(token); return; }
+      try {
+        const { data, error } = await supa.rpc('check_nav_share', { p_token: token });
+        if (error) throw error;
+        if (!data || !data.length) { showMirrorBlocked('invalido'); return; }
+        const r = data[0];
+        if (!r.valid) { showMirrorBlocked(r.revoked ? 'revogado' : (r.expired ? 'expirado' : 'invalido')); return; }
+        if (r.vessel) document.getElementById('mirrorBannerToken').textContent = r.vessel + ' #' + token;
+        subscribeViewer(token);
+        startViewerRecheck(token);
+      } catch (e) {
+        // falha transitória de validação: permite acompanhar, mas avisa
+        setMirrorConn('validação indisponível', 'off');
+        subscribeViewer(token);
+      }
+    }
+
+    /* Assina o canal de telemetria e registra presença (Nível 2). */
+    function subscribeViewer(token) {
+      const supa = getSupa();
+      if (!supa) return;
+      if (viewerChannel) { try { supa.removeChannel(viewerChannel); } catch (e) { } }
+      viewerChannel = supa.channel('coastal-nav-' + token, { config: { broadcast: { self: false } } });
+      viewerChannel.on('broadcast', { event: 'tele' }, ({ payload }) => applyMirrorTelemetry(payload));
+      viewerChannel.subscribe(status => {
+        if (status === 'SUBSCRIBED') {
+          setMirrorConn('aguardando embarcação…', 'ok');
+          try { viewerChannel.track({ at: Date.now() }); } catch (e) { }
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setMirrorConn('erro de conexão', 'off');
+        }
+      });
+    }
+
+    /* Revalida periodicamente: se revogado/expirado durante a sessão, bloqueia. */
+    function startViewerRecheck(token) {
+      if (viewerRecheckTimer) clearInterval(viewerRecheckTimer);
+      viewerRecheckTimer = setInterval(async () => {
+        const supa = getSupa(); if (!supa) return;
+        try {
+          const { data } = await supa.rpc('check_nav_share', { p_token: token });
+          if (!data || !data.length) return showMirrorBlocked('invalido');
+          if (!data[0].valid) showMirrorBlocked(data[0].revoked ? 'revogado' : 'expirado');
+        } catch (e) { /* ignora falha transitória */ }
+      }, 30000);
+    }
+
+    /* Mostra a tela de bloqueio e encerra a recepção. */
+    function showMirrorBlocked(reason) {
+      if (viewerRecheckTimer) { clearInterval(viewerRecheckTimer); viewerRecheckTimer = null; }
+      if (viewerChannel) { try { getSupa().removeChannel(viewerChannel); } catch (e) { } viewerChannel = null; }
+      const M = {
+        revogado: { icon: '🔒', title: 'Acesso revogado', msg: 'O comandante encerrou este compartilhamento. Peça um novo link, se necessário.' },
+        expirado: { icon: '⏳', title: 'Link expirado', msg: 'A validade deste link de acompanhamento terminou. Peça um novo link, se necessário.' },
+        invalido: { icon: '❌', title: 'Link inválido', msg: 'Este link não é válido. Confira se copiou o endereço completo.' }
+      };
+      const m = M[reason] || M.invalido;
+      document.getElementById('mbIcon').textContent = m.icon;
+      document.getElementById('mbTitle').textContent = m.title;
+      document.getElementById('mbMsg').textContent = m.msg;
+      document.getElementById('mirrorBlocked').classList.add('active');
+      document.getElementById('navHud').classList.remove('active');
+      setMirrorConn('bloqueado', 'off');
     }
 
     let _mirrorLastMsg = 0;
