@@ -1328,6 +1328,37 @@
       .nav-hud { width: calc(100vw - 24px); bottom: 64px; }
       .nav-val { font-size: 1.3rem; }
     }
+
+    /* Banner do modo espelho */
+    .mirror-banner {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 2000;
+      background: linear-gradient(135deg, #6A1B9A, #4A148C);
+      color: #fff;
+      text-align: center;
+      padding: 8px 12px;
+      font-family: var(--font-body);
+      font-size: 0.9rem;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    }
+
+    .mirror-banner.active { display: block; }
+    body.mirror-mode .app-header .controls { display: none; }
+    body.mirror-mode { padding-top: 38px; }
+    .mirror-conn {
+      margin-left: 8px;
+      padding: 1px 8px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.2);
+      font-size: 0.78rem;
+    }
+    .mirror-conn.ok { background: var(--success-green); }
+    .mirror-conn.off { background: var(--warning-red); }
+    #mirrorBannerToken { font-weight: 700; letter-spacing: 1px; margin-left: 6px; }
   </style>
 </head>
 
@@ -1448,6 +1479,7 @@
       <div class="nav-hud-header" onclick="toggleNavHudCollapse()">
         <span class="nav-hud-title"><span class="nav-pulse"></span> NAVEGANDO</span>
         <div class="nav-hud-actions">
+          <button class="nav-icon-btn" title="Compartilhar (espelhar p/ quem está em terra)" onclick="event.stopPropagation(); toggleShare()" id="navShareBtn">📤</button>
           <button class="nav-icon-btn" title="Som dos alertas" onclick="event.stopPropagation(); toggleNavMute()" id="navMuteBtn">🔊</button>
           <button class="nav-icon-btn" title="Centralizar no barco" onclick="event.stopPropagation(); toggleNavFollow()" id="navFollowBtn">🎯</button>
           <button class="nav-icon-btn" title="Simular percurso" onclick="event.stopPropagation(); toggleSimulation()" id="navSimBtn">🧪</button>
@@ -1471,6 +1503,35 @@
         <div class="nav-divider"></div>
         <div class="nav-line nav-lh" id="navLighthouse">💡 Nenhum farol no alcance</div>
         <div class="nav-line nav-status" id="navGpsStatus">Aguardando GPS…</div>
+      </div>
+    </div>
+
+    <!-- Banner do MODO ESPELHO (observador em terra) -->
+    <div id="mirrorBanner" class="mirror-banner">
+      👁️ <strong>MODO ESPELHO</strong> — acompanhando a embarcação ao vivo
+      <span id="mirrorBannerToken"></span>
+      <span id="mirrorBannerStatus" class="mirror-conn">conectando…</span>
+    </div>
+
+    <!-- Modal de compartilhamento (gera o link com token) -->
+    <div class="modal-overlay" id="shareModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h2>📤 Compartilhar Navegação</h2>
+          <button class="modal-close" onclick="closeShareModal()">×</button>
+        </div>
+        <div style="padding: 4px 0 8px;">
+          <p style="color: var(--lighthouse-amber); margin-bottom: 10px;">
+            Envie este link para quem está em terra. A pessoa verá sua embarcação e os dados de navegação ao vivo (somente leitura).
+          </p>
+          <input type="text" id="shareLinkInput" readonly
+            style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--navigation-blue); background: var(--deep-ocean); color: #E3F2FD; font-size: 0.85rem;">
+          <div class="form-help" id="shareTokenHelp" style="margin-top: 6px;"></div>
+          <div style="display: flex; gap: 8px; margin-top: 12px;">
+            <button class="btn btn-success" onclick="copyShareLink()" style="flex: 2;">📋 Copiar link</button>
+            <button class="btn btn-danger" onclick="stopSharing()" style="flex: 1;">⏹️ Parar</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1627,6 +1688,9 @@
 
   <!-- Leaflet JavaScript Library -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Supabase JS (Realtime broadcast p/ espelhamento de navegação via token) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <script>
     /*
@@ -3314,7 +3378,7 @@
       navLastFix = { lat, lng, t, cog };
 
       // --- Marcador no mapa ---
-      drawBoat(lat, lng, accuracy, cog);
+      drawBoat(lat, lng, accuracy, cog, sog);
       if (navFollow) map.panTo([lat, lng], { animate: true, duration: 0.5 });
 
       // --- HUD: SOG / COG ---
@@ -3343,12 +3407,12 @@
         document.getElementById('navNextWp').textContent =
           `Próximo WP: ${legEnd.name} · ${distNext.toFixed(2)} NM · ${Math.round(brgNext).toString().padStart(3, '0')}°`;
 
-        // ETA dinâmico
+        // ETA dinâmico (com DATA de chegada)
         if (sog > 0.5) {
           const etaH = remainingNM / sog;
           const eta = new Date(t + etaH * 3600000);
           document.getElementById('navEta').textContent =
-            `ETA destino: ${eta.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} (${fmtDuration(etaH)})`;
+            `ETA destino: ${fmtEtaDateTime(eta)} (${fmtDuration(etaH)})`;
         } else {
           document.getElementById('navEta').textContent = 'ETA destino: aguardando movimento…';
         }
@@ -3387,6 +3451,9 @@
       if (!navSimActive) setNavStatus(
         `GPS ok · precisão ±${accuracy ? Math.round(accuracy) : '?'} m`,
         accuracy && accuracy > 50 ? 'nav-warn' : 'nav-ok');
+
+      // --- Espelhamento: transmite telemetria para observadores em terra ---
+      if (mirrorChannel) broadcastTelemetry(lat, lng, cog, sog, accuracy);
     }
 
     /* Avança a perna ativa quando o barco chega ao próximo waypoint. */
@@ -3582,7 +3649,7 @@
     }
 
     /* Desenha/atualiza o marcador da embarcação rotacionado pelo COG. */
-    function drawBoat(lat, lng, accuracy, cog) {
+    function drawBoat(lat, lng, accuracy, cog, sog) {
       if (!navMarker) {
         const icon = L.divIcon({
           className: '',
@@ -3590,9 +3657,12 @@
           iconSize: [26, 26],
           iconAnchor: [13, 13]
         });
-        navMarker = L.marker([lat, lng], { icon, zIndexOffset: 1000, interactive: false }).addTo(map);
+        // Marcador clicável: ao tocar, mostra lat/long e distância da costa
+        navMarker = L.marker([lat, lng], { icon, zIndexOffset: 1000, interactive: true }).addTo(map);
+        navMarker.bindPopup(boatPopupHtml(lat, lng, cog, sog || 0));
       } else {
         navMarker.setLatLng([lat, lng]);
+        navMarker.setPopupContent(boatPopupHtml(lat, lng, cog, sog || 0));
       }
       const el = navMarker.getElement();
       if (el) {
@@ -3614,6 +3684,75 @@
       const h = Math.floor(totalMin / 60);
       const m = totalMin % 60;
       return h > 0 ? `${h}h${m.toString().padStart(2, '0')}m` : `${m}m`;
+    }
+
+    /* Formata a data/hora de chegada (ETA): "27/06 16:30". */
+    function fmtEtaDateTime(d) {
+      const data = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      return `${data} ${hora}`;
+    }
+
+    /* Formata coordenada em graus e minutos decimais (padrão náutico): 03°43.6'S. */
+    function fmtCoord(value, type) {
+      const hemi = type === 'lat' ? (value >= 0 ? 'N' : 'S') : (value >= 0 ? 'E' : 'W');
+      const abs = Math.abs(value);
+      const deg = Math.floor(abs);
+      const min = (abs - deg) * 60;
+      return `${deg}°${min.toFixed(1).padStart(4, '0')}'${hemi}`;
+    }
+
+    /*
+    Distância aproximada da costa (NM).
+    Constrói uma vez uma poligonal costeira a partir dos faróis do litoral
+    (excluindo ilhas oceânicas), ordenada por latitude, e mede a menor
+    distância do ponto a qualquer segmento dessa poligonal.
+    */
+    let _coastline = null;
+    const OCEANIC_LIGHTHOUSES = [
+      'Farol de Fernando de Noronha', 'Farol de Rocas', 'Farol de São Pedro e São Paulo',
+      'Farol de Martin Vaz', 'Farol de Trindade', 'Farol de Abrolhos'
+    ];
+
+    function getCoastline() {
+      if (!_coastline) {
+        _coastline = lighthouses
+          .filter(lh => !OCEANIC_LIGHTHOUSES.includes(lh.name))
+          .map(lh => ({ lat: lh.lat, lng: lh.lng }))
+          .sort((a, b) => a.lat - b.lat);
+      }
+      return _coastline;
+    }
+
+    function distanceFromCoast(lat, lng) {
+      const pts = getCoastline();
+      const cosL = Math.cos(lat * Math.PI / 180);
+      const xy = (la, ln) => ({ x: (ln - lng) * 60 * cosL, y: (la - lat) * 60 }); // NM rel. ao ponto
+      const segDist = (a, b) => {
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const len2 = dx * dx + dy * dy;
+        let t = len2 ? -(a.x * dx + a.y * dy) / len2 : 0;
+        t = Math.max(0, Math.min(1, t));
+        const px = a.x + t * dx, py = a.y + t * dy;
+        return Math.sqrt(px * px + py * py);
+      };
+      let min = Infinity;
+      for (let i = 1; i < pts.length; i++) {
+        min = Math.min(min, segDist(xy(pts[i - 1].lat, pts[i - 1].lng), xy(pts[i].lat, pts[i].lng)));
+      }
+      return min;
+    }
+
+    /* Conteúdo do popup do ícone da embarcação. */
+    function boatPopupHtml(lat, lng, cog, sog) {
+      const dc = distanceFromCoast(lat, lng);
+      return `<div style="font-size:0.85rem;line-height:1.6;min-width:160px">
+        <strong>🚢 Embarcação</strong><br>
+        <strong>Lat:</strong> ${fmtCoord(lat, 'lat')}<br>
+        <strong>Lon:</strong> ${fmtCoord(lng, 'lng')}<br>
+        <strong>SOG:</strong> ${sog.toFixed(1)} kt &nbsp; <strong>COG:</strong> ${Math.round(cog).toString().padStart(3, '0')}°<br>
+        <strong>Dist. da costa:</strong> ~${dc.toFixed(1)} NM
+      </div>`;
     }
 
     // ─── Screen Wake Lock (mantém a tela acesa) ───
@@ -3695,6 +3834,184 @@
       const dLat = (dNM / 60) * Math.cos(rad);
       const dLng = (dNM / 60) * Math.sin(rad) / Math.cos(lat * Math.PI / 180);
       return { lat: lat + dLat, lng: lng + dLng };
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ESPELHAMENTO DE NAVEGAÇÃO (token + Supabase Realtime broadcast)
+    // ═══════════════════════════════════════════════════════════════════════
+    /*
+    A embarcação transmite (broadcast) sua posição e telemetria por um canal
+    identificado por um token aleatório. Quem está em terra abre o app com
+    ?watch=TOKEN e recebe os mesmos dados ao vivo, em modo somente-leitura.
+    O Realtime é efêmero (não grava posição em banco).
+    */
+    const SUPA_URL = 'https://nsbeddfkcdyssrirrhzt.supabase.co';
+    const SUPA_KEY = 'sb_publishable_RJjmXL721BwcD8fHfF0jyw_zHtlBlTb';
+    let supaClient = null;
+    let mirrorChannel = null;   // canal de transmissão (lado embarcação)
+    let mirrorToken = null;     // token da sessão de compartilhamento
+    let watchMode = false;      // true quando aberto como observador (?watch=)
+    let mirrorRouteLayer = null;
+
+    function getSupa() {
+      if (!supaClient) {
+        if (!window.supabase || !window.supabase.createClient) return null;
+        supaClient = window.supabase.createClient(SUPA_URL, SUPA_KEY, {
+          realtime: { params: { eventsPerSecond: 5 } }
+        });
+      }
+      return supaClient;
+    }
+
+    /* Gera um token curto e legível para o canal de compartilhamento. */
+    function genToken() {
+      const bytes = new Uint8Array(6);
+      (window.crypto || window.msCrypto).getRandomValues(bytes);
+      return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    /* Liga/desliga o compartilhamento (lado embarcação). */
+    function toggleShare() {
+      if (mirrorChannel) { openShareModal(); return; }
+      const supa = getSupa();
+      if (!supa) { alert('⚠️ Biblioteca de tempo real indisponível (sem conexão).'); return; }
+      if (!navActive) { alert('Inicie a navegação antes de compartilhar.'); return; }
+
+      mirrorToken = mirrorToken || genToken();
+      mirrorChannel = supa.channel('coastal-nav-' + mirrorToken, { config: { broadcast: { self: false } } });
+      mirrorChannel.subscribe(status => {
+        console.log('📤 Canal de compartilhamento:', status);
+      });
+      document.getElementById('navShareBtn').style.background = 'rgba(105,240,174,0.5)';
+      openShareModal();
+    }
+
+    /* Encerra o compartilhamento. */
+    function stopSharing() {
+      if (mirrorChannel) {
+        try { getSupa().removeChannel(mirrorChannel); } catch (e) { }
+        mirrorChannel = null;
+      }
+      const b = document.getElementById('navShareBtn');
+      if (b) b.style.background = 'transparent';
+      closeShareModal();
+    }
+
+    function openShareModal() {
+      const base = location.origin + location.pathname;
+      const link = `${base}?watch=${mirrorToken}`;
+      document.getElementById('shareLinkInput').value = link;
+      document.getElementById('shareTokenHelp').textContent = 'Token: ' + mirrorToken;
+      document.getElementById('shareModal').classList.add('active');
+    }
+
+    function closeShareModal() {
+      document.getElementById('shareModal').classList.remove('active');
+    }
+
+    function copyShareLink() {
+      const input = document.getElementById('shareLinkInput');
+      input.select();
+      input.setSelectionRange(0, 99999);
+      const done = () => { const b = event.target; const o = b.textContent; b.textContent = '✅ Copiado!'; setTimeout(() => b.textContent = o, 1500); };
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(input.value).then(done).catch(() => { document.execCommand('copy'); done(); });
+      } else {
+        document.execCommand('copy'); done();
+      }
+    }
+
+    /* Captura um instantâneo do HUD para espelhar exatamente a mesma tela. */
+    function currentHudSnapshot() {
+      const g = id => document.getElementById(id).textContent;
+      return {
+        sog: g('navSog'), cog: g('navCog'), xte: g('navXte'), xteSide: g('navXteSide'),
+        nextWp: g('navNextWp'), eta: g('navEta'), fuelUsed: g('navFuelUsed'),
+        fuelLeft: g('navFuelLeft'), fuelLeftCls: document.getElementById('navFuelLeft').className,
+        fuelDev: g('navFuelDev'), lighthouse: document.getElementById('navLighthouse').innerHTML,
+        status: g('navGpsStatus')
+      };
+    }
+
+    /* Transmite posição + telemetria + rota para os observadores. */
+    function broadcastTelemetry(lat, lng, cog, sog, accuracy) {
+      try {
+        mirrorChannel.send({
+          type: 'broadcast', event: 'tele',
+          payload: {
+            lat, lng, cog, sog, accuracy,
+            hud: currentHudSnapshot(),
+            route: waypoints.map(w => [w.lat, w.lng]),
+            vessel: tripData ? tripData.vesselName : null
+          }
+        });
+      } catch (e) { /* envio falhou; segue navegando */ }
+    }
+
+    // ─── Lado OBSERVADOR (terra) ───
+    /* Se a URL tiver ?watch=TOKEN, entra em modo espelho somente-leitura. */
+    function initMirrorViewer() {
+      const token = new URLSearchParams(location.search).get('watch');
+      if (!token) return false;
+
+      watchMode = true;
+      mirrorToken = token;
+      document.body.classList.add('mirror-mode');
+      const banner = document.getElementById('mirrorBanner');
+      banner.classList.add('active');
+      document.getElementById('mirrorBannerToken').textContent = '#' + token;
+      document.getElementById('navHud').classList.add('active');
+      document.getElementById('navShareBtn').style.display = 'none';
+      document.getElementById('navSimBtn').style.display = 'none';
+      document.querySelector('.nav-hud-title').innerHTML = '<span class="nav-pulse"></span> ESPELHO';
+
+      const supa = getSupa();
+      if (!supa) { setMirrorConn('sem conexão', 'off'); return true; }
+
+      const ch = supa.channel('coastal-nav-' + token, { config: { broadcast: { self: false } } });
+      ch.on('broadcast', { event: 'tele' }, ({ payload }) => applyMirrorTelemetry(payload));
+      ch.subscribe(status => {
+        if (status === 'SUBSCRIBED') setMirrorConn('aguardando embarcação…', 'ok');
+        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setMirrorConn('erro de conexão', 'off');
+      });
+      return true;
+    }
+
+    let _mirrorLastMsg = 0;
+    function applyMirrorTelemetry(p) {
+      _mirrorLastMsg = Date.now();
+      setMirrorConn('ao vivo', 'ok');
+
+      // Embarcação + precisão + popup (reaproveita drawBoat)
+      drawBoat(p.lat, p.lng, p.accuracy, p.cog, p.sog);
+      if (navFollow) map.panTo([p.lat, p.lng], { animate: true, duration: 0.5 });
+
+      // Rota espelhada
+      if (p.route && p.route.length >= 2) {
+        if (!mirrorRouteLayer) {
+          mirrorRouteLayer = L.polyline(p.route, { color: '#FFA726', weight: 3, opacity: 0.8 }).addTo(map);
+        } else {
+          mirrorRouteLayer.setLatLngs(p.route);
+        }
+      }
+
+      // HUD idêntico ao da embarcação
+      const h = p.hud || {};
+      const set = (id, v) => { if (v != null) document.getElementById(id).textContent = v; };
+      set('navSog', h.sog); set('navCog', h.cog); set('navXte', h.xte); set('navXteSide', h.xteSide);
+      set('navNextWp', h.nextWp); set('navEta', h.eta); set('navFuelUsed', h.fuelUsed);
+      set('navFuelDev', h.fuelDev);
+      const fl = document.getElementById('navFuelLeft');
+      if (h.fuelLeft != null) { fl.textContent = h.fuelLeft; if (h.fuelLeftCls) fl.className = h.fuelLeftCls; }
+      if (h.lighthouse != null) document.getElementById('navLighthouse').innerHTML = h.lighthouse;
+      if (p.vessel) document.getElementById('mirrorBannerToken').textContent = p.vessel + ' #' + mirrorToken;
+    }
+
+    function setMirrorConn(text, cls) {
+      const el = document.getElementById('mirrorBannerStatus');
+      if (!el) return;
+      el.textContent = text;
+      el.className = 'mirror-conn ' + (cls || '');
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -4162,6 +4479,13 @@
 
     document.addEventListener('DOMContentLoaded', function () {
       initMap();
+
+      // Modo espelho (observador em terra via ?watch=TOKEN): pula o tour/onboarding
+      if (initMirrorViewer()) {
+        console.log('👁️ Modo espelho ativo — acompanhando embarcação via token.');
+        return;
+      }
+
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('  Coastal Navigator Brasil v2.0.9 - Inicializado ⚓');
       console.log('═══════════════════════════════════════════════════════════════');
