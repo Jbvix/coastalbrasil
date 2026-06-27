@@ -1768,6 +1768,7 @@
     let route = null;           // Linha da rota no mapa
     let tripData = null;        // Dados da viagem atual
     let waypointCounter = 1;    // Contador para nomes de waypoints
+    let waypointIdSeq = 1;      // Sequência de IDs ÚNICOS (Date.now() colide em loop de importação)
 
     // ═══════════════════════════════════════════════════════════════════════
     // DATABASE DE FARÓIS - 69 Faróis da Costa Brasileira
@@ -2297,6 +2298,18 @@
       document.getElementById('exitModal').classList.remove('active');
     }
 
+    /*
+    Combustível JÁ consumido quando a viagem começou antes de "agora"
+    (partida em data/hora anterior ou viagem já em andamento).
+    = (agora − partida) horas × consumo L/h, limitado ao tanque.
+    Para partidas no futuro (planejamento normal) retorna 0.
+    */
+    function elapsedFuel(td, nowMs) {
+      if (!td || !td.departureDate) return 0;
+      const horas = Math.max(0, (nowMs - td.departureDate.getTime()) / 3600000);
+      return Math.min(horas * td.fuelConsumption, td.fuelInitial);
+    }
+
     function saveTripData(event) {
       event.preventDefault();
 
@@ -2311,6 +2324,20 @@
         fuelInitial: parseFloat(document.getElementById('fuelInitial').value)
       };
 
+      // Viagem em andamento: combustível já consumido desde a partida (até agora)
+      tripData.fuelAlreadyUsed = elapsedFuel(tripData, Date.now());
+
+      // Se já existem waypoints, reancorar o consumo no WP01 e recalcular
+      if (waypoints.length > 0) {
+        waypoints[0].fuelUsed = tripData.fuelAlreadyUsed;
+        waypoints[0].fuelRemaining = tripData.fuelInitial - tripData.fuelAlreadyUsed;
+        recalculateFromWaypoint(1);
+        createRoute();
+        updateWaypointsList();
+        updateRouteInfo();
+        updateNearestLighthouses();
+      }
+
       // Atualizar interface
       document.getElementById('infoVessel').textContent = tripData.vesselName;
       document.getElementById('infoOrigin').textContent = tripData.origin;
@@ -2320,7 +2347,15 @@
       document.getElementById('tripInfoBar').classList.add('active');
 
       closeTripModal();
-      alert('✅ Viagem configurada!\n\nAgora você pode adicionar waypoints clicando no mapa.');
+      let msg = '✅ Viagem configurada!\n\nAgora você pode adicionar waypoints clicando no mapa.';
+      if (tripData.fuelAlreadyUsed > 0) {
+        const horas = ((Date.now() - tripData.departureDate.getTime()) / 3600000);
+        msg = `✅ Viagem configurada (em andamento)!\n\n` +
+          `Partida há ${horas.toFixed(1)}h → consumo já estimado: ${tripData.fuelAlreadyUsed.toFixed(0)} L.\n` +
+          `Saldo disponível ao iniciar: ${(tripData.fuelInitial - tripData.fuelAlreadyUsed).toFixed(0)} L.` +
+          (tripData.fuelAlreadyUsed >= tripData.fuelInitial ? '\n\n⚠️ O tempo decorrido já consumiria todo o tanque!' : '');
+      }
+      alert(msg);
 
       console.log('Dados da viagem salvos:', tripData);
     }
@@ -2358,7 +2393,7 @@
 
       // Criar objeto waypoint
       const waypoint = {
-        id: Date.now(),
+        id: waypointIdSeq++,   // ID único e monotônico (evita colisão na importação GPX)
         name: `WP${String(waypointCounter).padStart(3, '0')}`,
         lat: lat,
         lng: lng,
@@ -2401,9 +2436,11 @@
           return;
         }
       } else {
-        // Primeiro waypoint
+        // Primeiro waypoint — pode já incluir o consumo de uma viagem em andamento
         waypoint.eta = tripData.departureDate;
         waypoint.totalDistance = 0;
+        waypoint.fuelUsed = tripData.fuelAlreadyUsed || 0;
+        waypoint.fuelRemaining = tripData.fuelInitial - waypoint.fuelUsed;
       }
 
       // Encontrar farol mais próximo
@@ -3054,11 +3091,13 @@
       }
 
       if (waypoints.length === 0) {
+        const already = tripData.fuelAlreadyUsed || 0;
         infoElement.innerHTML = `
           <div style="background: rgba(76, 175, 80, 0.1); padding: 12px; border-radius: 6px;">
             <strong>Saldo Inicial:</strong> ${tripData.fuelInitial.toFixed(0)} L<br>
             <strong>Consumo:</strong> ${tripData.fuelConsumption.toFixed(1)} L/h<br>
-            <strong>Status:</strong> <span style="color: #4CAF50;">Pronto para partida</span>
+            ${already > 0 ? `<strong>Consumido (viagem em andamento):</strong> ${already.toFixed(0)} L<br><strong>Saldo disponível:</strong> ${(tripData.fuelInitial - already).toFixed(0)} L<br>` : ''}
+            <strong>Status:</strong> <span style="color: #4CAF50;">${already > 0 ? 'Viagem em andamento' : 'Pronto para partida'}</span>
           </div>
         `;
         return;
@@ -3081,6 +3120,7 @@
       let html = `
         <div style="background: rgba(${fuelPercentage < 40 ? '255, 167, 38' : '76, 175, 80'}, 0.1); padding: 12px; border-radius: 6px; margin-bottom: 12px;">
           <strong>Saldo Inicial:</strong> ${tripData.fuelInitial.toFixed(0)} L<br>
+          ${tripData.fuelAlreadyUsed > 0 ? `<strong>Consumido antes da partida:</strong> ${tripData.fuelAlreadyUsed.toFixed(0)} L<br>` : ''}
           <strong>Consumo Total:</strong> ${lastWp.fuelUsed.toFixed(0)} L<br>
           <strong>Saldo Final:</strong> ${lastWp.fuelRemaining.toFixed(0)} L (${fuelPercentage.toFixed(1)}%)<br>
           <strong>Consumo L/dia:</strong> ${((lastWp.fuelUsed / (totalTime / 24))).toFixed(0)} L/dia<br>
@@ -3317,7 +3357,9 @@
       }
 
       navActive = true;
-      navAccumFuel = 0;
+      // Pré-carrega o consumo já feito se a viagem partiu antes de agora (em andamento)
+      navAccumFuel = elapsedFuel(tripData, Date.now());
+      if (tripData) tripData.fuelAlreadyUsed = navAccumFuel;
       navDistTraveled = 0;
       navLastFix = null;
       navActiveLeg = 0;
