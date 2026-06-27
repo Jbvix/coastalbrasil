@@ -3526,9 +3526,16 @@
 
     /* Avança a perna ativa quando o barco chega ao próximo waypoint. */
     function advanceActiveLeg(lat, lng) {
+      // Sincroniza a perna ativa pela projeção ao longo da rota (along-track),
+      // em vez de exigir passar fisicamente por cada waypoint. Assim funciona
+      // mesmo iniciando a navegação JÁ no meio da viagem: pula as pernas cuja
+      // projeção do barco já ultrapassou o fim, parando na perna atual real.
       while (navActiveLeg < waypoints.length - 2) {
-        const next = waypoints[navActiveLeg + 1];
-        if (calculateDistance(lat, lng, next.lat, next.lng) <= ARRIVAL_RADIUS_NM) {
+        const a = waypoints[navActiveLeg];
+        const b = waypoints[navActiveLeg + 1];
+        const legLen = calculateDistance(a.lat, a.lng, b.lat, b.lng);
+        const ct = crossTrackError(lat, lng, a, b);
+        if (legLen > 0 && ct.along > legLen - ARRIVAL_RADIUS_NM) {
           navActiveLeg++;
         } else {
           break;
