@@ -1312,6 +1312,31 @@
       display: block;
     }
 
+    .nav-share-big {
+      width: 100%;
+      margin-top: 10px;
+      padding: 10px;
+      border: none;
+      border-radius: 6px;
+      background: #00838F;
+      color: #fff;
+      font-family: var(--font-body);
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: background var(--transition-fast);
+    }
+
+    .nav-share-big:hover { background: #006064; }
+    .nav-share-big.sharing {
+      background: var(--success-green);
+      animation: navBtnPulse 1.6s infinite;
+    }
+
     .nav-warn { color: #FFB74D !important; }
     .nav-danger { color: #FF5252 !important; }
     .nav-ok { color: #69F0AE !important; }
@@ -1503,6 +1528,7 @@
         <div class="nav-divider"></div>
         <div class="nav-line nav-lh" id="navLighthouse">💡 Nenhum farol no alcance</div>
         <div class="nav-line nav-status" id="navGpsStatus">Aguardando GPS…</div>
+        <button id="navShareBig" class="nav-share-big" onclick="toggleShare()">📤 Compartilhar navegação</button>
       </div>
     </div>
 
@@ -3883,6 +3909,9 @@
         console.log('📤 Canal de compartilhamento:', status);
       });
       document.getElementById('navShareBtn').style.background = 'rgba(105,240,174,0.5)';
+      const big = document.getElementById('navShareBig');
+      big.classList.add('sharing');
+      big.textContent = '📤 Compartilhando — ver link';
       openShareModal();
     }
 
@@ -3894,6 +3923,8 @@
       }
       const b = document.getElementById('navShareBtn');
       if (b) b.style.background = 'transparent';
+      const big = document.getElementById('navShareBig');
+      if (big) { big.classList.remove('sharing'); big.textContent = '📤 Compartilhar navegação'; }
       closeShareModal();
     }
 
@@ -3962,6 +3993,7 @@
       document.getElementById('mirrorBannerToken').textContent = '#' + token;
       document.getElementById('navHud').classList.add('active');
       document.getElementById('navShareBtn').style.display = 'none';
+      document.getElementById('navShareBig').style.display = 'none';
       document.getElementById('navSimBtn').style.display = 'none';
       document.querySelector('.nav-hud-title').innerHTML = '<span class="nav-pulse"></span> ESPELHO';
 
