@@ -609,6 +609,11 @@
       transform: translateY(0);
     }
 
+    .btn.active {
+      background: var(--success-green);
+      box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.4);
+    }
+
     .btn-primary {
       background: var(--lighthouse-amber);
       color: var(--deep-ocean);
@@ -1549,6 +1554,9 @@
           </button>
           <button id="btnNav" class="btn btn-nav" onclick="toggleNavigation()">
             📡 Navegação GPS
+          </button>
+          <button id="btnTrack" class="btn" onclick="toggleTrack()" title="Mostrar/ocultar o rastro percorrido">
+            🧵 Rastro
           </button>
           <button class="btn btn-success" onclick="generateReport()" id="reportBtn" style="display: none;">
             📊 Gerar Relatório
@@ -3470,6 +3478,12 @@
         route = null;
       }
 
+      // Limpar rastro percorrido
+      clearTrack();
+      hideTrack();
+      const btnTrack = document.getElementById('btnTrack');
+      if (btnTrack) btnTrack.classList.remove('active');
+
       // Limpar arrays
       waypoints = [];
       waypointMarkers = [];
@@ -3518,6 +3532,13 @@
     let navHudCollapsed = false;
     const lighthouseNavState = {};  // nome -> { phase, prevRel, abeam }
 
+    // Rastro percorrido (breadcrumb do GPS no mapa)
+    let trackPoints = [];
+    let trackLayer = null;
+    let trackVisible = false;
+    const TRACK_MIN_NM = 0.016;     // grava a cada ~30 m
+    const TRACK_MAX = 5000;         // limite de pontos (descarta os mais antigos)
+
     // Simulação
     let navSimActive = false;
     let navSimTimer = null;
@@ -3557,6 +3578,7 @@
       navLastFix = null;
       navActiveLeg = 0;
       _lastBroadcastMs = 0;
+      clearTrack();               // novo trajeto: zera o rastro
       for (const k in lighthouseNavState) delete lighthouseNavState[k];
       ensureAllShareChannels();   // (re)liga os canais dos compartilhamentos existentes
       updateShareButtons();
@@ -3643,8 +3665,9 @@
       if (cog === null) cog = navLastFix && navLastFix.cog != null ? navLastFix.cog : 0;
       navLastFix = { lat, lng, t, cog };
 
-      // --- Marcador no mapa ---
+      // --- Marcador no mapa + rastro ---
       drawBoat(lat, lng, accuracy, cog, sog);
+      recordTrackPoint(lat, lng);
       if (navFollow) map.panTo([lat, lng], { animate: true, duration: 0.5 });
 
       // --- HUD: SOG / COG ---
@@ -3956,6 +3979,37 @@
           navAccCircle.setRadius(accuracy);
         }
       }
+    }
+
+    // ─── Rastro percorrido ───
+    function recordTrackPoint(lat, lng) {
+      const last = trackPoints[trackPoints.length - 1];
+      if (last && calculateDistance(last[0], last[1], lat, lng) < TRACK_MIN_NM) return;
+      trackPoints.push([lat, lng]);
+      if (trackPoints.length > TRACK_MAX) trackPoints.shift();
+      if (trackVisible && trackLayer) trackLayer.setLatLngs(trackPoints);
+    }
+    function showTrack() {
+      if (!trackLayer) {
+        trackLayer = L.polyline(trackPoints, { color: '#00E5FF', weight: 2.5, opacity: 0.85, dashArray: '6,7' });
+      } else {
+        trackLayer.setLatLngs(trackPoints);
+      }
+      trackLayer.addTo(map);
+      trackVisible = true;
+    }
+    function hideTrack() {
+      if (trackLayer) map.removeLayer(trackLayer);
+      trackVisible = false;
+    }
+    function toggleTrack() {
+      if (trackVisible) hideTrack(); else showTrack();
+      const b = document.getElementById('btnTrack');
+      if (b) b.classList.toggle('active', trackVisible);
+    }
+    function clearTrack() {
+      trackPoints = [];
+      if (trackLayer) trackLayer.setLatLngs([]);
     }
 
     function fmtDuration(hours) {
@@ -4491,8 +4545,10 @@
       mirrorWaypoints = p.wps || [];   // habilita o botão INFO do observador
       mirrorAttitude = p.att || null;  // alimenta o painel 3D do observador
 
-      // Embarcação + precisão + popup (reaproveita drawBoat)
+      // Embarcação + precisão + popup (reaproveita drawBoat) + rastro
       drawBoat(p.lat, p.lng, p.accuracy, p.cog, p.sog);
+      recordTrackPoint(p.lat, p.lng);
+      if (!trackVisible) showTrack();   // observador vê o rastro automaticamente
       if (navFollow) map.panTo([p.lat, p.lng], { animate: true, duration: 0.5 });
 
       // Rota espelhada
