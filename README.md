@@ -1,4 +1,4 @@
-# Coastal Navigator Brasil v2.0.9 ⚓
+# Coastal Navigator Brasil v2.0.9 ⛳
 
 Aplicativo web gratuito e open-source para planejamento de viagens marítimas costeiras no Brasil.
 
@@ -35,3 +35,14 @@ LinkedIn: https://www.linkedin.com/in/jossianbrito/
 X/Twitter: https://x.com/jossiancosta
 
 Bons ventos e mares calmos! 🚢
+
+## Licença e Copyright
+
+**Copyright (c) 2026 Jossian Brito**
+
+Este projeto é licenciado sob a **Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)**.
+
+- Uso comercial não é permitido sem autorização expressa prévia do autor.
+- A atribuição ao autor original é obrigatória.
+
+O texto completo da licença está no arquivo [LICENSE](LICENSE).
