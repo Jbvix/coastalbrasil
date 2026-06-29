@@ -1471,9 +1471,22 @@
       color: #E3F2FD;
       font-family: var(--font-body);
     }
-    .ship3d-title { font-weight: 700; letter-spacing: 0.5px; }
+    .ship3d-title { font-weight: 700; letter-spacing: 0.5px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .ship3d-actions { display: flex; gap: 4px; }
-    #ship3dCanvas { flex: 1; width: 100%; min-height: 0; display: block; touch-action: none; }
+    .ship3d-modes { display: flex; gap: 0; border: 1px solid var(--navigation-blue); border-radius: 6px; overflow: hidden; margin: 0 8px; }
+    .ship3d-mode {
+      background: transparent; color: #90CAF9; border: none; padding: 5px 10px;
+      font-family: var(--font-body); font-size: 0.82rem; font-weight: 700; cursor: pointer;
+    }
+    .ship3d-mode.active { background: var(--navigation-blue); color: #fff; }
+    .ship3d-view { flex: 1; position: relative; min-height: 0; }
+    #ship3dCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+    #cesiumContainer { position: absolute; inset: 0; width: 100%; height: 100%; display: none; }
+    .ship3d-overlay.earth #ship3dCanvas { display: none; }
+    .ship3d-overlay.earth #cesiumContainer { display: block; }
+    .ship3d-overlay.earth #ship3dCalBtn { display: none; }
+    /* Esconde widgets/creditos pesados do Cesium para caber no painel */
+    #cesiumContainer .cesium-viewer-bottom, #cesiumContainer .cesium-widget-credits { display: none !important; }
     .ship3d-readout {
       display: flex;
       justify-content: space-around;
@@ -1691,13 +1704,20 @@
     <!-- Painel de Atitude 3D do rebocador (three.js + sensores) -->
     <div id="ship3dModal" class="ship3d-overlay">
       <div class="ship3d-header">
-        <span class="ship3d-title">🚢 Atitude 3D — <span id="ship3dVessel">embarcação</span></span>
+        <span class="ship3d-title">🚢 <span id="ship3dVessel">embarcação</span></span>
+        <div class="ship3d-modes">
+          <button id="s3dModeAtt" class="ship3d-mode active" onclick="setShip3DMode('attitude')">Atitude</button>
+          <button id="s3dModeEarth" class="ship3d-mode" onclick="setShip3DMode('earth')">🌍 Earth</button>
+        </div>
         <div class="ship3d-actions">
           <button class="nav-icon-btn" title="Nivelar (zerar referência atual)" onclick="calibrateShip3D()" id="ship3dCalBtn">🎚️</button>
           <button class="nav-icon-btn" title="Fechar" onclick="closeShip3D()">✕</button>
         </div>
       </div>
-      <canvas id="ship3dCanvas"></canvas>
+      <div class="ship3d-view">
+        <canvas id="ship3dCanvas"></canvas>
+        <div id="cesiumContainer"></div>
+      </div>
       <div class="ship3d-readout">
         <div><span>Jogo</span><strong id="s3dRoll">0°</strong></div>
         <div><span>Caturro</span><strong id="s3dPitch">0°</strong></div>
@@ -1908,6 +1928,9 @@
 
   <!-- Supabase JS (Realtime broadcast p/ espelhamento de navegação via token) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Token do Cesium (gerado no build do Netlify a partir da env CESIUM_ION_TOKEN) -->
+  <script src="cesium-config.js"></script>
 
   <!-- three.js (carregado sob demanda ao abrir o painel 3D de atitude do rebocador) -->
   <script type="importmap">
@@ -4544,6 +4567,7 @@
       setMirrorConn('ao vivo', 'ok');
       mirrorWaypoints = p.wps || [];   // habilita o botão INFO do observador
       mirrorAttitude = p.att || null;  // alimenta o painel 3D do observador
+      mirrorPos = { lat: p.lat, lng: p.lng };  // posição p/ o modo Earth do observador
 
       // Embarcação + precisão + popup (reaproveita drawBoat) + rastro
       drawBoat(p.lat, p.lng, p.accuracy, p.cog, p.sog);
@@ -4594,6 +4618,10 @@
     let s3dOffRoll = 0, s3dOffPitch = 0;               // calibração (nivelar)
     let s3dMaxRoll = 0, s3dFrame = 0;
     let s3dOrientHandler = null;
+    let ship3dMode = 'attitude';                 // 'attitude' (three.js) ou 'earth' (Cesium)
+    let mirrorPos = null;                         // última posição recebida (observador)
+    let cesiumViewer = null, cesiumShip = null;   // estado do modo Earth
+    const CESIUM_CDN = 'https://cdn.jsdelivr.net/npm/cesium@1.115.0/Build/Cesium/';
 
     async function openShip3D() {
       document.getElementById('ship3dModal').classList.add('active');
@@ -4601,9 +4629,8 @@
         watchMode ? 'embarcação (espelho)' : (tripData ? tripData.vesselName : 'embarcação');
       s3dOpen = true;
       try {
-        await ensureShip3D();
-        if (!watchMode) await startShip3DSensors();
-        else setShip3DStatus('Acompanhando a atitude transmitida pela embarcação…');
+        if (ship3dMode === 'earth') { await setShip3DMode('earth'); }
+        else { await ensureShip3D(); if (!watchMode) await startShip3DSensors(); else setShip3DStatus('Acompanhando a atitude transmitida pela embarcação…'); }
         if (!s3dRaf) s3dLoop();
       } catch (e) {
         setShip3DStatus('⚠️ Falha ao iniciar o 3D: ' + ((e && e.message) || e));
@@ -4614,8 +4641,110 @@
       s3dOpen = false;
       if (s3dRaf) { cancelAnimationFrame(s3dRaf); s3dRaf = null; }
       stopShip3DSensors();
+      if (cesiumViewer) cesiumViewer.useDefaultRenderLoop = false;   // pausa o globo
       if (!watchMode) shipAttitude = null;   // para de transmitir atitude
       document.getElementById('ship3dModal').classList.remove('active');
+    }
+
+    /* Alterna entre a vista de Atitude (three.js) e o globo Earth (Cesium). */
+    async function setShip3DMode(mode) {
+      ship3dMode = mode;
+      const ov = document.getElementById('ship3dModal');
+      ov.classList.toggle('earth', mode === 'earth');
+      document.getElementById('s3dModeAtt').classList.toggle('active', mode === 'attitude');
+      document.getElementById('s3dModeEarth').classList.toggle('active', mode === 'earth');
+      if (mode === 'earth') {
+        try {
+          await ensureShip3D();                 // garante three p/ a vista de atitude continuar leve
+          await ensureCesium();
+          if (cesiumViewer) cesiumViewer.useDefaultRenderLoop = true;
+        } catch (e) { setShip3DStatus('⚠️ Earth: ' + ((e && e.message) || e)); }
+      } else {
+        if (cesiumViewer) cesiumViewer.useDefaultRenderLoop = false;
+        await ensureShip3D();
+        if (!watchMode) await startShip3DSensors();
+        onShip3DResize();
+        setShip3DStatus(watchMode ? 'Acompanhando a atitude da embarcação…' : 'Sensores ativos — toque 🎚️ para nivelar.');
+      }
+    }
+
+    // ─── Carregadores dinâmicos (script/css) ───
+    function loadScript(src) {
+      return new Promise((res, rej) => {
+        if (document.querySelector('script[data-dyn="' + src + '"]')) return res();
+        const s = document.createElement('script'); s.src = src; s.async = true;
+        s.dataset.dyn = src; s.onload = res; s.onerror = () => rej(new Error('falha ao carregar ' + src));
+        document.head.appendChild(s);
+      });
+    }
+    function loadCss(href) {
+      return new Promise((res) => {
+        if (document.querySelector('link[data-dyn="' + href + '"]')) return res();
+        const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = href;
+        l.dataset.dyn = href; l.onload = res; l.onerror = res; document.head.appendChild(l);
+      });
+    }
+
+    // ─── Modo Earth (Cesium + Google Photorealistic 3D Tiles) ───
+    async function ensureCesium() {
+      if (cesiumViewer) { return; }
+      const token = window.CESIUM_ION_TOKEN;
+      if (!token) { setShip3DStatus('🌍 Configure a variável CESIUM_ION_TOKEN no Netlify para habilitar o modo Earth.'); return; }
+      setShip3DStatus('Carregando globo 3D (Cesium)…');
+      window.CESIUM_BASE_URL = CESIUM_CDN;
+      await loadCss(CESIUM_CDN + 'Widgets/widgets.css');
+      await loadScript(CESIUM_CDN + 'Cesium.js');
+      const Cesium = window.Cesium;
+      Cesium.Ion.defaultAccessToken = token;
+
+      cesiumViewer = new Cesium.Viewer('cesiumContainer', {
+        animation: false, timeline: false, baseLayerPicker: false, geocoder: false,
+        homeButton: false, sceneModePicker: false, navigationHelpButton: false,
+        fullscreenButton: false, infoBox: false, selectionIndicator: false
+      });
+      cesiumViewer.scene.skyAtmosphere.show = true;
+
+      // Google Photorealistic 3D Tiles (via ion). Se indisponível, mantém o globo padrão.
+      try {
+        const tileset = await Cesium.createGooglePhotorealistic3DTileset();
+        cesiumViewer.scene.primitives.add(tileset);
+        cesiumViewer.scene.globe.show = false;
+      } catch (e) { console.warn('Photorealistic 3D Tiles indisponível, usando globo padrão:', e && e.message); }
+
+      // Rebocador como entidade móvel
+      cesiumShip = cesiumViewer.entities.add({
+        position: new Cesium.CallbackProperty(() => cesiumShipPosition(), false),
+        orientation: new Cesium.CallbackProperty(() => cesiumShipOrientation(), false),
+        model: { uri: 'assets/models/tug.glb', minimumPixelSize: 80, maximumScale: 400 }
+      });
+      cesiumViewer.trackedEntity = cesiumShip;
+      setShip3DStatus('🌍 Modo Earth ativo — rebocador navegando.');
+    }
+
+    function shipEarthState() {
+      let lon, lat, heading, pitch, roll;
+      if (watchMode) {
+        if (mirrorPos) { lon = mirrorPos.lng; lat = mirrorPos.lat; }
+        const a = mirrorAttitude || {}; heading = a.heading || 0; pitch = a.pitch || 0; roll = a.roll || 0;
+      } else {
+        if (navLastFix) { lon = navLastFix.lng; lat = navLastFix.lat; }
+        const a = shipAttitude || {};
+        heading = (navLastFix && navLastFix.cog != null) ? navLastFix.cog : (a.heading || 0);
+        pitch = a.pitch || 0; roll = a.roll || 0;
+      }
+      if (lon == null) { lon = -38.50; lat = -13.00; }   // padrão: Baía de Todos os Santos
+      return { lon, lat, heading, pitch, roll };
+    }
+    function cesiumShipPosition() {
+      const Cesium = window.Cesium; const s = shipEarthState();
+      return Cesium.Cartesian3.fromDegrees(s.lon, s.lat, 0);
+    }
+    function cesiumShipOrientation() {
+      const Cesium = window.Cesium; const s = shipEarthState();
+      const pos = Cesium.Cartesian3.fromDegrees(s.lon, s.lat, 0);
+      const hpr = new Cesium.HeadingPitchRoll(
+        Cesium.Math.toRadians(s.heading), Cesium.Math.toRadians(s.pitch), Cesium.Math.toRadians(s.roll));
+      return Cesium.Transforms.headingPitchRollQuaternion(pos, hpr);
     }
 
     function setShip3DStatus(t) { const el = document.getElementById('ship3dStatus'); if (el) el.textContent = t; }
@@ -4730,8 +4859,10 @@
       const R = s3dTHREE.MathUtils.degToRad;
       s3dShip.rotation.set(R(s3dPitch), R(-s3dHead), R(s3dRoll));
       s3dMaxRoll = Math.max(s3dMaxRoll, Math.abs(s3dRoll));
-      if (s3dControls) s3dControls.update();
-      s3dRenderer.render(s3dScene, s3dCamera);
+      if (ship3dMode === 'attitude') {   // no modo Earth quem renderiza é o Cesium
+        if (s3dControls) s3dControls.update();
+        s3dRenderer.render(s3dScene, s3dCamera);
+      }
 
       if ((s3dFrame++ % 6) === 0) {
         const rEl = document.getElementById('s3dRoll'), pEl = document.getElementById('s3dPitch');

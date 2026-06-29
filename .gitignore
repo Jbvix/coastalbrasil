@@ -143,3 +143,6 @@ Thumbs.db
 .gemini/
 .DS_Store
 
+
+# Token Cesium injetado no build (não commitar)
+cesium-config.js
