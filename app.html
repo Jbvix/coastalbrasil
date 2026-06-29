@@ -4463,7 +4463,9 @@
           eta: w.eta ? w.eta.toISOString() : null, fr: w.fuelRemaining,
           lh: w.nearestLighthouse ? w.nearestLighthouse.name : null, lv: w.lighthouseVisible
         })),
-        att: shipAttitude,
+        // Sempre envia o rumo (COG) para o observador orientar a embarcação no curso
+        // e exibir a Proa; jogo/caturro vão junto quando os sensores estão ativos.
+        att: shipAttitude || { roll: 0, pitch: 0, heading: Math.round(((cog || 0) % 360 + 360) % 360) },
         vessel: tripData ? tripData.vesselName : null
       };
       mirrorShares.forEach(s => {
