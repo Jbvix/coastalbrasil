@@ -4704,9 +4704,16 @@
       });
       cesiumViewer.scene.skyAtmosphere.show = true;
 
-      // Google Photorealistic 3D Tiles (via ion). Se indisponível, mantém o globo padrão.
+      // Google Photorealistic 3D Tiles (via ion). Tenta o helper e, em fallback,
+      // carrega o asset 2275207 diretamente por ID. Se nada funcionar, mantém o globo padrão.
       try {
-        const tileset = await Cesium.createGooglePhotorealistic3DTileset();
+        let tileset;
+        try {
+          tileset = await Cesium.createGooglePhotorealistic3DTileset();
+        } catch (e1) {
+          console.warn('helper indisponível, carregando asset 2275207 por ID:', e1 && e1.message);
+          tileset = await Cesium.Cesium3DTileset.fromIonAssetId(2275207);
+        }
         cesiumViewer.scene.primitives.add(tileset);
         cesiumViewer.scene.globe.show = false;
       } catch (e) { console.warn('Photorealistic 3D Tiles indisponível, usando globo padrão:', e && e.message); }
