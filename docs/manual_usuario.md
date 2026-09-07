@@ -164,3 +164,54 @@ funcionará até lá.
 Costume de bordo que vale adotar: **teste o link antes de zarpar**, abrindo-o
 num segundo aparelho. Leva quinze segundos e evita descobrir o problema quando
 já não há o que fazer.
+
+---
+
+## 8. O rebocador em 3D — e como escolher o casco
+
+Toque em **🚢** na barra de navegação para abrir o painel de atitude. Ele mostra
+o seu rebocador inclinando conforme os sensores do celular a bordo: **jogo**
+(balanço de bordo a bordo), **caturro** (proa mergulhando) e a **proa** vinda do
+GPS. Quem acompanha em terra pelo link de espelho vê a mesma atitude.
+
+### 8.1 Trocar de casco
+
+No alto do painel há uma **lista com os rebocadores disponíveis**:
+
+| Casco | Comprimento × boca | Tipo |
+|---|---|---|
+| **Damen ASD 2810 “SD Rebel”** *(padrão)* | 28,6 m × 10,2 m | ASD — Azimuth Stern Drive |
+| **Rastar 3200** | 32,9 m × 13,5 m | Rebocador portuário convencional |
+
+Escolha e o painel troca na hora. O ASD 2810 é o padrão por ser o que
+corresponde à propulsão azimutal: os **dois dutos Kort giratórios sob a popa**
+aparecem no modelo, e é por eles que um ASD faz o que um rebocador de hélice
+fixo não faz — empurrar de través sem guinar.
+
+**A escolha fica gravada no aparelho.** Da próxima vez que abrir o painel, o
+casco que você deixou é o que aparece — inclusive no modo 🌍 **Earth**, onde o
+mesmo rebocador navega sobre o globo pela sua rota.
+
+### 8.1.1 Se você usou o Rastar antes da v2.3.0
+
+Até a v2.2.2 o Rastar 3200 aparecia **de ré** e com o **caturro invertido**: a
+proa mergulhava quando deveria subir. Não era o sensor nem o seu celular — era
+o modelo, desenhado com a proa para o lado oposto ao que o painel supunha. Está
+corrigido. Se você tinha aprendido a "ler ao contrário", pode desaprender.
+
+### 8.2 Nivelar a referência
+
+O celular quase nunca está perfeitamente aprumado no console. Com o navio
+parado e direito, toque em **🎚️**: o painel passa a contar jogo e caturro a
+partir dali. É o mesmo gesto de zerar um inclinômetro — sem ele, um celular
+apoiado torto mostra 8° de banda com o navio a direito.
+
+O campo **Roll máx** guarda o maior jogo desde a última nivelada. Toque em 🎚️
+para zerar também esse registro.
+
+### 8.3 Se o painel demorar
+
+O modelo 3D e a biblioteca gráfica só são baixados **quando você abre o
+painel** — nunca no carregamento do aplicativo. Assim, quem nunca usa o 3D não
+paga por ele. O ASD 2810 pesa 1,25 MB; em rede fraca a barra de progresso conta
+os por cento. Uma vez carregado, fica na memória até fechar a aba.

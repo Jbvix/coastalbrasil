@@ -11,6 +11,105 @@ executável.
 
 ```
 
+## v2.3.0 (07/09/2026 - 22:56) — FROTA 3D: SEGUNDO CASCO E SELETOR DE MODELO
+
+Autor: Jossian Brito (Charlie Bravo)
+
+Pedido de bordo: *"precisamos diversificar os rebocadores"*. Até aqui o painel
+3D tinha um único casco, com o caminho do arquivo escrito à mão em dois lugares
+e a correção de proa numa constante global. A v2.3.0 transforma o casco em
+**dado** (`SHIP_MODELS`) e acrescenta o primeiro rebocador de propulsão
+azimutal da frota.
+
+### Acrescentado
+
+- **Damen ASD 2810 “SD Rebel”** — 28,6 m × 10,2 m, agora o casco **padrão**.
+  Seis materiais, 14 texturas PBR, 130.484 triângulos, **1,25 MB**. É um ASD de
+  verdade: os dois dutos Kort giratórios sob a popa estão no modelo.
+- **Seletor de casco** no cabeçalho do painel 3D. A escolha fica gravada em
+  `localStorage` e vale também para o modo 🌍 Earth.
+- **Crédito dinâmico** — cada casco declara a sua própria atribuição, em vez de
+  uma linha fixa que mentia assim que houvesse um segundo modelo.
+
+### Mudado
+
+- `ensureShip3D()` foi repartida: a cena é montada **uma vez**, e
+  `carregarShipModel()` troca só o casco. A troca chama `dispose()` em cada
+  geometria, textura e material do casco anterior — o WebGL não coleta memória
+  de vídeo sozinho, e sem isso três trocas travariam um celular.
+- A correção de proa deixou de ser a constante única `SHIP_HEADING_OFFSET_DEG`
+  e passou a ser **por casco e por motor** (`headingOffset` para o three.js,
+  `headingOffsetEarth` para o Cesium). Os dois GLB da frota foram modelados com
+  a proa para lados opostos, e os motores discordam sobre qual eixo é a frente.
+- A linha d'água deixou de ser o literal `0.30` e passou a ser o campo `calado`
+  de cada casco. O ASD 2810 usa **0,243**, derivado do calado real de 5,35 m
+  sobre uma caixa de 20,77 m de altura. O Rastar 3200 continua em **0,30** —
+  idêntico ao que a v2.2.2 fazia.
+- Ajustes de renderização exigidos pelas texturas PBR em sRGB:
+  `outputColorSpace = SRGBColorSpace`, tonemapping ACES e uma luz de
+  preenchimento. Sem eles o casco vermelho sai lavado.
+
+### Como o modelo foi montado
+
+FBX de 12,4 MB + 17 PNG soltos → GLB de 1,25 MB. O `FBX2glTF` levou as seis
+geometrias e as UV intactas mas **ligou zero texturas** — os materiais do FBX
+traziam `Kd = 0,00 0,00 0,00` e nenhuma difusa. Os canais PBR foram religados
+com `@gltf-transform`, casando material e textura pelo código de quatro dígitos
+do nome. Detalhe que decide tudo: `setBaseColorFactor([1,1,1,1])` antes de
+pendurar a cor-base — sem esse reset o `Kd` preto multiplicaria toda textura
+por zero e o rebocador sairia **preto**. Metal e rugosidade foram fundidos numa
+textura ORM (o glTF quer os dois no mesmo arquivo), 4096² virou 1024² em WebP
+(**44 MB → 0,59 MB**) e a malha caiu de 488.616 para 130.484 triângulos.
+
+Detalhes em `docs/tecnica.md` §7.
+
+### Corrigido: a proa do Rastar 3200
+
+Até aqui o Rastar tinha a proa em `+Z` enquanto o laço de atitude assume `−Z`.
+Ele navegava **de ré** a 000° e **caturrava ao contrário** — proa mergulhando
+quando deveria subir. O Cesium já compensava a guinada com −90°; o three.js
+nunca compensou nada.
+
+A correção óbvia — somar 180° ao rumo — **está errada**, e vale registrar por
+quê. Com ordem `YXZ` o laço faz `Ry(−rumo)·Rx(caturro)·Rz(jogo)`: o casco é
+primeiro inclinado no próprio eixo e só depois guinado. Somar no rumo gira o
+conjunto já inclinado em torno da vertical, e rotação em Y **preserva a
+altura** — a proa apontaria para o lado certo e continuaria mergulhando. Em
+números, com a proa em `+Z`: `Rx(θ)·(0,0,1) = (0, −sen θ, cos θ)`, ou seja
+`y < 0` para caturro positivo.
+
+O que entrou foi a **normalização num pivô**: o casco é girado até a proa cair
+em `−Z` *antes* de jogo, caturro e rumo agirem. Resolve os três eixos de uma
+vez e torna o registro extensível — o próximo casco só declara para onde aponta
+a sua proa. O pivô é necessário porque `model` já está deslocado de `−centro` e
+a matriz local do three.js é `T·R·S`: girar o modelo direto o faria rodar em
+torno de um ponto que não é o seu centro.
+
+Medido em navegador: com caturro de +10°, a extremidade `−Z` de **ambos** os
+cascos sobe (+2,48 m no ASD, +2,86 m no Rastar) e a `+Z` desce o mesmo tanto.
+
+### Manutenção
+
+- `actions/checkout` sobe de **v4 para v5** no workflow "Manter Supabase ativo".
+  A primeira execução manual (#1, 07/09/2026 23:28Z, `HTTP 200` na primeira
+  tentativa) veio verde mas com aviso: o `v4` tem como alvo o Node 20, que a
+  GitHub aposentou, e o runner o **força** a rodar em Node 24. "Forçado a
+  rodar" é ponte provisória, não contrato — quando a compatibilidade sair, o
+  passo quebra em silêncio, e quem descobre é o e-mail de falha de um job que
+  ninguém está olhando. O `v5` faz o mesmo checkout, empacotado em Node 24.
+
+### Provas
+
+**114 provas, 110 passam, 0 falham, 4 avisos** — suíte 15 nova, com 17 provas.
+A 15.16 falha se alguém voltar a somar a correção no rumo; a 15.17 confere que
+o giro declarado é exatamente o que leva `proaEixo` até `−Z`.
+
+O painel foi exercitado em navegador: abre com o ASD 2810 (6 malhas, linha
+d'água em −5,05 m), troca para o Rastar 3200 (2 malhas, −6,92 m — exatamente o
+valor da v2.2.2), volta ao ASD e a escolha sobrevive em `localStorage`.
+
+---
+
 ## v2.2.2 (07/09/2026 - 18:11) — CORREÇÃO DE REGRESSÃO: PERNA ATIVA TRAVADA
 
 Autor: Jossian Brito (Charlie Bravo)
