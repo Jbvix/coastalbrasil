@@ -88,6 +88,16 @@ torno de um ponto que não é o seu centro.
 Medido em navegador: com caturro de +10°, a extremidade `−Z` de **ambos** os
 cascos sobe (+2,48 m no ASD, +2,86 m no Rastar) e a `+Z` desce o mesmo tanto.
 
+### Manutenção
+
+- `actions/checkout` sobe de **v4 para v5** no workflow "Manter Supabase ativo".
+  A primeira execução manual (#1, 07/09/2026 23:28Z, `HTTP 200` na primeira
+  tentativa) veio verde mas com aviso: o `v4` tem como alvo o Node 20, que a
+  GitHub aposentou, e o runner o **força** a rodar em Node 24. "Forçado a
+  rodar" é ponte provisória, não contrato — quando a compatibilidade sair, o
+  passo quebra em silêncio, e quem descobre é o e-mail de falha de um job que
+  ninguém está olhando. O `v5` faz o mesmo checkout, empacotado em Node 24.
+
 ### Provas
 
 **114 provas, 110 passam, 0 falham, 4 avisos** — suíte 15 nova, com 17 provas.

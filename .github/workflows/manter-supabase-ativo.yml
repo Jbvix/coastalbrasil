@@ -53,7 +53,7 @@ jobs:
 
     steps:
       - name: Obter o código
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Ler URL e chave do próprio código fonte
         id: cfg
