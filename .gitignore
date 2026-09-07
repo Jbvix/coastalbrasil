@@ -153,3 +153,5 @@ tests/results.json
 tools/lf/*.pdf
 tools/lf/lf40_bruto.jsonl
 tools/lf/reconciliacao.json
+tests/fixtures/
+tests/smoke.png

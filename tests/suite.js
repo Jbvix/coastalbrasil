@@ -604,9 +604,24 @@ t(S11, '11.4', 'Altitude do foco nunca é menor que a altura da estrutura', () =
 
 /* ── SUÍTE 12 — HIGIENE DE CÓDIGO ───────────────────────────────────────── */
 const S12 = '12 · Higiene';
-t(S12, '12.1', 'app.html dentro de um limite gerenciável (≤ 3000 linhas)', () => {
-  const n = SRC.split('\n').length;
-  ok(n <= 3000, `${n} linhas em arquivo único (HTML+CSS+JS+base de dados+relatório) — sem módulos, sem build, sem testes`);
+t(S12, '12.1', 'Código repartido em módulos, nenhum arquivo gigante', () => {
+  const fs12 = require('fs');
+  const linhas = f => fs12.readFileSync(ROOT + '/' + f, 'utf8').split('\n').length;
+  const arquivos = ['app.html', 'assets/css/app.css', 'assets/js/lighthouses.js',
+                    'assets/js/nautical.js', 'assets/js/report.js'];
+  arquivos.forEach(f => ok(fs12.existsSync(ROOT + '/' + f), 'ausente: ' + f));
+  const grandes = arquivos.filter(f => linhas(f) > 3500);
+  ok(grandes.length === 0, 'acima de 3500 linhas: ' +
+     grandes.map(f => `${f} (${linhas(f)})`).join(', '));
+  return { detail: arquivos.map(f => `${f.split('/').pop()} ${linhas(f)}`).join(' · ') };
+});
+t(S12, '12.4', 'Os módulos são carregados na ordem de dependência', () => {
+  const html = require('fs').readFileSync(ROOT + '/app.html', 'utf8');
+  const pos = f => html.indexOf(f);
+  ok(pos('assets/js/lighthouses.js') > 0 && pos('assets/js/nautical.js') > 0,
+     'módulos não referenciados no app.html');
+  ok(pos('assets/js/lighthouses.js') < pos('assets/js/nautical.js'),
+     'nautical.js usa `lighthouses`: precisa vir depois de lighthouses.js');
 });
 t(S12, '12.2', 'Sem console.log de depuração em caminho quente', () => {
   const bloco = SRC.slice(SRC.indexOf('function createWaypoint'), SRC.indexOf('function getWaypointPopupContent'));

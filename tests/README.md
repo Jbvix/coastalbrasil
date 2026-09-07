@@ -25,3 +25,27 @@ dependências: Node puro.
 
 Provas em vermelho são defeitos **conhecidos e documentados**, não regressões.
 Cada uma traz na mensagem de falha o arquivo, a linha e a consequência a bordo.
+
+## Fumaça em navegador real
+
+```bash
+npm i -D playwright && npx playwright install chromium
+npm run smoke
+```
+
+`npm test` executa as funções fora do navegador, sem DOM. Ele **não** pega
+regressão de carregamento: ordem errada de `<script>`, caminho de módulo
+quebrado, hash de SRI inválido, CSS que não chega. Depois da modularização da
+v2.2.0 isso deixou de ser hipotético.
+
+`npm run smoke` abre o app de verdade e percorre o fluxo completo — configurar
+viagem, criar waypoints, apagar o primeiro, exportar GPX, gerar relatório — e
+falha se aparecer **um único** erro de console. São 24 passos.
+
+**Sem saída para a internet?** Coloque `leaflet.js`, `leaflet.css` e
+`supabase.js` em `tests/fixtures/` e eles serão servidos no lugar das CDNs.
+Como são os mesmos bytes de que os hashes SRI foram calculados, o navegador
+ainda valida a integridade: um hash errado derruba o teste.
+
+Se o Chromium estiver em `PLAYWRIGHT_BROWSERS_PATH` com revisão diferente da
+esperada, o teste o localiza sozinho. `CHROMIUM_PATH` força um caminho.

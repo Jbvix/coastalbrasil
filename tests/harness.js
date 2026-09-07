@@ -6,7 +6,16 @@
 const fs = require('fs');
 const path = require('path');
 const ROOT = path.join(__dirname, '..');
-const SRC = fs.readFileSync(path.join(ROOT, 'app.html'), 'utf8');
+
+/*
+ * A partir da v2.2.0 os algoritmos e a base de faróis vivem em módulos
+ * separados. As provas continuam medindo o CÓDIGO REAL: o harness concatena
+ * app.html com os arquivos extraídos e recorta as funções dali, por contagem
+ * de chaves — não há reimplementação em lugar nenhum.
+ */
+const MODULOS = ['assets/js/lighthouses.js', 'assets/js/nautical.js'];
+const SRC = [path.join(ROOT, 'app.html'), ...MODULOS.map(m => path.join(ROOT, m))]
+  .map(f => fs.readFileSync(f, 'utf8')).join('\n');
 module.exports = module.exports || {};
 
 /* Extrai o corpo de `function NOME(...) { ... }` por contagem de chaves. */
@@ -24,14 +33,15 @@ function extractFn(name) {
 
 /* Extrai `const NOME = [ ... ];` preservando os comentários internos. */
 function extractConst(name) {
-  const re = new RegExp('const ' + name + ' = \\[[\\s\\S]*?\\n    \\];');
+  // A indentação mudou ao extrair para módulo: aceita 0 ou 4 espaços.
+  const re = new RegExp('const ' + name + ' = \\[[\\s\\S]*?\\n *\\];');
   const m = SRC.match(re);
   if (!m) throw new Error('const não encontrada: ' + name);
   return m[0];
 }
 
 function extractLighthouses() {
-  const m = SRC.match(/const lighthouses = \[[\s\S]*?\n    \];/);
+  const m = SRC.match(/const lighthouses = \[[\s\S]*?\n *\];/);
   if (!m) throw new Error('database de faróis não encontrada');
   return m[0];
 }

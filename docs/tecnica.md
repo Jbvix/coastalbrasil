@@ -1,7 +1,28 @@
 # Documentação Técnica - Coastal Navigator Brasil
 
 ## 1. Estrutura de Arquitetura de Código
-O código é centralizado em um arquivo principal HTML que encapsula CSS, HTML e JavaScript.
+
+Até a v2.1.0 tudo vivia num `app.html` de 5.787 linhas: HTML, CSS, base de
+dados, algoritmos e um segundo documento HTML completo (o relatório) dentro de
+um template literal. A v2.2.0 repartiu o arquivo.
+
+| Arquivo | Linhas | Conteúdo |
+|---|---:|---|
+| `app.html` | ~3.250 | interface, mapa, navegação GPS, espelhamento |
+| `assets/css/app.css` | 1.077 | estilos |
+| `assets/js/report.js` | 472 | gerador do relatório de derrota |
+| `assets/js/nautical.js` | 327 | algoritmos náuticos e formatação |
+| `assets/js/lighthouses.js` | 162 | base de 98 faróis (gerada por `tools/lf/`) |
+| `docs/CHANGELOG.md` | 570 | histórico, antes um comentário no topo do HTML |
+
+**Ordem de carga é obrigatória**: `nautical.js` usa `lighthouses`, então
+`lighthouses.js` vem antes. A prova 12.4 verifica isso.
+
+**Por que scripts clássicos e não módulos ES.** A interface usa 39 atributos
+`onclick=`, que só enxergam o escopo global. Migrar para `type="module"` exigiria
+converter todos em `addEventListener` — trabalho que vale a pena, porque é ele
+que destrava remover `'unsafe-inline'` do `script-src` da CSP, mas que não cabia
+na mesma mudança que moveu 2.500 linhas.
 
 ### 1.1 Variáveis Globais Principais
 - `map`: Instância do objeto Leaflet Map.

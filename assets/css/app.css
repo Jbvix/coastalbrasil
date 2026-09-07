@@ -1,0 +1,1077 @@
+/*
+ * Coastal Navigator Brasil — estilos da aplicação
+ * Autor: Jossian Brito (Charlie Bravo)
+ *
+ * Extraído do app.html na v2.2.0. Eram 1.072 linhas embutidas no HTML,
+ * recarregadas a cada visita sem chance de cache separado.
+ */
+    /*
+    ══════════════════════════════════════════════════════════════════════════
+      CSS VARIABLES - Sistema de Design Marítimo
+    ══════════════════════════════════════════════════════════════════════════
+    */
+    :root {
+      /* Cores Principais */
+      --deep-ocean: #0A1929;
+      --navigation-blue: #1976D2;
+      --lighthouse-amber: #FFA726;
+      --chart-white: #F5F5F5;
+      --warning-red: #D32F2F;
+      --success-green: #4CAF50;
+
+      /* Cores Secundárias */
+      --deck-gray: #37474F;
+      --sea-foam: #00BCD4;
+      --sunset-orange: #FF6F00;
+      --night-navy: #0D47A1;
+
+      /* Tipografia */
+      --font-display: 'Orbitron', monospace;
+      --font-body: 'Rajdhani', sans-serif;
+
+      /* Espaçamento */
+      --spacing-xs: 4px;
+      --spacing-sm: 8px;
+      --spacing-md: 16px;
+      --spacing-lg: 24px;
+      --spacing-xl: 32px;
+
+      /* Transições */
+      --transition-fast: 0.2s ease;
+      --transition-normal: 0.3s ease;
+      --transition-slow: 0.5s ease;
+    }
+
+    /*
+    ══════════════════════════════════════════════════════════════════════════
+      RESET E BASE
+    ══════════════════════════════════════════════════════════════════════════
+    */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--deep-ocean);
+      color: var(--chart-white);
+      overflow: hidden;
+    }
+
+    /*
+    ══════════════════════════════════════════════════════════════════════════
+      LAYOUT PRINCIPAL - Container da Aplicação
+    ══════════════════════════════════════════════════════════════════════════
+    */
+    .app-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    /*
+    ══════════════════════════════════════════════════════════════════════════
+      HEADER - Barra de Controles
+    ══════════════════════════════════════════════════════════════════════════
+    */
+    .app-header {
+      background: linear-gradient(135deg, var(--deep-ocean), var(--night-navy));
+      padding: var(--spacing-md);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      border-bottom: 2px solid var(--navigation-blue);
+    }
+
+    .header-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--spacing-md);
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+    }
+
+    .logo h1 {
+      font-family: var(--font-display);
+      font-size: clamp(1.2rem, 3vw, 1.8rem);
+      color: var(--lighthouse-amber);
+      text-shadow: 0 0 10px rgba(255, 167, 38, 0.5);
+      letter-spacing: 2px;
+    }
+
+    .logo .version {
+      font-size: 0.7rem;
+      color: var(--sea-foam);
+      font-weight: 600;
+    }
+
+    .controls {
+      display: flex;
+      gap: var(--spacing-sm);
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      background: var(--navigation-blue);
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-family: var(--font-body);
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    .btn:hover {
+      background: #1565C0;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    .btn:active {
+      transform: translateY(0);
+    }
+
+    .btn.active {
+      background: var(--success-green);
+      box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.4);
+    }
+
+    .btn-primary {
+      background: var(--lighthouse-amber);
+      color: var(--deep-ocean);
+    }
+
+    .btn-primary:hover {
+      background: #FF9800;
+    }
+
+    .btn-success {
+      background: var(--success-green);
+    }
+
+    .btn-success:hover {
+      background: #45a049;
+    }
+
+    .btn-danger {
+      background: var(--warning-red);
+    }
+
+    .btn-danger:hover {
+      background: #C62828;
+    }
+
+    /*
+    ══════════════════════════════════════════════════════════════════════════
+      MODAL - Configuração de Viagem
+    ══════════════════════════════════════════════════════════════════════════
+    */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(10, 25, 41, 0.95);
+      z-index: 2000;
+      justify-content: center;
+      align-items: center;
+      animation: fadeIn var(--transition-normal);
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal {
+      background: linear-gradient(135deg, var(--deck-gray), var(--deep-ocean));
+      border: 2px solid var(--navigation-blue);
+      border-radius: 12px;
+      padding: var(--spacing-xl);
+      max-width: 600px;
+      width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+      animation: slideUp var(--transition-normal);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--spacing-lg);
+      border-bottom: 2px solid var(--lighthouse-amber);
+      padding-bottom: var(--spacing-md);
+    }
+
+    .modal-header h2 {
+      font-family: var(--font-display);
+      color: var(--lighthouse-amber);
+      font-size: 1.5rem;
+    }
+
+    .modal-close {
+      background: var(--warning-red);
+      color: white;
+      border: none;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 1.2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all var(--transition-fast);
+    }
+
+    .modal-close:hover {
+      background: #C62828;
+      transform: rotate(90deg);
+    }
+
+    .form-group {
+      margin-bottom: var(--spacing-md);
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: var(--spacing-xs);
+      font-weight: 600;
+      color: var(--sea-foam);
+      font-size: 0.95rem;
+    }
+
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid var(--navigation-blue);
+      border-radius: 6px;
+      color: var(--chart-white);
+      font-family: var(--font-body);
+      font-size: 1rem;
+      transition: all var(--transition-fast);
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: var(--lighthouse-amber);
+      box-shadow: 0 0 0 3px rgba(255, 167, 38, 0.2);
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--spacing-md);
+    }
+
+    .form-help {
+      font-size: 0.85rem;
+      color: #90CAF9;
+      margin-top: var(--spacing-xs);
+    }
+
+    .modal-footer {
+      display: flex;
+      gap: var(--spacing-md);
+      margin-top: var(--spacing-lg);
+      padding-top: var(--spacing-md);
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /*
+    ══════════════════════════════════════════════════════════════════════════
+      MAPA - Área Principal (CORRIGIDO v2.0.2 para Mobile)
+    ══════════════════════════════════════════════════════════════════════════
+    */
+    .map-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background: #AAD3DF;
+      /* CORREÇÃO v2.0.2: Altura mínima para mobile */
+      min-height: 400px;
+      height: calc(100vh - 200px);
+      /* Viewport height menos header/footer */
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+      background: #AAD3DF;
+      /* CORREÇÃO v2.0.2: Prevenir zoom e gestos do navegador */
+      touch-action: none;
+      /* CORREÇÃO v2.0.2: Garantir renderização */
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    /*
+    ══════════════════════════════════════════════════════════════════════════
+      PAINEL DE INFORMAÇÕES LATERAL
+    ══════════════════════════════════════════════════════════════════════════
+    */
+    .info-panel {
+      position: absolute;
+      top: 0;
+      right: -350px;
+      width: 350px;
+      height: 100%;
+      background: linear-gradient(180deg, var(--deep-ocean), var(--deck-gray));
+      box-shadow: -4px 0 16px rgba(0, 0, 0, 0.5);
+      transition: right var(--transition-normal);
+      z-index: 500;
+      overflow-y: auto;
+      border-left: 2px solid var(--navigation-blue);
+    }
+
+    .info-panel.active {
+      right: 0;
+    }
+
+    .info-section {
+      padding: var(--spacing-lg);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .info-title {
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      color: var(--lighthouse-amber);
+      margin-bottom: var(--spacing-md);
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+    }
+
+    .waypoint-item,
+    .lighthouse-item {
+      background: rgba(255, 255, 255, 0.05);
+      padding: var(--spacing-md);
+      border-radius: 6px;
+      margin-bottom: var(--spacing-sm);
+      border-left: 3px solid var(--navigation-blue);
+      transition: all var(--transition-fast);
+    }
+
+    .waypoint-item:hover,
+    .lighthouse-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-left-color: var(--lighthouse-amber);
+    }
+
+    .item-name {
+      font-weight: 700;
+      font-size: 1.05rem;
+      margin-bottom: var(--spacing-xs);
+      color: var(--sea-foam);
+    }
+
+    .item-details {
+      font-size: 0.9rem;
+      line-height: 1.6;
+      color: #CFD8DC;
+    }
+
+    .item-details strong {
+      color: var(--chart-white);
+    }
+
+    /*
+    ══════════════════════════════════════════════════════════════════════════
+      TRIP INFO BAR - Barra de Informações da Viagem
+    ══════════════════════════════════════════════════════════════════════════
+    */
+    .trip-info-bar {
+      background: linear-gradient(135deg, var(--night-navy), var(--deck-gray));
+      padding: var(--spacing-sm) var(--spacing-md);
+      border-bottom: 2px solid var(--navigation-blue);
+      display: none;
+      flex-wrap: wrap;
+      gap: var(--spacing-md);
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.9rem;
+    }
+
+    .trip-info-bar.active {
+      display: flex;
+    }
+
+    .trip-info-item {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-xs);
+    }
+
+    .trip-info-label {
+      color: var(--sea-foam);
+      font-weight: 600;
+    }
+
+    .trip-info-value {
+      color: var(--chart-white);
+      font-weight: 700;
+    }
+
+    /*
+    ══════════════════════════════════════════════════════════════════════════
+      FOOTER - Barra de Status
+    ══════════════════════════════════════════════════════════════════════════
+    */
+    .app-footer {
+      background: linear-gradient(135deg, var(--deep-ocean), var(--deck-gray));
+      padding: var(--spacing-sm) var(--spacing-md);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: var(--spacing-md);
+      border-top: 2px solid var(--navigation-blue);
+      font-size: 0.9rem;
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-xs);
+    }
+
+    .status-value {
+      font-weight: 700;
+      color: var(--lighthouse-amber);
+    }
+
+    .status-warning {
+      color: var(--warning-red);
+    }
+
+    .status-success {
+      color: var(--success-green);
+    }
+
+    /*
+    ══════════════════════════════════════════════════════════════════════════
+      LIGHTHOUSE MARKER - Customização
+    ══════════════════════════════════════════════════════════════════════════
+    */
+    .lighthouse-marker {
+      width: 24px;
+      height: 24px;
+      background: var(--lighthouse-amber);
+      border: 2px solid var(--deep-ocean);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        box-shadow: 0 0 0 0 rgba(255, 167, 38, 0.7);
+      }
+
+      50% {
+        box-shadow: 0 0 0 10px rgba(255, 167, 38, 0);
+      }
+    }
+
+    /*
+    ══════════════════════════════════════════════════════════════════════════
+      ANIMAÇÕES
+    ══════════════════════════════════════════════════════════════════════════
+    */
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+
+    @keyframes slideUp {
+      from {
+        transform: translateY(50px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    /*
+    ══════════════════════════════════════════════════════════════════════════
+      RESPONSIVIDADE - Mobile First
+    ══════════════════════════════════════════════════════════════════════════
+    */
+    @media (max-width: 768px) {
+      .controls {
+        width: 100%;
+        justify-content: center;
+      }
+
+      .btn {
+        flex: 1;
+        justify-content: center;
+        font-size: 0.85rem;
+        padding: 8px 12px;
+      }
+
+      .info-panel {
+        width: 90vw;
+        right: -90vw;
+      }
+
+      .modal {
+        width: 95%;
+        padding: var(--spacing-lg);
+      }
+
+      .form-row {
+        grid-template-columns: 1fr;
+      }
+
+      .trip-info-bar {
+        font-size: 0.8rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .logo h1 {
+        font-size: 1rem;
+      }
+
+      .app-header {
+        padding: var(--spacing-sm);
+      }
+
+      .btn {
+        font-size: 0.8rem;
+        padding: 6px 10px;
+      }
+    }
+
+    /*
+    ══════════════════════════════════════════════════════════════════════════
+      TOUR / ONBOARDING STYLES
+    ══════════════════════════════════════════════════════════════════════════
+    */
+    .tour-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      z-index: 9000;
+      display: none;
+      pointer-events: none;
+      /* Allows clicks to pass through to highlighted elements if needed, but we usually block */
+    }
+
+    .tour-overlay.active {
+      display: block;
+      pointer-events: auto;
+    }
+
+    .tour-highlight {
+      position: absolute;
+      border-radius: 4px;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.75);
+      z-index: 9001;
+      transition: all 0.3s ease;
+      pointer-events: none;
+      border: 2px solid var(--lighthouse-amber);
+      display: none;
+    }
+
+    .tour-tooltip {
+      position: absolute;
+      background: linear-gradient(135deg, var(--deep-ocean), var(--deck-gray));
+      border: 1px solid var(--navigation-blue);
+      color: var(--chart-white);
+      padding: 20px;
+      border-radius: 8px;
+      width: 300px;
+      max-width: 90vw;
+      /* Responsividade Mobile */
+      z-index: 9002;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      font-family: var(--font-body);
+      transition: all 0.3s ease;
+      display: none;
+    }
+
+    .tour-title {
+      font-family: var(--font-display);
+      color: var(--lighthouse-amber);
+      font-size: 1.1rem;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tour-text {
+      font-size: 0.95rem;
+      line-height: 1.5;
+      margin-bottom: 20px;
+      color: #CFD8DC;
+    }
+
+    .tour-controls {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .tour-btn {
+      padding: 6px 12px;
+      border-radius: 4px;
+      border: 1px solid var(--navigation-blue);
+      background: transparent;
+      color: var(--sea-foam);
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+    }
+
+    .tour-btn:hover {
+      background: rgba(25, 118, 210, 0.2);
+    }
+
+    .tour-btn-primary {
+      background: var(--navigation-blue);
+      color: white;
+      border: none;
+    }
+
+    .tour-btn-primary:hover {
+      background: #1565C0;
+    }
+
+    /* ═══ MÓDULO DE NAVEGAÇÃO GPS ═══ */
+    .btn-nav {
+      background: #00838F;
+    }
+
+    .btn-nav:hover {
+      background: #006064;
+    }
+
+    .btn-nav.active {
+      background: var(--success-green);
+      animation: navBtnPulse 1.6s infinite;
+    }
+
+    @keyframes navBtnPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.6); }
+      50% { box-shadow: 0 0 0 8px rgba(76, 175, 80, 0); }
+    }
+
+    .nav-hud {
+      display: none;
+      position: fixed;
+      bottom: 56px;
+      left: 12px;
+      z-index: 1500;
+      width: 290px;
+      max-width: calc(100vw - 24px);
+      background: rgba(10, 25, 41, 0.94);
+      border: 2px solid var(--success-green);
+      border-radius: 10px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+      font-family: var(--font-body);
+      color: #E3F2FD;
+      backdrop-filter: blur(4px);
+      overflow: hidden;
+    }
+
+    .nav-hud.active {
+      display: block;
+    }
+
+    .nav-hud-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: linear-gradient(135deg, #00695C, #004D40);
+      padding: 8px 10px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .nav-hud-title {
+      font-weight: 700;
+      letter-spacing: 1px;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .nav-pulse {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #69F0AE;
+      box-shadow: 0 0 8px #69F0AE;
+      animation: navBtnPulse 1.6s infinite;
+    }
+
+    .nav-hud-actions {
+      display: flex;
+      gap: 2px;
+    }
+
+    .nav-icon-btn {
+      background: transparent;
+      border: none;
+      color: #E3F2FD;
+      font-size: 1rem;
+      cursor: pointer;
+      padding: 2px 5px;
+      border-radius: 4px;
+    }
+
+    .nav-icon-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .nav-hud-body {
+      padding: 10px;
+    }
+
+    .nav-hud.collapsed .nav-hud-body {
+      display: none;
+    }
+
+    .nav-clock {
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #90CAF9;
+      background: rgba(25, 118, 210, 0.12);
+      border-radius: 6px;
+      padding: 4px 6px;
+      margin-bottom: 8px;
+      letter-spacing: 0.3px;
+    }
+
+    .wp-info-row {
+      background: rgba(25, 118, 210, 0.08);
+      border-left: 3px solid var(--navigation-blue);
+      border-radius: 4px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+    }
+    .wp-info-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .wp-info-head strong { color: var(--lighthouse-amber); }
+    .wp-info-head span { font-size: 0.8rem; color: #90CAF9; font-variant-numeric: tabular-nums; }
+    .wp-info-meta { font-size: 0.82rem; color: #CFD8DC; margin-top: 4px; line-height: 1.45; }
+
+    .nav-grid {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .nav-cell {
+      flex: 1;
+      background: rgba(25, 118, 210, 0.12);
+      border: 1px solid rgba(25, 118, 210, 0.4);
+      border-radius: 6px;
+      padding: 6px 8px;
+      display: flex;
+      align-items: baseline;
+      gap: 5px;
+    }
+
+    .nav-cell-wide {
+      flex: 1 1 100%;
+    }
+
+    .nav-label {
+      font-size: 0.7rem;
+      color: var(--lighthouse-amber);
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .nav-val {
+      font-size: 1.5rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: #FFFFFF;
+      line-height: 1;
+    }
+
+    .nav-unit {
+      font-size: 0.75rem;
+      color: #90CAF9;
+    }
+
+    .nav-line {
+      font-size: 0.85rem;
+      margin: 4px 0;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .nav-line strong {
+      color: var(--lighthouse-amber);
+    }
+
+    .nav-divider {
+      height: 1px;
+      background: rgba(255, 255, 255, 0.12);
+      margin: 8px 0;
+    }
+
+    .nav-lh {
+      display: block;
+      background: rgba(255, 167, 38, 0.12);
+      border-left: 3px solid var(--lighthouse-amber);
+      padding: 6px 8px;
+      border-radius: 4px;
+      line-height: 1.35;
+    }
+
+    .nav-lh.alert {
+      animation: navLhFlash 1s ease-in-out 3;
+    }
+
+    @keyframes navLhFlash {
+      0%, 100% { background: rgba(255, 167, 38, 0.12); }
+      50% { background: rgba(255, 167, 38, 0.55); }
+    }
+
+    .nav-status {
+      font-size: 0.72rem;
+      color: #90CAF9;
+      display: block;
+    }
+
+    .nav-share-big {
+      width: 100%;
+      margin-top: 10px;
+      padding: 10px;
+      border: none;
+      border-radius: 6px;
+      background: #00838F;
+      color: #fff;
+      font-family: var(--font-body);
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: background var(--transition-fast);
+    }
+
+    .nav-share-big:hover { background: #006064; }
+    .nav-share-big.sharing {
+      background: var(--success-green);
+      animation: navBtnPulse 1.6s infinite;
+    }
+
+    /* Itens do gerenciador de compartilhamentos */
+    .share-item {
+      background: rgba(25, 118, 210, 0.1);
+      border: 1px solid rgba(25, 118, 210, 0.4);
+      border-radius: 6px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+    }
+    .share-item-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .share-item-head strong { color: var(--lighthouse-amber); }
+    .share-meta { font-size: 0.74rem; color: #90CAF9; margin-bottom: 6px; }
+    .share-link-row {
+      display: flex;
+      gap: 6px;
+    }
+    .share-link-row input {
+      flex: 1;
+      min-width: 0;
+      padding: 7px 8px;
+      border-radius: 5px;
+      border: 1px solid var(--navigation-blue);
+      background: var(--deep-ocean);
+      color: #E3F2FD;
+      font-size: 0.78rem;
+    }
+    .share-link-row .btn { flex: 0 0 auto; width: 46px; justify-content: center; padding: 7px 0; }
+
+    .nav-warn { color: #FFB74D !important; }
+    .nav-danger { color: #FF5252 !important; }
+    .nav-ok { color: #69F0AE !important; }
+
+    .nav-boat-icon {
+      font-size: 26px;
+      line-height: 1;
+      filter: drop-shadow(0 0 3px #000);
+      transform-origin: center;
+      transition: transform 0.3s linear;
+    }
+
+    @media (max-width: 480px) {
+      .nav-hud { width: calc(100vw - 24px); bottom: 64px; }
+      .nav-val { font-size: 1.3rem; }
+    }
+
+    /* Banner do modo espelho */
+    .mirror-banner {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 2000;
+      background: linear-gradient(135deg, #6A1B9A, #4A148C);
+      color: #fff;
+      text-align: center;
+      padding: 8px 12px;
+      font-family: var(--font-body);
+      font-size: 0.9rem;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    }
+
+    .mirror-banner.active { display: block; }
+    body.mirror-mode .app-header .controls { display: none; }
+    body.mirror-mode { padding-top: 38px; }
+    .mirror-conn {
+      margin-left: 8px;
+      padding: 1px 8px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.2);
+      font-size: 0.78rem;
+    }
+    .mirror-conn.ok { background: var(--success-green); }
+    .mirror-conn.off { background: var(--warning-red); }
+    #mirrorBannerToken { font-weight: 700; letter-spacing: 1px; margin-left: 6px; }
+
+    /* Painel de atitude 3D */
+    .ship3d-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 2500;
+      background: radial-gradient(circle at 50% 35%, #0d2438, #05101c 75%);
+      flex-direction: column;
+    }
+    .ship3d-overlay.active { display: flex; }
+    .ship3d-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      background: rgba(0, 0, 0, 0.35);
+      color: #E3F2FD;
+      font-family: var(--font-body);
+    }
+    .ship3d-title { font-weight: 700; letter-spacing: 0.5px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ship3d-actions { display: flex; gap: 4px; }
+    .ship3d-modes { display: flex; gap: 0; border: 1px solid var(--navigation-blue); border-radius: 6px; overflow: hidden; margin: 0 8px; }
+    .ship3d-mode {
+      background: transparent; color: #90CAF9; border: none; padding: 5px 10px;
+      font-family: var(--font-body); font-size: 0.82rem; font-weight: 700; cursor: pointer;
+    }
+    .ship3d-mode.active { background: var(--navigation-blue); color: #fff; }
+    .ship3d-view { flex: 1; position: relative; min-height: 0; }
+    #ship3dCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+    #cesiumContainer { position: absolute; inset: 0; width: 100%; height: 100%; display: none; }
+    .ship3d-overlay.earth #ship3dCanvas { display: none; }
+    .ship3d-overlay.earth #cesiumContainer { display: block; }
+    .ship3d-overlay.earth #ship3dCalBtn { display: none; }
+    /* Esconde widgets/creditos pesados do Cesium para caber no painel */
+    #cesiumContainer .cesium-viewer-bottom, #cesiumContainer .cesium-widget-credits { display: none !important; }
+    .ship3d-readout {
+      display: flex;
+      justify-content: space-around;
+      gap: 6px;
+      padding: 10px 8px;
+      background: rgba(10, 25, 41, 0.85);
+      border-top: 2px solid var(--navigation-blue);
+    }
+    .ship3d-readout > div { text-align: center; min-width: 60px; }
+    .ship3d-readout span { display: block; font-size: 0.7rem; color: var(--lighthouse-amber); font-weight: 700; letter-spacing: 0.5px; }
+    .ship3d-readout strong { font-size: 1.5rem; font-variant-numeric: tabular-nums; color: #fff; }
+    .ship3d-readout strong.warn { color: #FF5252; }
+    .ship3d-status {
+      text-align: center;
+      font-size: 0.78rem;
+      color: #90CAF9;
+      padding: 4px;
+      background: rgba(10, 25, 41, 0.85);
+      font-family: var(--font-body);
+    }
+    .ship3d-credit {
+      text-align: center;
+      font-size: 0.65rem;
+      color: #5C7A99;
+      padding: 4px 8px 8px;
+      background: rgba(10, 25, 41, 0.85);
+      font-family: var(--font-body);
+    }
+
+    .mirror-blocked {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 3000;
+      background: rgba(10, 25, 41, 0.97);
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .mirror-blocked.active { display: flex; }
+    .mirror-blocked-box {
+      text-align: center;
+      max-width: 420px;
+      color: #E3F2FD;
+      font-family: var(--font-body);
+    }
+    .mirror-blocked-icon { font-size: 64px; margin-bottom: 12px; }
+    .mirror-blocked-box h2 { color: var(--lighthouse-amber); margin-bottom: 10px; }
+    .mirror-blocked-box p { color: #90CAF9; line-height: 1.5; }
