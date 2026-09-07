@@ -1013,6 +1013,36 @@ t(S15, '15.15', 'O seletor está ligado à troca de casco', () => {
   ok(/function popularSeletorModelo/.test(APP15), 'nada preenche as opções do seletor');
 });
 
+t(S15, '15.16', 'A proa é normalizada no modelo, não somada ao rumo', () => {
+  const i = APP15.indexOf('async function carregarShipModel');
+  const corpo = APP15.slice(i, i + 4200);
+  // Somar graus ao rumo corrige a guinada e deixa caturro e jogo INVERTIDOS:
+  // com ordem YXZ a rotação em Y é a mais externa e preserva a altura, então
+  // Ry(180°) reposiciona a proa sem desfazer o mergulho. A correção tem de
+  // agir no casco, antes de jogo/caturro/rumo.
+  ok(/pivoProa/.test(corpo), 'não há pivô de proa — o casco não é normalizado');
+  ok(/pivoProa\.rotation\.y = THREE\.MathUtils\.degToRad\(m\.headingOffset/.test(corpo),
+     'o pivô não aplica headingOffset ao modelo');
+  ok(/pivoProa\.add\(model\)/.test(corpo),
+     'o modelo precisa estar DENTRO do pivô, já centrado, para girar no próprio centro');
+  ok(/s3dShip\.rotation\.set\(R\(s3dPitch\), R\(-s3dHead\), R\(s3dRoll\)\)/.test(APP15),
+     'o laço de atitude ainda soma correção ao rumo — caturro e jogo ficariam invertidos');
+});
+
+t(S15, '15.17', 'Todo casco declara para onde aponta a sua proa no arquivo', () => {
+  FROTA.forEach(m => {
+    ok(/^[+-][XYZ]$/.test(m.proaEixo || ''), `"${m.id}".proaEixo = ${m.proaEixo} — não é um eixo`);
+    // O laço pressupõe a proa em -Z. O giro declarado tem de ser exatamente o
+    // que leva proaEixo até lá: 0° para quem já está em -Z, 180° para +Z.
+    const esperado = { '-Z': 0, '+Z': 180, '+X': 90, '-X': 270 }[m.proaEixo];
+    ok(esperado !== undefined, `"${m.id}" tem proa em ${m.proaEixo}, eixo não previsto`);
+    ok(((m.headingOffset % 360) + 360) % 360 === esperado,
+       `"${m.id}" tem proa em ${m.proaEixo} e headingOffset ${m.headingOffset}° — ` +
+       `para cair em -Z precisaria de ${esperado}°`);
+  });
+  return { detail: FROTA.map(m => `${m.id} ${m.proaEixo}→${m.headingOffset}°`).join(' · ') };
+});
+
 /* ═══ RELATÓRIO ═══ */
 const byStatus = s => results.filter(r=>r.status===s).length;
 const ICON = { PASS:'\x1b[32m✔\x1b[0m', FAIL:'\x1b[31m✘\x1b[0m', WARN:'\x1b[33m▲\x1b[0m' };

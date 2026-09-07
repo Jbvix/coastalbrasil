@@ -63,21 +63,40 @@ textura ORM (o glTF quer os dois no mesmo arquivo), 4096² virou 1024² em WebP
 
 Detalhes em `docs/tecnica.md` §7.
 
+### Corrigido: a proa do Rastar 3200
+
+Até aqui o Rastar tinha a proa em `+Z` enquanto o laço de atitude assume `−Z`.
+Ele navegava **de ré** a 000° e **caturrava ao contrário** — proa mergulhando
+quando deveria subir. O Cesium já compensava a guinada com −90°; o three.js
+nunca compensou nada.
+
+A correção óbvia — somar 180° ao rumo — **está errada**, e vale registrar por
+quê. Com ordem `YXZ` o laço faz `Ry(−rumo)·Rx(caturro)·Rz(jogo)`: o casco é
+primeiro inclinado no próprio eixo e só depois guinado. Somar no rumo gira o
+conjunto já inclinado em torno da vertical, e rotação em Y **preserva a
+altura** — a proa apontaria para o lado certo e continuaria mergulhando. Em
+números, com a proa em `+Z`: `Rx(θ)·(0,0,1) = (0, −sen θ, cos θ)`, ou seja
+`y < 0` para caturro positivo.
+
+O que entrou foi a **normalização num pivô**: o casco é girado até a proa cair
+em `−Z` *antes* de jogo, caturro e rumo agirem. Resolve os três eixos de uma
+vez e torna o registro extensível — o próximo casco só declara para onde aponta
+a sua proa. O pivô é necessário porque `model` já está deslocado de `−centro` e
+a matriz local do three.js é `T·R·S`: girar o modelo direto o faria rodar em
+torno de um ponto que não é o seu centro.
+
+Medido em navegador: com caturro de +10°, a extremidade `−Z` de **ambos** os
+cascos sobe (+2,48 m no ASD, +2,86 m no Rastar) e a `+Z` desce o mesmo tanto.
+
 ### Provas
 
-Banco de provas sem alteração de linha de base: **97 provas, 93 passam, 0
-falham, 4 avisos**. O painel foi exercitado em navegador: abre com o ASD 2810
-(6 malhas, linha d'água em −5,05 m), troca para o Rastar 3200 (2 malhas,
-−6,92 m — exatamente o valor da v2.2.2), volta ao ASD e a escolha sobrevive em
-`localStorage`.
+**114 provas, 110 passam, 0 falham, 4 avisos** — suíte 15 nova, com 17 provas.
+A 15.16 falha se alguém voltar a somar a correção no rumo; a 15.17 confere que
+o giro declarado é exatamente o que leva `proaEixo` até `−Z`.
 
-### Pendência registrada, não corrigida
-
-**A proa do Rastar 3200 aponta para o lado errado na vista de Atitude.** O
-modelo tem a proa em `+Z` e o laço assume `−Z`; a rigor ele navega de ré a
-000°. O Cesium já compensava com −90°, o three.js nunca compensou. Ficou como
-estava (`headingOffset: 0`) para não alterar de carona um casco que não era o
-alvo desta mudança. A correção é trocar esse 0 por 180 — decisão do comandante.
+O painel foi exercitado em navegador: abre com o ASD 2810 (6 malhas, linha
+d'água em −5,05 m), troca para o Rastar 3200 (2 malhas, −6,92 m — exatamente o
+valor da v2.2.2), volta ao ASD e a escolha sobrevive em `localStorage`.
 
 ---
 

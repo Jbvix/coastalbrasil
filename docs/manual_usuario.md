@@ -192,6 +192,13 @@ fixo não faz — empurrar de través sem guinar.
 casco que você deixou é o que aparece — inclusive no modo 🌍 **Earth**, onde o
 mesmo rebocador navega sobre o globo pela sua rota.
 
+### 8.1.1 Se você usou o Rastar antes da v2.3.0
+
+Até a v2.2.2 o Rastar 3200 aparecia **de ré** e com o **caturro invertido**: a
+proa mergulhava quando deveria subir. Não era o sensor nem o seu celular — era
+o modelo, desenhado com a proa para o lado oposto ao que o painel supunha. Está
+corrigido. Se você tinha aprendido a "ler ao contrário", pode desaprender.
+
 ### 8.2 Nivelar a referência
 
 O celular quase nunca está perfeitamente aprumado no console. Com o navio

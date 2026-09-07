@@ -3118,9 +3118,15 @@
                  modelado com a proa em +Z navegaria de ré a 000°.
                  Aqui é só documentação; quem corrige é headingOffset.
 
-      headingOffset      Graus somados ao rumo NA VISTA DE ATITUDE (three.js).
-      headingOffsetEarth Graus somados ao rumo NO GLOBO (Cesium), que assume
-                 a proa em +X — daí os dois valores diferirem em ~90°.
+      headingOffset      Graus de giro aplicados AO MODELO, na vista de
+                 Atitude (three.js), para trazer a sua proa até -Z. NÃO é um
+                 somatório no rumo: um somatório corrigiria a guinada e
+                 deixaria caturro e jogo invertidos, porque a rotação em Y é
+                 a mais externa das três e preserva a altura. Ver o cálculo em
+                 carregarShipModel().
+      headingOffsetEarth Graus somados ao rumo NO GLOBO (Cesium). Aqui é
+                 somatório mesmo: o Cesium carrega o GLB por conta própria e
+                 supõe a proa em +X, então não há pivô onde interferir.
 
       calado     Fração da altura total do modelo, do centro para baixo, onde
                  fica a linha d'água. Exemplo do ASD 2810: a caixa tem
@@ -3146,7 +3152,7 @@
         classe: 'Rebocador portuário convencional',
         arquivo: 'assets/models/tug.glb',
         loa: 32.9, boca: 13.5, calado: 0.30,
-        proaEixo: '+Z', headingOffset: 0, headingOffsetEarth: -90,
+        proaEixo: '+Z', headingOffset: 180, headingOffsetEarth: -90,
         credito: 'Modelo: “Rastar 3200 tugboat” por David Broutian — CC-BY-4.0'
       }
     ];
@@ -3225,7 +3231,41 @@
       const center = box.getCenter(new THREE.Vector3());
       model.position.sub(center);                 // centraliza no eixo de rotação
       s3dWater.position.y = -size.y * m.calado;   // linha d'água conforme o calado do casco
-      s3dShip = new THREE.Group(); s3dShip.rotation.order = 'YXZ'; s3dShip.add(model); s3dScene.add(s3dShip);
+
+      /*
+      NORMALIZAÇÃO DA PROA — por que num pivô, e não somando graus ao rumo.
+
+      O laço de atitude faz, com ordem YXZ:
+
+          R = Ry(-rumo) · Rx(caturro) · Rz(jogo)
+
+      Ou seja: o casco é PRIMEIRO jogado e caturrado no seu próprio eixo, e só
+      depois guinado. Some 180° ao rumo e você gira o conjunto já inclinado em
+      torno do eixo vertical — e uma rotação em Y **preserva a altura**. A proa
+      passa a apontar para o lado certo, e continua subindo quando deveria
+      descer. Prova em números, com a proa do modelo em +Z:
+
+          Rx(θ) aplicado a (0, 0, +1)  →  (0, −sen θ, cos θ)
+
+      Para θ > 0 (caturro positivo, proa deveria SUBIR) sai y = −sen θ < 0: a
+      proa MERGULHA. E Ry(180°) depois disso não mexe nesse y.
+
+      Com a proa em −Z, o mesmo cálculo dá (0, +sen θ, −cos θ): proa sobe. Daí
+      a correção certa ser girar o CASCO até a proa cair em −Z, dentro de um
+      pivô próprio, ANTES de jogo, caturro e rumo agirem. Assim os três eixos
+      passam a valer para qualquer GLB, venha a proa de onde vier.
+
+      O pivô é indispensável: `model` já está deslocado de −centro, e em três.js
+      a matriz local é T·R·S — a rotação viria ANTES da translação e giraria o
+      casco em torno de um ponto que não é o seu centro, jogando-o para fora do
+      campo. Girando o pivô, com o modelo já centrado dentro dele, o eixo de
+      giro é o centro do casco.
+      */
+      const pivoProa = new THREE.Group();
+      pivoProa.add(model);
+      pivoProa.rotation.y = THREE.MathUtils.degToRad(m.headingOffset || 0);
+
+      s3dShip = new THREE.Group(); s3dShip.rotation.order = 'YXZ'; s3dShip.add(pivoProa); s3dScene.add(s3dShip);
 
       const maxDim = Math.max(size.x, size.y, size.z);
       s3dControls.minDistance = maxDim * 0.8; s3dControls.maxDistance = maxDim * 4;
@@ -3342,8 +3382,9 @@
       const dh = ((tHead - s3dHead + 540) % 360) - 180; s3dHead += dh * k;
 
       const R = s3dTHREE.MathUtils.degToRad;
-      const proaOff = shipModelAtual().headingOffset || 0;   // alinha a proa do GLB ao rumo real
-      s3dShip.rotation.set(R(s3dPitch), R(-(s3dHead + proaOff)), R(s3dRoll));
+      // Sem correção aqui: carregarShipModel() já entregou o casco com a proa
+      // em -Z, que é o que esta linha pressupõe para os TRÊS eixos.
+      s3dShip.rotation.set(R(s3dPitch), R(-s3dHead), R(s3dRoll));
       s3dMaxRoll = Math.max(s3dMaxRoll, Math.abs(s3dRoll));
       if (ship3dMode === 'attitude') {   // no modo Earth quem renderiza é o Cesium
         if (s3dControls) s3dControls.update();
