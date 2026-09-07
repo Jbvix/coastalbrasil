@@ -50,15 +50,22 @@ function extractLighthouses() {
 const FNS = ['calculateDistance','calculateBearing','eyeHeight','calculateVisibility','effectiveRange',
              'findNearestLighthouse','crossTrackError','elapsedFuel','fmtDuration','fmtCoord',
              'offsetLatLng','getCoastline','distanceFromCoast','escapeXml','escapeHtml',
-             'safeFileName'];
+             'safeFileName','distanceToLeg','nearestLegIndex','advanceActiveLeg'];
 
 const sandboxSrc = extractLighthouses() + '\n' +
   'let _coastline = null;\n' +
   'let tripData = null;\n' +
+  'let waypoints = [];\n' +
+  'let navActiveLeg = 0;\n' +
+  'const ARRIVAL_RADIUS_NM = 0.3;\n' +
   'const DEFAULT_EYE_HEIGHT_M = 5;\n' +
   extractConst('FORA_DA_LINHA_DE_COSTA') + '\n' +
+  'const RESYNC_NM = ' + (SRC.match(/const RESYNC_NM = (\\d+)/) || [,'10'])[1] + ';\n' +
   FNS.map(extractFn).join('\n\n') + '\n' +
-  'module.exports = { lighthouses, DEFAULT_EYE_HEIGHT_M, setTrip: t => { tripData = t; }, '
+  'module.exports = { lighthouses, DEFAULT_EYE_HEIGHT_M, RESYNC_NM,\n'
+  + '  setTrip: t => { tripData = t; },\n'
+  + '  setRota: (r, leg) => { waypoints = r; navActiveLeg = leg || 0; },\n'
+  + '  getLeg: () => navActiveLeg, '
   + FNS.join(', ') + ' };';
 
 fs.writeFileSync(path.join(__dirname, '_extracted.js'), sandboxSrc);

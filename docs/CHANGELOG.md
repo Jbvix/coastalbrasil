@@ -11,6 +11,62 @@ executável.
 
 ```
 
+## v2.2.2 (07/09/2026 - 18:11) — CORREÇÃO DE REGRESSÃO: PERNA ATIVA TRAVADA
+
+Autor: Jossian Brito (Charlie Bravo)
+
+Relatado a bordo: XTE de **281,18 NM** numa derrota costeira, com a embarcação
+visivelmente sobre a linha da rota, e o "próximo waypoint" apontando para trás
+(rumo 207° enquanto o barco navegava a 123°). Dois números do HUD denunciavam
+o padrão: XTE 281,18 NM e distância ao próximo WP 281,57 NM — praticamente
+iguais.
+
+### Causa: regressão introduzida pela própria correção A-04 (v2.2.0)
+
+Dar sinal ao along-track está **correto** e continua valendo. O problema é que
+`advanceActiveLeg()` dependia, sem que estivesse escrito, de o valor vir SEM
+sinal para conseguir pular pernas quando a navegação começa já no meio da
+viagem — capacidade que o próprio comentário da função anunciava.
+
+Numa derrota que faz curva, o barco fica a mais de 90° do rumo das primeiras
+pernas. Com o sinal, o along vira negativo, o laço não avança e a perna ativa
+**trava na primeira**. Todo o XTE passa a ser medido contra uma perna a
+centenas de milhas dali.
+
+Reprodução (São Luís com saída ao norte, depois descendo para sudeste):
+
+```
+perna WP01->WP02 aponta para NORTE (θ12 = 8,6°)
+barco a 106,3° de WP01  ->  diferença 97,7° > 90°
+along com sinal = -72,42 NM  ->  NÃO avança  <- perna travada
+XTE resultante  = 531,24 NM  ·  dist. ao "próximo WP" = 539,16 NM
+```
+
+### Correção: escolha de perna robusta, sem reverter o sinal
+
+- `distanceToLeg()` — distância do barco ao SEGMENTO da perna, com a projeção
+  travada nas pontas. É a medida de "quão perto estou desta perna".
+- `nearestLegIndex()` — varre a derrota inteira e devolve a perna mais próxima.
+- **Ancoragem no primeiro fixo:** ao iniciar a navegação, a perna ativa é
+  escolhida pela proximidade real, não assumida como a primeira.
+- **Guarda de sanidade:** acima de `RESYNC_NM` (10 NM) de afastamento da perna
+  ativa, e havendo outra pelo menos 2× mais próxima, o app reancora. A folga
+  de 10 NM e o fator 2 evitam oscilação entre pernas vizinhas e não interferem
+  em desvio legítimo por mau tempo.
+
+Depois da correção, no mesmo cenário: perna 7 (WP08->WP09), XTE **0,012 NM**.
+
+### Provas
+
+Suíte 4 ganhou seis provas (4.6 a 4.11) que fixam este comportamento: iniciar
+no meio da derrota, XTE nunca da ordem da distância ao próximo waypoint,
+progressão normal perna a perna, desvio legítimo que NÃO reancora, folga do
+limiar e travamento da projeção nas pontas.
+
+97 provas, 93 aprovadas, zero em vermelho. 28 passos de fumaça em navegador.
+
+```
+
 ## v2.2.1 (07/09/2026 - 16:00) — ESPELHAMENTO: DIAGNÓSTICO, RECONEXÃO E REGISTRO CONFIÁVEL
 
 Autor: Jossian Brito (Charlie Bravo)

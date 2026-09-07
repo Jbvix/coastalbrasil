@@ -1,4 +1,4 @@
-# Coastal Navigator Brasil v2.2.1 ⛳
+# Coastal Navigator Brasil v2.2.2 ⛳
 
 Aplicativo web gratuito e open-source para planejamento de viagens marítimas costeiras no Brasil.
 
