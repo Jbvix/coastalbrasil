@@ -152,3 +152,15 @@ O banner no topo diz a causa, e a linha de status explica o que fazer:
 A reconexão é automática, com espera crescente (2s, 4s, 8s, 15s, 30s), e
 acontece na hora quando a rede volta ou quando o observador retorna à aba. Não
 é preciso recarregar a página.
+
+### Por que o serviço às vezes some
+
+O espelhamento depende de um servidor externo no plano gratuito, que é
+suspenso após alguns dias sem uso. Existe uma rotina automática que o mantém
+acordado, executada a cada 3 dias. Se ainda assim você vir **servidor fora do
+ar**, o serviço precisa ser reativado — nada em terra resolve, e nenhum link
+funcionará até lá.
+
+Costume de bordo que vale adotar: **teste o link antes de zarpar**, abrindo-o
+num segundo aparelho. Leva quinze segundos e evita descobrir o problema quando
+já não há o que fazer.

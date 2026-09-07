@@ -726,6 +726,55 @@ t(S13, '13.12', 'Estado de registro sobrevive ao recarregar a página', () => {
 });
 
 
+
+/* ── SUÍTE 14 — MANUTENÇÃO AGENDADA ─────────────────────────────────────── */
+const S14 = '14 · Manutenção';
+const fs14 = require('fs');
+const WF = ROOT + '/.github/workflows/manter-supabase-ativo.yml';
+
+t(S14, '14.1', 'Existe rotina para impedir a suspensão do Supabase', () => {
+  ok(fs14.existsSync(WF), 'sem workflow de manutenção — o projeto volta a dormir em ~7 dias');
+});
+t(S14, '14.2', 'A frequência tem folga sobre o limite de suspensão', () => {
+  const y = fs14.readFileSync(WF, 'utf8');
+  const m = y.match(/cron:\s*'([^']+)'/);
+  ok(m, 'sem agendamento cron');
+  const dia = m[1].split(/\s+/)[2];              // campo dia-do-mês
+  const passo = /^\*\/(\d+)$/.exec(dia);
+  ok(passo, 'esperado intervalo em dias, obtido: ' + m[1]);
+  const dias = Number(passo[1]);
+  ok(dias <= 4, `a cada ${dias} dias é pouca folga para um limite de 7`);
+  return { detail: `a cada ${dias} dias · ${m[1]}` };
+});
+t(S14, '14.3', 'O workflow lê a configuração do código, sem cópia paralela', () => {
+  const y = fs14.readFileSync(WF, 'utf8');
+  const m = y.match(/ARQ=(\S+)/);
+  ok(m, 'o workflow não declara de qual arquivo lê a configuração');
+  const arq = ROOT + '/' + m[1];
+  ok(fs14.existsSync(arq), `o workflow lê de ${m[1]}, que não existe mais`);
+  // O elo frágil: se a constante mudar de formato, o grep do workflow devolve
+  // vazio e o ping para de funcionar sem ninguém perceber.
+  const src = fs14.readFileSync(arq, 'utf8');
+  ok(/SUPA_URL = '[^']+'/.test(src) && /SUPA_KEY = '[^']+'/.test(src),
+     `o formato de SUPA_URL/SUPA_KEY em ${m[1]} mudou e quebraria a extração do workflow`);
+  return { detail: 'lê de ' + m[1] };
+});
+t(S14, '14.4', 'Falha do ping vira alarme, não silêncio', () => {
+  const y = fs14.readFileSync(WF, 'utf8');
+  ok(/::error::/.test(y), 'sem ::error::, a falha não gera notificação do GitHub');
+  ok(/exit 1/.test(y), 'o job precisa falhar quando o projeto não responde');
+  ok(/workflow_dispatch/.test(y), 'sem disparo manual para verificar sob demanda');
+});
+t(S14, '14.5', 'Nenhum segredo novo exposto pelo workflow', () => {
+  const y = fs14.readFileSync(WF, 'utf8');
+  ok(!/sb_secret|service_role|eyJ[A-Za-z0-9_-]{20,}\./.test(y),
+     'chave privilegiada no workflow');
+  ok(!/sb_publishable_[A-Za-z0-9_]+/.test(y),
+     'a chave não deve ser copiada para o workflow — ele a lê do código fonte');
+  ok(/add-mask/.test(y), 'a chave deveria ser mascarada no log por higiene');
+});
+
+
 /* ═══ RELATÓRIO ═══ */
 const byStatus = s => results.filter(r=>r.status===s).length;
 const ICON = { PASS:'\x1b[32m✔\x1b[0m', FAIL:'\x1b[31m✘\x1b[0m', WARN:'\x1b[33m▲\x1b[0m' };

@@ -305,3 +305,30 @@ recusa **tudo**: REST e Realtime. Para uma função que o usuário aciona quando
 está no mar, é uma dependência frágil. Duas saídas: manter o projeto ativo com
 acesso periódico, ou aceitar que o espelhamento é conveniência e dizer isso na
 interface — o que a v2.2.1 passou a fazer.
+
+### 6.5 Rotina de manutenção contra a suspensão
+
+`.github/workflows/manter-supabase-ativo.yml` chama o banco a cada 3 dias, o
+que zera o relógio de suspensão do plano gratuito (limite de ~7 dias). A
+margem tolera uma execução perdida.
+
+A chamada é `check_nav_share` com um token inexistente: leitura pura, sem
+efeito colateral, e que exercita PostgREST **e** Postgres — evidência de
+atividade mais forte do que bater na raiz da API.
+
+Três detalhes deliberados:
+
+- **O workflow lê `SUPA_URL` e `SUPA_KEY` do próprio `assets/js/mirror.js`.**
+  Copiar a configuração para um segundo lugar cria duas verdades que divergem
+  com o tempo. A prova 14.3 falha se o formato da constante mudar e quebrar a
+  extração.
+- **Falha vira alarme.** Se o projeto não responder em 3 tentativas, o job
+  falha de propósito e o GitHub notifica. O ping é também monitor: você
+  descobre a queda antes de alguém em terra descobrir tentando acompanhar uma
+  viagem.
+- **HTTP 4xx conta como sucesso.** Uma recusa significa que o serviço está de
+  pé, e o objetivo — registrar atividade — foi cumprido. Só 5xx, tempo
+  esgotado e falha de conexão indicam projeto fora do ar.
+
+**Limite conhecido:** o GitHub desativa workflows agendados em repositórios sem
+atividade por 60 dias, avisando por e-mail antes. Reative na aba Actions.

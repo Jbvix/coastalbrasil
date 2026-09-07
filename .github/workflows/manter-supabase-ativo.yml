@@ -1,0 +1,118 @@
+# ══════════════════════════════════════════════════════════════════════════════
+#  Mantém o projeto Supabase acordado
+#  Autor: Jossian Brito (Charlie Bravo)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+#  POR QUE ISTO EXISTE
+#  Projetos Supabase do plano gratuito são suspensos após ~7 dias sem nenhuma
+#  requisição. Suspenso, o projeto recusa TUDO: REST e Realtime. Na prática,
+#  isso derruba o espelhamento da navegação — justamente a função que o
+#  comandante aciona quando já está no mar e não tem como consertar nada.
+#
+#  Aconteceu em 07/09/2026: um link de acompanhamento compartilhado só mostrava
+#  "erro de conexão", e a causa era o projeto dormindo.
+#
+#  O QUE ELE FAZ
+#  A cada 3 dias faz uma chamada real ao banco (a função check_nav_share, com
+#  um token inexistente — leitura pura, sem efeito colateral). Isso conta como
+#  atividade e zera o relógio da suspensão. A margem de 3 dias para um limite
+#  de 7 tolera uma execução perdida sem consequência.
+#
+#  E TAMBÉM VIGIA
+#  Se o projeto não responder, o job FALHA de propósito e o GitHub envia e-mail.
+#  Assim o ping serve de monitor: você fica sabendo que o serviço caiu antes de
+#  alguém em terra descobrir tentando acompanhar uma viagem.
+#
+#  SOBRE A CHAVE
+#  A chave lida aqui é a `publishable` — a mesma que já vai no JavaScript
+#  entregue a qualquer visitante. Não é segredo, e é lida do próprio código
+#  fonte para não existir uma segunda cópia que possa divergir com o tempo.
+#
+#  LIMITE CONHECIDO
+#  O GitHub desativa workflows agendados em repositórios sem nenhuma atividade
+#  por 60 dias, e avisa por e-mail antes. Se isso acontecer, basta reativar na
+#  aba Actions.
+# ══════════════════════════════════════════════════════════════════════════════
+
+name: Manter Supabase ativo
+
+on:
+  schedule:
+    # 09:00 UTC = 06:00 em Brasília, a cada 3 dias.
+    - cron: '0 9 */3 * *'
+  workflow_dispatch:        # permite disparar à mão pela aba Actions
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    name: Chamada de manutenção
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Obter o código
+        uses: actions/checkout@v4
+
+      - name: Ler URL e chave do próprio código fonte
+        id: cfg
+        run: |
+          set -euo pipefail
+          ARQ=assets/js/mirror.js
+          URL=$(grep -oP "SUPA_URL = '\K[^']+" "$ARQ")
+          KEY=$(grep -oP "SUPA_KEY = '\K[^']+" "$ARQ")
+
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "::error::Não encontrei SUPA_URL/SUPA_KEY em $ARQ."
+            echo "Se o arquivo mudou de nome ou de formato, atualize este workflow."
+            exit 1
+          fi
+
+          # Mascara a chave no log por higiene, embora ela seja pública.
+          echo "::add-mask::$KEY"
+          echo "url=$URL"  >> "$GITHUB_OUTPUT"
+          echo "key=$KEY"  >> "$GITHUB_OUTPUT"
+          echo "Projeto alvo: $URL"
+
+      - name: Chamar o banco (leitura, sem efeito colateral)
+        run: |
+          set -uo pipefail
+          URL='${{ steps.cfg.outputs.url }}'
+          KEY='${{ steps.cfg.outputs.key }}'
+
+          # Até 3 tentativas: uma falha isolada de rede do runner não deve
+          # disparar alarme falso.
+          for tentativa in 1 2 3; do
+            echo "── tentativa $tentativa ──"
+            CODIGO=$(curl -sS -o /tmp/resposta.json -w '%{http_code}' \
+              --max-time 25 \
+              -X POST "$URL/rest/v1/rpc/check_nav_share" \
+              -H "apikey: $KEY" \
+              -H "Content-Type: application/json" \
+              -d '{"p_token":"ping-manutencao"}' || echo "000")
+
+            echo "HTTP $CODIGO"
+            if [ "$CODIGO" = "200" ]; then
+              echo "✅ Projeto acordado e respondendo. Relógio de suspensão zerado."
+              exit 0
+            fi
+
+            # 4xx significa que o serviço ESTÁ DE PÉ e recusou a requisição —
+            # o objetivo (registrar atividade) foi cumprido. Só 5xx, 000 e
+            # tempo esgotado indicam projeto fora do ar.
+            case "$CODIGO" in
+              4*) echo "⚠️ HTTP $CODIGO — o serviço respondeu, então está ativo."
+                  cat /tmp/resposta.json || true
+                  echo "Contato estabelecido: suspensão adiada."
+                  exit 0 ;;
+            esac
+
+            [ "$tentativa" -lt 3 ] && sleep 20
+          done
+
+          echo "::error::O projeto Supabase não respondeu em 3 tentativas."
+          echo "Provável suspensão ou queda. Reative em https://supabase.com/dashboard"
+          echo "Enquanto isso, o espelhamento da navegação não funciona."
+          cat /tmp/resposta.json 2>/dev/null || true
+          exit 1
