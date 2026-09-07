@@ -9,7 +9,10 @@ Ao abrir o aplicativo pela primeira vez, recomenda-se configurar os dados da emb
    - **Nome da Embarcação**
    - **Velocidade Média (nós)**: Essencial para cálculo de ETA.
    - **Consumo (L/h)**: Essencial para cálculo de combustível.
-   - **Data de Saída**: Para definir quando a viagem começa.
+   - **Data de Saída**: Para definir quando a viagem começa. O campo já vem
+     preenchido com a sua **hora local** — se a partida for anterior a agora, o
+     app entende que a viagem está em andamento e desconta o combustível já
+     consumido.
    - **Altura do Olho do Observador (m)**: altura do passadiço acima da linha
      d'água. O padrão é 5 m.
 3. Clique em "Salvar Configuração".
@@ -40,6 +43,10 @@ Ao abrir o aplicativo pela primeira vez, recomenda-se configurar os dados da emb
 
 ### 2.2 Gerenciando Pontos
 - **Ver Informações**: Clique em um marcador ou na linha da rota para ver a distância e rumo.
+- **Mover**: arraste o marcador. Tudo daí em diante é recalculado.
+- **Apagar um ponto**: clique com o botão direito (ou toque longo) sobre ele.
+  Apagar o **primeiro** ponto reancora a rota na partida — distância zero, ETA
+  da saída, consumo apenas o já decorrido.
 - **Deletar Rota**: Clique no botão "🗑️ Limpar" para apagar todos os pontos e começar do zero.
 
 ## 3. Importar e Exportar
@@ -48,12 +55,32 @@ Ao abrir o aplicativo pela primeira vez, recomenda-se configurar os dados da emb
 Se você já tem uma rota feita no Navionics, OpenCPN ou Garmin:
 1. Salve o arquivo `.gpx` no seu dispositivo.
 2. Clique no botão "📂 Importar GPX".
-3. Selecione o arquivo. A rota aparecerá no mapa.
+3. Selecione o arquivo. A rota aparece no mapa e o app enquadra a vista nela.
+
+**Qual parte do arquivo é usada.** Um GPX pode descrever a mesma viagem de até
+três formas: rota planejada (`<rte>`), pontos avulsos (`<wpt>`) e trilha
+gravada (`<trkpt>`). O app usa **uma**, nesta ordem de preferência: rota,
+depois pontos avulsos, depois trilha. Assim um arquivo que traga rota *e*
+trilha não gera pontos em dobro. O resumo ao final diz de qual formato os
+pontos vieram.
+
+**Nomes preservados.** Os nomes dos seus waypoints vêm junto do arquivo — não
+viram mais WP001, WP002.
+
+**Limite de 500 pontos.** Trilhas gravadas de GPS trazem rotineiramente
+milhares de pontos. Acima de 500 o app avisa e importa os primeiros: mais que
+isso deixa de ser derrota planejável e vira traçado bruto, além de travar o
+navegador.
 
 ### 3.2 Exportar Rota
 Para levar a rota planejada aqui para seu GPS:
 1. Clique em "💾 Exportar GPX".
 2. O arquivo será baixado automaticamente.
+
+A derrota sai como **rota** (`<rte>`), que é o que Navionics, OpenCPN e Garmin
+tratam como rota navegável — e não como trilha (`<trk>`), que no padrão GPX
+significa caminho já percorrido. Nomes com `&` ou `<` na embarcação, origem ou
+destino não quebram mais o arquivo.
 
 ## 4. Visualizando o Relatório
 Para ver o planejamento completo:

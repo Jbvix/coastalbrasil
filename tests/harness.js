@@ -22,6 +22,14 @@ function extractFn(name) {
   return SRC.slice(i, k);
 }
 
+/* Extrai `const NOME = [ ... ];` preservando os comentários internos. */
+function extractConst(name) {
+  const re = new RegExp('const ' + name + ' = \\[[\\s\\S]*?\\n    \\];');
+  const m = SRC.match(re);
+  if (!m) throw new Error('const não encontrada: ' + name);
+  return m[0];
+}
+
 function extractLighthouses() {
   const m = SRC.match(/const lighthouses = \[[\s\S]*?\n    \];/);
   if (!m) throw new Error('database de faróis não encontrada');
@@ -37,7 +45,7 @@ const sandboxSrc = extractLighthouses() + '\n' +
   'let _coastline = null;\n' +
   'let tripData = null;\n' +
   'const DEFAULT_EYE_HEIGHT_M = 5;\n' +
-  "const OCEANIC_LIGHTHOUSES = ['Farol de Fernando de Noronha','Farol de Rocas','Farol de São Pedro e São Paulo','Farol de Martin Vaz','Farol de Trindade','Farol de Abrolhos'];\n" +
+  extractConst('FORA_DA_LINHA_DE_COSTA') + '\n' +
   FNS.map(extractFn).join('\n\n') + '\n' +
   'module.exports = { lighthouses, DEFAULT_EYE_HEIGHT_M, setTrip: t => { tripData = t; }, '
   + FNS.join(', ') + ' };';

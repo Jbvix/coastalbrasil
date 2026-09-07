@@ -6,8 +6,8 @@
 ════════════════════════════════════════════════════════════════════════════════
   
   Aplicativo: Coastal Navigator Brasil
-  Versão: 2.1.0
-  Data de Atualização: 07/09/2026 - 01:50 (UTC-3)
+  Versão: 2.2.0
+  Data de Atualização: 07/09/2026 - 02:04 (UTC-3)
   Ano: 2026
   
   Autor: Jossian Brito (Charlie Bravo)
@@ -20,6 +20,72 @@
   cálculos automáticos de ETA, consumo de combustível, geração de relatórios
   e planejamento detalhado de derrota. TOTALMENTE FUNCIONAL EM MOBILE.
   
+  CHANGELOG:
+  v2.2.0 (07/09/2026 - 02:04) - SEGURANÇA E FLUXOS DE USO
+    Autor: Jossian Brito (Charlie Bravo)
+    Etapas 3 e 4 do plano de reparo aberto pela auditoria.
+
+    SEGURANÇA
+    1. INJEÇÃO NA TELEMETRIA (a mais grave). A embarcação montava o card de
+       farol como HTML e transmitia a STRING PRONTA pelo canal Realtime; o
+       observador em terra a atribuía a innerHTML. O canal é público e
+       identificado só pelo token do link — quem tivesse o link escrevia
+       marcação arbitrária na tela alheia. Agora trafega um OBJETO tipado e a
+       marcação é remontada por renderLighthouseCard(), com escape, nos dois
+       lados. A rota recebida é validada como pares de coordenadas antes de
+       entrar no mapa.
+    2. ESCAPE DE SAÍDA no relatório HTML (escapeHtml) e no GPX (escapeXml).
+       Um nome corriqueiro no mercado — "SMIT & CIA" — produzia XML
+       mal-formado, recusado por Navionics, OpenCPN e Garmin sem explicação.
+       Nome de arquivo baixado passa por safeFileName().
+    3. SRI em Leaflet e Supabase, com versões fixadas. O Supabase estava em
+       "@2", intervalo flutuante incompatível com o mecanismo.
+    4. CSP e cabeçalhos de segurança no netlify.toml.
+    5. SENHA DO PAINEL fora do repositório: o build publica só o SHA-256, de
+       ADMIN_GATE_HASH. O painel exibe aviso de que é ferramenta local, não
+       barreira; gatekeeper.js passa a declarar que o token é convite
+       rastreável, não credencial.
+
+    FLUXOS DE USO
+    6. APAGAR O PRIMEIRO WAYPOINT não rebaseava a rota: a condição era
+       `index > 0`. O antigo WP002 virava o primeiro carregando distância, ETA
+       e consumo do ponto que deixou de existir — numa rota de 60 NM por perna,
+       60 NM e 600 L fantasmas propagados por toda a derrota.
+    7. IDA-E-VOLTA DO GPX. exportGPX() gravava cada ponto como <wpt> E como
+       <trkpt>; importGPX() somava os três formatos. Exportar 3 waypoints e
+       reimportar devolvia 6, em zigue-zague. Agora a exportação usa <rte>
+       (rota PLANEJADA, não trilha percorrida) e a importação aplica
+       precedência rtept > wpt > trkpt, usando UM formato.
+    8. NOME DOS PONTOS do GPX era lido e descartado; agora é preservado.
+    9. IMPORTAÇÃO EM LOTE com teto de 500 pontos. Cada ponto redesenhava
+       lista, rota, faróis e consumo (O(n²)) e podia abrir um alert() — uma
+       trilha de milhares de pontos congelava o navegador e enfileirava
+       caixas de diálogo. A interface é redesenhada uma vez, ao final.
+   10. SINAL DO ALONG-TRACK no XTE. Math.acos() devolve só 0..π, então a
+       projeção saía sempre positiva: um barco 5 NM a RÉ do waypoint de
+       partida marcava +5,00 NM e contava como progresso o que ainda faltava.
+   11. FUSO DA DATA DE PARTIDA. O campo datetime-local recebia UTC; em UTC-3
+       a partida sugerida nascia 3 h adiantada, contaminando ETA, blocos de
+       12 h e o consumo de viagem em andamento.
+   12. fmtCoord() produzia "3°60.0'S" — sessenta minutos não existem. Os
+       minutos passam a ser arredondados antes de o grau ser fixado, com
+       transbordo, e o grau recebe zero à esquerda (2 dígitos na latitude,
+       3 na longitude, como na carta).
+   13. POLIGONAL COSTEIRA sem as ilhas afastadas (Alcatrazes, Laje de Santos,
+       Queimada Grande, Arvoredo), que puxavam a linha para o mar aberto.
+   14. HIGIENE DE DADOS: osm_lighthouses_v2.json transcodificado de UTF-16LE
+       para UTF-8 (956 KB -> 178 KB) e osm_lighthouses.json, com 0 bytes,
+       removido do versionamento.
+
+    Provas aprovadas: 54 -> 68 de 73. A única em vermelho é a do tamanho do
+    arquivo, que depende da modularização (etapa 5).
+
+    PENDÊNCIAS REGISTRADAS, NÃO ESCONDIDAS (provas 9.4, 9.7 e 10.4):
+    o hash do portão está no cliente e é atacável por dicionário; script-src
+    ainda admite 'unsafe-inline' (atributos onclick=) e 'unsafe-eval'
+    (WebAssembly do Cesium); a distância da costa é aproximada por 88 pontos
+    e mede ~14% a menos que o real.
+
   CHANGELOG:
   v2.1.0 (07/09/2026 - 01:50) - RECONCILIAÇÃO COM A LISTA DE FARÓIS DA DHN
     Autor: Jossian Brito (Charlie Bravo)
@@ -2613,10 +2679,23 @@
 
     function openTripModal() {
       document.getElementById('tripModal').classList.add('active');
-      // Definir data/hora atual como padrão
-      const now = new Date();
-      const localDateTime = now.toISOString().slice(0, 16);
-      document.getElementById('departureDate').value = localDateTime;
+      /*
+      Data/hora de partida sugerida, em hora LOCAL.
+
+      DEFEITO CORRIGIDO: usava now.toISOString().slice(0,16), que é UTC, dentro
+      de um <input type="datetime-local">, que é hora local. No Brasil (UTC−3)
+      a partida sugerida nascia três horas adiantada. Quem aceitasse o padrão
+      sem reparar contaminava o ETA, os blocos de consumo de 12 h e o cálculo
+      de "viagem em andamento", que debita combustível pelo tempo decorrido
+      desde a partida.
+
+      getTimezoneOffset() devolve minutos a somar ao horário local para chegar
+      ao UTC (+180 no horário de Brasília). Subtraindo esse desvio antes de
+      serializar, o toISOString passa a produzir o instante local.
+      */
+      const agora = new Date();
+      const local = new Date(agora.getTime() - agora.getTimezoneOffset() * 60000);
+      document.getElementById('departureDate').value = local.toISOString().slice(0, 16);
     }
 
     function closeTripModal() {
@@ -2713,27 +2792,35 @@
     - Criação automática de rota
     - Validação de combustível suficiente
     */
-    function createWaypoint(lat, lng) {
-      console.log('═══════════════════════════════════════════════════════════');
-      console.log('🎯 createWaypoint() INICIADO');
-      console.log('📍 Lat:', lat, 'Lng:', lng);
-      console.log('📊 Estado atual:');
-      console.log('   - waypoints.length:', waypoints.length);
-      console.log('   - waypointCounter:', waypointCounter);
-      console.log('   - tripData:', tripData ? 'Configurado' : 'NÃO configurado');
+    function createWaypoint(lat, lng, nomeOriginal, opts) {
+      /*
+      opts.deferUI  — não redesenha a interface a cada ponto. A importação de
+                      GPX cria N waypoints em laço; sem isto cada ponto refazia
+                      lista, rota, faróis e consumo (comportamento O(n²)) e uma
+                      trilha de milhares de pontos congelava o navegador.
+                      Quem passa deferUI é responsável por chamar
+                      refreshWaypointUI() ao final.
+      opts.silent   — não abre alert() ao faltar combustível. Em laço, o alerta
+                      por ponto virava uma fila de caixas de diálogo que o
+                      usuário tinha de fechar uma a uma.
+
+      Retorna true se o waypoint entrou na rota, false caso contrário.
+      */
+      opts = opts || {};
 
       if (!tripData) {
-        console.log('❌ ABORTADO: tripData não configurado');
-        alert('⚠️ Configure os dados da viagem primeiro!');
-        return;
+        if (!opts.silent) alert('⚠️ Configure os dados da viagem primeiro!');
+        return false;
+      }
+      if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+        console.warn('createWaypoint: coordenada inválida', lat, lng);
+        return false;
       }
 
-      console.log('✅ tripData OK, criando objeto waypoint...');
-
-      // Criar objeto waypoint
       const waypoint = {
         id: waypointIdSeq++,   // ID único e monotônico (evita colisão na importação GPX)
-        name: `WP${String(waypointCounter).padStart(3, '0')}`,
+        name: (nomeOriginal && String(nomeOriginal).trim())
+              || `WP${String(waypointCounter).padStart(3, '0')}`,
         lat: lat,
         lng: lng,
         distance: 0,
@@ -2746,33 +2833,32 @@
         lighthouseVisible: false
       };
 
-      console.log('✅ Objeto waypoint criado:', waypoint.name, 'ID:', waypoint.id);
-
-      // Se não é o primeiro waypoint, calcular distâncias e tempos
       if (waypoints.length > 0) {
         const prevWp = waypoints[waypoints.length - 1];
 
-        // Calcular distância até waypoint anterior
         waypoint.distance = calculateDistance(prevWp.lat, prevWp.lng, lat, lng);
-
-        // Calcular distância total acumulada
         waypoint.totalDistance = prevWp.totalDistance + waypoint.distance;
 
-        // Calcular tempo de viagem até este waypoint (em horas)
+        // Tempo do trecho: distância / velocidade. A 10 kt, 60 NM levam 6 h.
         waypoint.timeFromPrevious = waypoint.distance / tripData.speedKnots;
-
-        // Calcular ETA
         const timeOffset = waypoint.timeFromPrevious * 60 * 60 * 1000; // ms
-        waypoint.eta = new Date(prevWp.eta ? prevWp.eta.getTime() + timeOffset : tripData.departureDate.getTime() + timeOffset);
+        waypoint.eta = new Date(prevWp.eta
+          ? prevWp.eta.getTime() + timeOffset
+          : tripData.departureDate.getTime() + timeOffset);
 
-        // Calcular consumo de combustível
+        // Consumo acumulado: horas navegadas × taxa horária.
         waypoint.fuelUsed = prevWp.fuelUsed + (waypoint.timeFromPrevious * tripData.fuelConsumption);
         waypoint.fuelRemaining = tripData.fuelInitial - waypoint.fuelUsed;
 
-        // Validar se há combustível suficiente
         if (waypoint.fuelRemaining < 0) {
-          alert(`⚠️ COMBUSTÍVEL INSUFICIENTE!\n\nO combustível acabaria antes de chegar a ${waypoint.name}.\n\nCombustível necessário: ${waypoint.fuelUsed.toFixed(0)} L\nCombustível disponível: ${tripData.fuelInitial.toFixed(0)} L\n\nDeficit: ${Math.abs(waypoint.fuelRemaining).toFixed(0)} L`);
-          return;
+          waypointIdSeq--;   // devolve o ID: o waypoint não chegou a existir
+          if (!opts.silent) {
+            alert(`⚠️ COMBUSTÍVEL INSUFICIENTE!\n\nO combustível acabaria antes de chegar a ${waypoint.name}.\n\n` +
+                  `Combustível necessário: ${waypoint.fuelUsed.toFixed(0)} L\n` +
+                  `Combustível disponível: ${tripData.fuelInitial.toFixed(0)} L\n\n` +
+                  `Deficit: ${Math.abs(waypoint.fuelRemaining).toFixed(0)} L`);
+          }
+          return false;
         }
       } else {
         // Primeiro waypoint — pode já incluir o consumo de uma viagem em andamento
@@ -2782,53 +2868,16 @@
         waypoint.fuelRemaining = tripData.fuelInitial - waypoint.fuelUsed;
       }
 
-      // Encontrar farol mais próximo
+      // Farol mais próximo e se estará ao alcance efetivo
       const nearest = findNearestLighthouse(lat, lng);
       waypoint.nearestLighthouse = nearest.lighthouse;
       // Mesmo critério da navegação: min(alcance luminoso, alcance geográfico)
       waypoint.lighthouseVisible = nearest.distance <= effectiveRange(nearest.lighthouse);
 
-      // Adicionar ao array
-      console.log('➕ ADICIONANDO ao array waypoints...');
-      console.log('   waypoints.length ANTES:', waypoints.length);
-      console.log('   Array atual:', waypoints.map(wp => wp.name));
-
-      try {
-        waypoints.push(waypoint);
-        console.log('✅ push() executado');
-      } catch (error) {
-        console.error('❌ ERRO no push():', error);
-        alert('ERRO ao adicionar waypoint: ' + error.message);
-        return;
-      }
-
-      console.log('   waypoints.length DEPOIS:', waypoints.length);
-      console.log('   Array atual:', waypoints.map(wp => wp.name));
-
-      // VERIFICAÇÃO CRÍTICA: O waypoint foi realmente adicionado?
-      if (waypoints.length === 0) {
-        console.error('❌ ERRO CRÍTICO: Array vazio após push!');
-        alert('ERRO: Array waypoints está vazio após push!');
-        return;
-      }
-
-      const lastWaypoint = waypoints[waypoints.length - 1];
-      if (lastWaypoint.id !== waypoint.id) {
-        console.error('❌ ERRO CRÍTICO: Waypoint adicionado não é o último!');
-        console.error('   Esperado ID:', waypoint.id);
-        console.error('   Último ID:', lastWaypoint.id);
-        alert('ERRO: Waypoint não foi adicionado corretamente!');
-        return;
-      }
-
-      console.log('✅ Waypoint verificado no array! ID:', lastWaypoint.id);
-
-      console.log('🔢 INCREMENTANDO waypointCounter...');
-      console.log('   waypointCounter ANTES:', waypointCounter);
+      waypoints.push(waypoint);
+      const ordem = waypoints.length;   // rótulo do marcador = posição na rota
       waypointCounter++;
-      console.log('   waypointCounter DEPOIS:', waypointCounter);
 
-      // Criar marcador visual
       const marker = L.marker([lat, lng], {
         draggable: true,
         icon: L.divIcon({
@@ -2846,65 +2895,49 @@
             font-weight: bold;
             font-size: 0.8rem;
             box-shadow: 0 2px 8px rgba(0,0,0,0.5);
-          ">${waypointCounter - 1}</div>`,
+          ">${ordem}</div>`,
           iconSize: [30, 30],
           iconAnchor: [15, 15]
         })
       }).addTo(map);
 
-      // Popup com informações
       marker.bindPopup(getWaypointPopupContent(waypoint));
 
-      // Event listener para arrastar
       marker.on('dragend', function (e) {
         const newPos = e.target.getLatLng();
         updateWaypointPosition(waypoint.id, newPos.lat, newPos.lng);
       });
 
-      // Event listener para clique (excluir)
       marker.on('contextmenu', function () {
         if (confirm(`Excluir ${waypoint.name}?`)) {
           deleteWaypoint(waypoint.id);
         }
       });
 
-      waypointMarkers.push({
-        id: waypoint.id,
-        marker: marker
-      });
+      waypointMarkers.push({ id: waypoint.id, marker: marker });
 
-      // Criar/atualizar rota automaticamente
+      if (!opts.deferUI) {
+        refreshWaypointUI();
+        if ('vibrate' in navigator) navigator.vibrate(50);
+      }
+      return true;
+    }
+
+    /*
+    Redesenha tudo o que depende da lista de waypoints.
+
+    Existe para que a criação em lote (importação de GPX) pague este custo UMA
+    vez, e não uma vez por ponto.
+    */
+    function refreshWaypointUI() {
       createRoute();
-
-      // Atualizar interface
       updateWaypointsList();
       updateRouteInfo();
       updateFuelInfo();
       updateNearestLighthouses();
       updateStatus();
-
-      // Mostrar botão de relatório se houver waypoints
-      if (waypoints.length >= 2) {
-        document.getElementById('reportBtn').style.display = 'flex';
-      }
-
-      console.log('✅ createWaypoint() CONCLUÍDO COM SUCESSO!');
-      console.log('📊 Estado final:');
-      console.log('   - waypoints.length:', waypoints.length);
-      console.log('   - waypointMarkers.length:', waypointMarkers.length);
-      console.log('   - waypointCounter:', waypointCounter);
-      console.log('   - Lista de waypoints:', waypoints.map(wp => wp.name));
-      console.log('═══════════════════════════════════════════════════════════');
-
-      // FEEDBACK VISUAL: Alert de sucesso
-      const waypointName = waypoint.name;
-      const totalWaypoints = waypoints.length;
-      console.log(`🎉 SUCESSO: ${waypointName} criado! Total: ${totalWaypoints}`);
-
-      // Opcional: Vibração em mobile (se suportado)
-      if ('vibrate' in navigator) {
-        navigator.vibrate(50);
-      }
+      const btn = document.getElementById('reportBtn');
+      if (btn) btn.style.display = waypoints.length >= 2 ? 'flex' : 'none';
     }
 
     function getWaypointPopupContent(wp) {
@@ -2991,9 +3024,32 @@
         waypointMarkers.splice(markerIndex, 1);
       }
 
-      // Recalcular a partir do waypoint anterior
-      if (index > 0 && waypoints.length > index) {
-        recalculateFromWaypoint(index);
+      /*
+      Rebase da rota após a remoção.
+
+      DEFEITO CORRIGIDO: a condição era `index > 0`, então apagar o WP001 não
+      recalculava nada. O antigo WP002 virava o primeiro carregando a
+      distância, o ETA e o consumo herdados do ponto que deixou de existir —
+      numa rota de 3 pontos a 60 NM por perna, o novo waypoint inicial ficava
+      com distance = 60 NM, totalDistance = 60 NM e fuelUsed = 600 L. Todo o
+      restante da derrota herdava o deslocamento, sem aviso na tela.
+
+      Agora: se o removido era o primeiro, o novo primeiro é reancorado na
+      partida (distância zero, ETA da saída, consumo apenas o já decorrido) e
+      o recálculo segue dele em diante.
+      */
+      if (waypoints.length > 0) {
+        if (index === 0) {
+          const primeiro = waypoints[0];
+          primeiro.distance = 0;
+          primeiro.totalDistance = 0;
+          primeiro.timeFromPrevious = 0;
+          primeiro.eta = tripData ? tripData.departureDate : primeiro.eta;
+          primeiro.fuelUsed = (tripData && tripData.fuelAlreadyUsed) || 0;
+          primeiro.fuelRemaining = tripData
+            ? tripData.fuelInitial - primeiro.fuelUsed : primeiro.fuelRemaining;
+        }
+        recalculateFromWaypoint(Math.max(index, 1));
       }
 
       // Atualizar rota
@@ -3191,136 +3247,111 @@
     // IMPORT/EXPORT GPX
     // ═══════════════════════════════════════════════════════════════════════
 
+    // Teto de pontos por importação. Trilhas gravadas de GPS trazem
+    // rotineiramente milhares de <trkpt>; acima disto a rota deixa de ser uma
+    // derrota planejável e vira um traçado bruto.
+    const MAX_GPX_POINTS = 500;
+
     function importGPX(event) {
       const file = event.target.files[0];
       if (!file) return;
 
       if (!tripData) {
         alert('⚠️ Configure os dados da viagem antes de importar GPX!');
+        event.target.value = '';
         return;
       }
-
-      console.log('═══════════════════════════════════════════════════════════');
-      console.log('📥 IMPORTANDO GPX:', file.name);
-      console.log('═══════════════════════════════════════════════════════════');
 
       const reader = new FileReader();
 
       reader.onload = function (e) {
-        const gpxText = e.target.result;
-        console.log('✅ Arquivo lido, tamanho:', gpxText.length, 'caracteres');
+        const gpxDoc = new DOMParser().parseFromString(e.target.result, 'text/xml');
 
-        const parser = new DOMParser();
-        const gpxDoc = parser.parseFromString(gpxText, 'text/xml');
-
-        // Verificar erros de parsing
-        const parseError = gpxDoc.querySelector('parsererror');
-        if (parseError) {
-          console.error('❌ ERRO ao parsear XML:', parseError.textContent);
+        if (gpxDoc.querySelector('parsererror')) {
           alert('❌ Erro ao ler arquivo GPX!\nFormato inválido.');
           return;
         }
 
-        // Extrair pontos - suporta 3 formatos GPX
-        // <wpt> = Waypoints (pontos individuais)
-        // <rtept> = Route points (pontos de rota planejada)
-        // <trkpt> = Track points (pontos de trilha gravada)
-        const wpts = gpxDoc.getElementsByTagName('wpt');
-        const rtepts = gpxDoc.getElementsByTagName('rtept');
-        const trkpts = gpxDoc.getElementsByTagName('trkpt');
+        const wpts   = Array.from(gpxDoc.getElementsByTagName('wpt'));
+        const rtepts = Array.from(gpxDoc.getElementsByTagName('rtept'));
+        const trkpts = Array.from(gpxDoc.getElementsByTagName('trkpt'));
 
-        console.log('📍 Pontos encontrados no GPX:');
-        console.log('   - Waypoints (<wpt>):', wpts.length);
-        console.log('   - Route points (<rtept>):', rtepts.length);
-        console.log('   - Track points (<trkpt>):', trkpts.length);
+        /*
+        PRECEDÊNCIA DE FORMATO — defeito corrigido.
 
-        // Combinar todos os pontos em um único array
-        const allPoints = [...Array.from(wpts), ...Array.from(rtepts), ...Array.from(trkpts)];
-        const totalPoints = allPoints.length;
+        A versão anterior SOMAVA os três formatos num único array. Isso duplica
+        a rota sempre que o arquivo traz rota E trilha — o que inclui os
+        arquivos gerados pelo próprio exportGPX(), que grava cada ponto como
+        <wpt> e de novo como <trkpt>. Exportar três waypoints e reimportar
+        devolvia seis, na ordem "todos os wpt, depois todos os trkpt": um
+        zigue-zague que voltava ao ponto de partida no meio do traçado e
+        dobrava distância e consumo estimados.
 
-        console.log('   - TOTAL de pontos:', totalPoints);
-
-        if (totalPoints === 0) {
-          alert('⚠️ Nenhum ponto encontrado no arquivo GPX!\n\nFormatos suportados:\n• <wpt> (waypoints)\n• <rtept> (route points)\n• <trkpt> (track points)');
+        Um arquivo GPX descreve a MESMA rota em até três formas. Usa-se UMA:
+          <rtept> — rota planejada, a intenção do navegante (preferida)
+          <wpt>   — pontos isolados
+          <trkpt> — trilha gravada, o caminho de fato percorrido
+        */
+        let pontos, origem;
+        if (rtepts.length)      { pontos = rtepts; origem = 'rota planejada (<rtept>)'; }
+        else if (wpts.length)   { pontos = wpts;   origem = 'waypoints (<wpt>)'; }
+        else if (trkpts.length) { pontos = trkpts; origem = 'trilha gravada (<trkpt>)'; }
+        else {
+          alert('⚠️ Nenhum ponto encontrado no arquivo GPX!\n\n' +
+                'Formatos suportados:\n• <rtept> (rota)\n• <wpt> (waypoints)\n• <trkpt> (trilha)');
           return;
         }
 
-        // Contar waypoints antes de importar
-        const waypointsLengthBefore = waypoints.length;
-        console.log('📊 waypoints.length ANTES da importação:', waypointsLengthBefore);
-
-        let successCount = 0;
-        let failCount = 0;
-
-        allPoints.forEach((point, index) => {
-          const lat = parseFloat(point.getAttribute('lat'));
-          const lng = parseFloat(point.getAttribute('lon'));
-
-          // Extrair nome do ponto (tag <n> ou <name>)
-          const nameElement = point.querySelector('n') || point.querySelector('name');
-          const pointName = nameElement ? nameElement.textContent : `Ponto ${index + 1}`;
-
-          console.log(`   ${index + 1}/${totalPoints}: ${pointName} - lat=${lat}, lng=${lng}`);
-
-          // Verificar se coordenadas são válidas
-          if (isNaN(lat) || isNaN(lng)) {
-            console.error(`   ❌ Coordenadas inválidas`);
-            failCount++;
+        let truncado = 0;
+        if (pontos.length > MAX_GPX_POINTS) {
+          truncado = pontos.length - MAX_GPX_POINTS;
+          if (!confirm(`O arquivo traz ${pontos.length} pontos em ${origem}.\n\n` +
+                       `Serão importados os primeiros ${MAX_GPX_POINTS}; os ${truncado} restantes ` +
+                       `seriam lentos demais para o navegador desenhar.\n\nContinuar?`)) {
             return;
           }
+          pontos = pontos.slice(0, MAX_GPX_POINTS);
+        }
 
-          try {
-            // Guardar quantidade antes
-            const lengthBefore = waypoints.length;
+        const antes = waypoints.length;
+        let semCombustivel = 0, invalidos = 0;
 
-            createWaypoint(lat, lng);
+        pontos.forEach((ponto, i) => {
+          const lat = parseFloat(ponto.getAttribute('lat'));
+          const lng = parseFloat(ponto.getAttribute('lon'));
+          if (isNaN(lat) || isNaN(lng)) { invalidos++; return; }
 
-            // Verificar se waypoint foi adicionado
-            const lengthAfter = waypoints.length;
+          // O nome do ponto vem do GPX e agora é PRESERVADO: antes era lido e
+          // descartado, e todos os pontos importados viravam WP001, WP002…
+          const el = ponto.querySelector('name');
+          const nome = el ? el.textContent.trim().slice(0, 40) : '';
 
-            if (lengthAfter > lengthBefore) {
-              console.log(`   ✅ Waypoint ${index + 1} (${pointName}) adicionado com sucesso`);
-              successCount++;
-            } else {
-              console.error(`   ❌ Waypoint ${index + 1} (${pointName}) NÃO foi adicionado`);
-              failCount++;
-            }
-          } catch (error) {
-            console.error(`   ❌ Erro ao criar waypoint ${index + 1}:`, error);
-            failCount++;
+          // deferUI: a interface é redesenhada UMA vez, ao final do laço.
+          // silent: sem alert() por ponto — a contagem vai no resumo.
+          if (!createWaypoint(lat, lng, nome, { deferUI: true, silent: true })) {
+            semCombustivel++;
           }
         });
 
-        const waypointsLengthAfter = waypoints.length;
-        const actuallyAdded = waypointsLengthAfter - waypointsLengthBefore;
+        refreshWaypointUI();
 
-        console.log('');
-        console.log('📊 RESULTADO DA IMPORTAÇÃO:');
-        console.log('   - Pontos no GPX:', totalPoints);
-        console.log('   - Criados com sucesso:', successCount);
-        console.log('   - Falharam:', failCount);
-        console.log('   - waypoints.length ANTES:', waypointsLengthBefore);
-        console.log('   - waypoints.length DEPOIS:', waypointsLengthAfter);
-        console.log('   - Realmente adicionados:', actuallyAdded);
-        console.log('═══════════════════════════════════════════════════════════');
-
-        if (actuallyAdded === 0) {
-          alert(`⚠️ GPX importado mas NENHUM waypoint foi adicionado!\n\nPossíveis causas:\n• Combustível insuficiente para a rota\n• Coordenadas inválidas\n• Erro no formato do arquivo\n\nVerifique o console (F12) para mais detalhes.`);
-        } else if (actuallyAdded < totalPoints) {
-          alert(`⚠️ GPX parcialmente importado!\n\n${actuallyAdded} de ${totalPoints} waypoints adicionados.\n\n${failCount} waypoints falharam (possivelmente por combustível insuficiente).`);
-        } else {
-          alert(`✅ GPX importado com sucesso!\n\n${actuallyAdded} waypoints adicionados.`);
+        const adicionados = waypoints.length - antes;
+        if (adicionados > 0 && route) {
+          map.fitBounds(route.getBounds(), { padding: [40, 40] });
         }
+
+        const partes = [`${adicionados} de ${pontos.length} pontos importados de ${origem}.`];
+        if (semCombustivel) partes.push(`${semCombustivel} não couberam no combustível disponível.`);
+        if (invalidos)      partes.push(`${invalidos} com coordenada inválida.`);
+        if (truncado)       partes.push(`${truncado} pontos além do limite de ${MAX_GPX_POINTS} foram ignorados.`);
+        alert((adicionados ? '✅ ' : '⚠️ ') + partes.join('\n'));
       };
 
       reader.onerror = function () {
-        console.error('❌ Erro ao ler arquivo');
         alert('❌ Erro ao ler arquivo GPX!');
       };
 
       reader.readAsText(file);
-
-      // Reset input
       event.target.value = '';
     }
 
@@ -3377,20 +3408,27 @@
         gpx += `  </wpt>\n`;
       });
 
-      // Track (rota)
+      /*
+      A derrota é exportada como ROTA (<rte>/<rtept>), não como trilha.
+
+      Antes gravava-se <trk>/<trkseg>/<trkpt>, repetindo os MESMOS pontos já
+      escritos como <wpt>. Ao reimportar, o app somava os dois formatos e a
+      rota vinha duplicada em zigue-zague.
+
+      A distinção do padrão GPX é semântica e importa para quem recebe o
+      arquivo: <trk> é caminho JÁ PERCORRIDO, registrado pelo GPS; <rte> é
+      caminho PLANEJADO. Este app planeja. Navionics, OpenCPN e Garmin tratam
+      <rte> como rota navegável, que é o que o comandante espera ao abrir.
+      */
       if (waypoints.length >= 2) {
-        gpx += '  <trk>\n';
+        gpx += '  <rte>\n';
         gpx += `    <name>Rota ${escapeXml(tripData ? tripData.vesselName : 'Costeira')}</name>\n`;
-        gpx += '    <trkseg>\n';
-
         waypoints.forEach(wp => {
-          gpx += `      <trkpt lat="${wp.lat}" lon="${wp.lng}">\n`;
-          gpx += `        <time>${wp.eta.toISOString()}</time>\n`;
-          gpx += `      </trkpt>\n`;
+          gpx += `    <rtept lat="${wp.lat}" lon="${wp.lng}">\n`;
+          gpx += `      <name>${escapeXml(wp.name)}</name>\n`;
+          gpx += `    </rtept>\n`;
         });
-
-        gpx += '    </trkseg>\n';
-        gpx += '  </trk>\n';
+        gpx += '  </rte>\n';
       }
 
       gpx += '</gpx>';
@@ -3975,8 +4013,26 @@
       const θ12 = calculateBearing(start.lat, start.lng, end.lat, end.lng) * Math.PI / 180;
 
       const xtAng = Math.asin(Math.sin(d13) * Math.sin(θ13 - θ12));
-      const atAng = Math.acos(Math.cos(d13) / Math.cos(xtAng));
-      return { xte: xtAng * R, along: (isNaN(atAng) ? 0 : atAng * R) };
+      let atAng = Math.acos(Math.cos(d13) / Math.cos(xtAng));
+      if (isNaN(atAng)) atAng = 0;
+
+      /*
+      SINAL DO ALONG-TRACK — defeito corrigido.
+
+      Math.acos() devolve apenas 0..π, então a projeção ao longo da perna saía
+      SEMPRE positiva. Um barco 5 NM a RÉ do waypoint de partida marcava
+      +5,00 NM em vez de −5,00: contava como progresso o que ainda faltava
+      percorrer. O percentual de rota cumprida e a distância restante saíam
+      otimistas, e advanceActiveLeg() podia pular uma perna cedo demais.
+
+      A componente ao longo da derrota é positiva enquanto a diferença angular
+      entre o rumo até o barco (θ13) e o rumo da perna (θ12) estiver dentro de
+      ±90°. Fora disso o barco está atrás do início e o sinal se inverte.
+      */
+      const difRumo = ((θ13 - θ12) * 180 / Math.PI + 540) % 360 - 180; // -180..180
+      const sentido = Math.abs(difRumo) <= 90 ? 1 : -1;
+
+      return { xte: xtAng * R, along: sentido * atAng * R };
     }
 
     /*
@@ -4262,11 +4318,22 @@
 
     /* Formata coordenada em graus e minutos decimais (padrão náutico): 03°43.6'S. */
     function fmtCoord(value, type) {
+      /*
+      DEFEITOS CORRIGIDOS:
+      1. Os minutos eram arredondados DEPOIS de o grau ser fixado, então
+         −3,99934° saía como "3°60.0'S" — sessenta minutos não existem. O
+         arredondamento agora acontece primeiro e transborda para o grau.
+      2. O grau não recebia zero à esquerda, divergindo do exemplo do próprio
+         comentário. Latitude usa 2 dígitos, longitude usa 3, como na carta.
+      */
       const hemi = type === 'lat' ? (value >= 0 ? 'N' : 'S') : (value >= 0 ? 'E' : 'W');
       const abs = Math.abs(value);
-      const deg = Math.floor(abs);
-      const min = (abs - deg) * 60;
-      return `${deg}°${min.toFixed(1).padStart(4, '0')}'${hemi}`;
+      let deg = Math.floor(abs);
+      let min = Math.round((abs - deg) * 600) / 10;   // décimo de minuto
+      if (min >= 60) { min -= 60; deg += 1; }
+      const largura = type === 'lat' ? 2 : 3;
+      return `${String(deg).padStart(largura, '0')}°` +
+             `${min.toFixed(1).padStart(4, '0')}'${hemi}`;
     }
 
     /*
@@ -4276,15 +4343,35 @@
     distância do ponto a qualquer segmento dessa poligonal.
     */
     let _coastline = null;
-    const OCEANIC_LIGHTHOUSES = [
-      'Farol de Fernando de Noronha', 'Farol de Rocas', 'Farol de São Pedro e São Paulo',
-      'Farol de Martin Vaz', 'Farol de Trindade', 'Farol de Abrolhos'
+
+    /*
+    Faróis que NÃO integram a linha de costa.
+
+    A poligonal costeira é montada ligando os faróis em ordem de latitude. Um
+    farol em ilha afastada puxa a linha para o mar aberto e faz a poligonal
+    zigzaguear: o app passa a "achar" costa onde só há água, e subestima a
+    distância do navegante ao litoral.
+
+    Além das oceânicas, entram aqui as ilhas costeiras afastadas: Alcatrazes
+    (~20 NM de São Sebastião), Laje de Santos (~20 NM de Santos), Queimada
+    Grande (~18 NM de Itanhaém) e Arvoredo (~6 NM da costa catarinense).
+
+    LIMITE CONHECIDO: derivar o litoral de 90 pontos é aproximação grosseira. A
+    corda entre dois faróis distantes corta reentrâncias — medido a 10 NM ao
+    largo do Mucuripe, o resultado é ~8,6 NM, cerca de 15% a menos. Serve para
+    ordem de grandeza no popup da embarcação, não para decisão de aproximação.
+    */
+    const FORA_DA_LINHA_DE_COSTA = [
+      // Oceânicas
+      'fernando-de-noronha', 'rocas', 'sao-pedro-e-sao-paulo', 'martin-vaz', 'trindade', 'abrolhos',
+      // Ilhas costeiras afastadas
+      'alcatrazes', 'laje-de-santos', 'queimada-grande', 'arvoredo'
     ];
 
     function getCoastline() {
       if (!_coastline) {
         _coastline = lighthouses
-          .filter(lh => !OCEANIC_LIGHTHOUSES.includes(lh.name))
+          .filter(lh => !FORA_DA_LINHA_DE_COSTA.includes(lh.id))
           .map(lh => ({ lat: lh.lat, lng: lh.lng }))
           .sort((a, b) => a.lat - b.lat);
       }

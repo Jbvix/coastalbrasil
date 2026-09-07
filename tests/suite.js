@@ -295,8 +295,15 @@ t(S5, '5.6', 'Percentual de saldo permanece em [0,100] no plano nominal', () => 
 /* Réplica de deleteWaypoint(): recalcula só se index > 0 */
 function deleteWp(wps, index, trip) {
   wps.splice(index,1);
-  if (index > 0 && wps.length > index) {
-    for (let i=index;i<wps.length;i++){
+  if (wps.length > 0) {
+    if (index === 0) {
+      const p = wps[0];
+      p.distance = 0; p.totalDistance = 0; p.timeFromPrevious = 0;
+      p.eta = trip.departureDate;
+      p.fuelUsed = trip.fuelAlreadyUsed || 0;
+      p.fuelRemaining = trip.fuelInitial - p.fuelUsed;
+    }
+    for (let i=Math.max(index,1);i<wps.length;i++){
       const p=wps[i-1], w=wps[i];
       w.distance=calculateDistance(p.lat,p.lng,w.lat,w.lng);
       w.totalDistance=p.totalDistance+w.distance;
@@ -323,18 +330,22 @@ t(S5, '5.8', 'Apagar um waypoint do MEIO rebaseia corretamente', () => {
 
 /* ── SUÍTE 6 — GPX ──────────────────────────────────────────────────────── */
 const S6 = '6 · GPX';
-function buildGPX(wps, trip) { // réplica de exportGPX()
-  let g = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Coastal Navigator Brasil v2.0">\n';
+function buildGPX(wps, trip) { // réplica de exportGPX(): <wpt> + <rte>/<rtept>
+  let g = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Coastal Navigator Brasil v2.1">\n';
   g += `  <metadata>\n    <name>${trip.vesselName} - ${trip.origin} para ${trip.destination}</name>\n  </metadata>\n`;
   wps.forEach((w,i) => { g += `  <wpt lat="${w.lat}" lon="${w.lng}">\n    <name>WP${String(i+1).padStart(3,'0')}</name>\n  </wpt>\n`; });
-  g += '  <trk>\n    <trkseg>\n';
-  wps.forEach(w => { g += `      <trkpt lat="${w.lat}" lon="${w.lng}"></trkpt>\n`; });
-  g += '    </trkseg>\n  </trk>\n</gpx>';
+  if (wps.length >= 2) {
+    g += '  <rte>\n';
+    wps.forEach((w,i) => { g += `    <rtept lat="${w.lat}" lon="${w.lng}">\n      <name>WP${String(i+1).padStart(3,'0')}</name>\n    </rtept>\n`; });
+    g += '  </rte>\n';
+  }
+  g += '</gpx>';
   return g;
 }
-function countImported(gpx) { // réplica de importGPX(): wpt + rtept + trkpt somados
+function countImported(gpx) { // réplica de importGPX(): PRECEDÊNCIA, não soma
   const n = tag => (gpx.match(new RegExp('<'+tag+'\\s','g'))||[]).length;
-  return n('wpt') + n('rtept') + n('trkpt');
+  const rte = n('rtept'), wpt = n('wpt'), trk = n('trkpt');
+  return rte || wpt || trk;   // rtept > wpt > trkpt
 }
 t(S6, '6.1', 'Ida-e-volta GPX: exportar 3 WP e reimportar deve devolver 3 WP', () => {
   const trip = Object.assign(td(), {vesselName:'RT ATLANTICO', origin:'Fortaleza', destination:'Natal'});
@@ -357,12 +368,23 @@ t(S6, '6.3', 'Nome da embarcação com "<" produz GPX bem-formado', () => {
   ok(!dentro, 'caractere "<" cru dentro de <name> quebra o XML');
 });
 t(S6, '6.4', 'Nomes dos pontos do GPX importado são preservados', () => {
-  ok(/createWaypoint\(lat,\s*lng,\s*pointName/.test(SRC),
-     'importGPX lê pointName mas chama createWaypoint(lat, lng) — o nome original é descartado');
+  ok(/function createWaypoint\(lat, lng, nomeOriginal, opts\)/.test(SRC) &&
+     /createWaypoint\(lat, lng, nome, \{ deferUI: true, silent: true \}\)/.test(SRC),
+     'createWaypoint precisa receber o nome lido do GPX');
 });
-t(S6, '6.5', 'Importação tem limite de pontos (proteção contra travamento)', () => {
-  ok(/totalPoints\s*>\s*\d+|MAX_GPX|limite/i.test(SRC.slice(SRC.indexOf('function importGPX'), SRC.indexOf('function exportGPX'))),
-     'sem teto de pontos: cada ponto refaz lista+rota+faróis (O(n²)) — trilha com milhares de trkpt congela o navegador');
+t(S6, '6.5', 'Importação tem teto de pontos e cria em lote', () => {
+  ok(/const MAX_GPX_POINTS = \d+;/.test(SRC), 'sem teto de pontos importados');
+  ok(/refreshWaypointUI\(\);/.test(SRC) && /deferUI: true/.test(SRC),
+     'a interface deve ser redesenhada uma vez ao final, não a cada ponto');
+  const m = SRC.match(/const MAX_GPX_POINTS = (\d+);/);
+  return { detail: 'teto de ' + (m ? m[1] : '?') + ' pontos, com redesenho único' };
+});
+t(S6, '6.6', 'Exportação usa <rte> (rota planejada), não <trk> (trilha gravada)', () => {
+  // Mede o que é EMITIDO (gpx += ...), não o que os comentários mencionam.
+  const emitido = (SRC.match(/gpx \+= [^\n]*/g) || []).join('\n');
+  ok(/<rte>/.test(emitido), 'a rota planejada deve sair como <rte>');
+  ok(!/<trkseg>|<trkpt/.test(emitido),
+     '<trk> descreve caminho já percorrido; repetir nele os mesmos pontos do <wpt> duplicava a rota na reimportação');
 });
 
 /* ── SUÍTE 7 — FORMATAÇÃO ───────────────────────────────────────────────── */
@@ -385,9 +407,24 @@ t(S7, '7.4', 'fmtCoord arredonda 59,96\' sem gerar 60,0\'', () => {
 
 /* ── SUÍTE 8 — DATA/HORA ────────────────────────────────────────────────── */
 const S8 = '8 · Data/hora';
-t(S8, '8.1', 'Data padrão do modal de viagem usa hora LOCAL (input datetime-local)', () => {
-  ok(!/toISOString\(\)\.slice\(0,\s*16\)/.test(SRC),
-     'openTripModal() usa now.toISOString().slice(0,16) = UTC; em UTC−3 a partida nasce 3 h adiantada, contaminando ETA e consumo');
+t(S8, '8.1', 'Data padrão do modal de viagem é hora LOCAL, não UTC', () => {
+  // Verifica a COMPENSAÇÃO, não a ausência de toISOString: o método continua
+  // sendo usado, mas agora sobre um instante já deslocado para a hora local.
+  const bloco = SRC.slice(SRC.indexOf('function openTripModal'),
+                          SRC.indexOf('function closeTripModal'));
+  ok(/getTimezoneOffset\(\)\s*\*\s*60000/.test(bloco),
+     'sem compensação de fuso: em UTC−3 a partida sugerida nasce 3 h adiantada, ' +
+     'contaminando ETA, blocos de 12 h e o consumo de viagem em andamento');
+
+  // E confere o comportamento: o valor produzido tem de bater com a hora local.
+  const agora = new Date();
+  const local = new Date(agora.getTime() - agora.getTimezoneOffset() * 60000);
+  const produzido = local.toISOString().slice(0, 16);
+  const esperado = `${agora.getFullYear()}-${String(agora.getMonth()+1).padStart(2,'0')}-` +
+                   `${String(agora.getDate()).padStart(2,'0')}T${String(agora.getHours()).padStart(2,'0')}:` +
+                   `${String(agora.getMinutes()).padStart(2,'0')}`;
+  ok(produzido === esperado, `produzido ${produzido}, hora local ${esperado}`);
+  return { detail: `${produzido} (fuso local do navegador, offset ${-agora.getTimezoneOffset()/60}h)` };
 });
 t(S8, '8.2', 'ETA é sempre posterior à partida em rota válida', () => {
   const trip = td(); const w = chain([[-3.7,-38.5],[-4.7,-38.5]], trip);
@@ -470,11 +507,29 @@ t(S10, '10.2', '10 NM ao largo do Mucuripe ⇒ ≈ 10 NM', () => {
   const p = offsetLatLng(-3.7263, -38.4717, 0, 10); // 10 NM ao norte (mar aberto)
   const d = distanceFromCoast(p.lat, p.lng); eq(d, 10, 2); return { detail: d.toFixed(2)+' NM' };
 });
-t(S10, '10.3', 'Ilhas oceânicas não distorcem a poligonal costeira', () => {
-  const ilhas = ['Farol de Alcatrazes','Farol de Laje de Santos','Farol de Queimada Grande','Farol de Arvoredo','Farol da Ilha da Paz'];
-  const dentro = ilhas.filter(n => lighthouses.some(l=>l.name===n));
-  ok(dentro.length===0, 'ilhas costeiras afastadas tratadas como litoral: ' + dentro.join(', ') +
-     ' — a poligonal salta para o mar e subestima a distância da costa');
+t(S10, '10.3', 'Ilhas afastadas ficam FORA da poligonal costeira', () => {
+  // Elas continuam na base de faróis (servem de referência de avistamento);
+  // o que não podem é entrar na linha que representa o litoral.
+  const linha = A.getCoastline();
+  const ilhas = ['alcatrazes','laje-de-santos','queimada-grande','arvoredo',
+                 'fernando-de-noronha','rocas','sao-pedro-e-sao-paulo','martin-vaz',
+                 'trindade','abrolhos'];
+  const dentro = ilhas.filter(id => {
+    const lh = lighthouses.find(l => l.id === id);
+    return lh && linha.some(p => p.lat === lh.lat && p.lng === lh.lng);
+  });
+  ok(dentro.length === 0,
+     'ilha na poligonal costeira: ' + dentro.join(', ') +
+     ' — a linha salta para o mar e subestima a distância da costa');
+  return { detail: `${linha.length} de ${lighthouses.length} faróis compõem a linha de costa` };
+});
+t(S10, '10.4', 'Erro da poligonal declarado e dentro do esperado (≤ 25%)', () => {
+  const p = offsetLatLng(-3.7263, -38.4717, 0, 10);
+  const d = distanceFromCoast(p.lat, p.lng);
+  const erro = Math.abs(d - 10) / 10 * 100;
+  ok(erro <= 25, `erro de ${erro.toFixed(0)}% a 10 NM da costa`);
+  return { warn: `aproximação por 88 pontos: ${d.toFixed(2)} NM medidos para 10 NM reais ` +
+                 `(${erro.toFixed(0)}% a menos). Serve para ordem de grandeza, não para aproximação` };
 });
 
 
@@ -484,8 +539,7 @@ const fs11 = require('fs');
 let osmEl = [];
 try {
   const buf = fs11.readFileSync(ROOT + '/osm_lighthouses_v2.json');
-  const txt = buf.toString('utf16le').replace(/^\uFEFF/, '');
-  osmEl = (JSON.parse(txt).elements) || [];
+  osmEl = (JSON.parse(buf.toString('utf8')).elements) || [];
 } catch (e) { osmEl = []; }
 
 function pares() {
@@ -510,11 +564,16 @@ function pares() {
 t(S11, '11.1', 'Base OSM de referência é legível como JSON UTF-8', () => {
   const buf = fs11.readFileSync(ROOT + '/osm_lighthouses_v2.json');
   ok(!(buf[0] === 0xFF && buf[1] === 0xFE),
-     'osm_lighthouses_v2.json está em UTF-16LE com BOM — JSON.parse() padrão falha; exige transcodificação manual');
+     'arquivo em UTF-16LE com BOM: JSON.parse() padrão falha e exige transcodificação manual');
+  const d = JSON.parse(buf.toString('utf8'));
+  ok(Array.isArray(d.elements) && d.elements.length > 0, 'estrutura OSM inesperada');
+  return { detail: `${d.elements.length} registros · ${(buf.length / 1024).toFixed(0)} KB em UTF-8` };
 });
 t(S11, '11.2', 'Sem arquivos de dados vazios versionados', () => {
-  const sz = fs11.statSync(ROOT + '/osm_lighthouses.json').size;
-  ok(sz > 0, 'osm_lighthouses.json está commitado com 0 bytes');
+  const vazios = fs11.readdirSync(ROOT)
+    .filter(f => /\.(json|csv|jsonl)$/.test(f))
+    .filter(f => fs11.statSync(ROOT + '/' + f).size === 0);
+  ok(vazios.length === 0, 'arquivos de dados com 0 bytes: ' + vazios.join(', '));
 });
 t(S11, '11.3', 'Altitude ou altura de estrutura confere com a base OSM', () => {
   // O `height` do OpenStreetMap é inconsistente: em Salinópolis e Morro Branco

@@ -131,12 +131,17 @@ O parser de GPX utiliza `DOMParser` para ler arquivos XML.
 3. Lê tags `<trkpt>` (pontos de trilha).
 4. Unifica todos em um array único e plota no mapa.
 
-> **Defeito conhecido, ainda não corrigido.** Somar os três formatos duplica a
-> rota quando o arquivo traz rota *e* trilha — o que inclui os arquivos que o
-> próprio `exportGPX()` gera, pois ele grava cada ponto como `<wpt>` e de novo
-> como `<trkpt>`. Exportar três waypoints e reimportar devolve seis, em
-> zigue-zague. A correção prevista é adotar precedência
-> `rtept > wpt > trkpt`, processando um formato por vez.
+**Corrigido na v2.2.0.** Somar os três formatos duplicava a rota quando o
+arquivo trazia rota *e* trilha — o que incluía os arquivos gerados pelo próprio
+`exportGPX()`. Hoje:
+
+- a importação aplica **precedência** `rtept > wpt > trkpt` e usa um formato só;
+- a exportação emite `<rte>` em vez de `<trk>` (uma derrota é caminho
+  *planejado*, não *percorrido*);
+- os nomes dos pontos são preservados;
+- há teto de `MAX_GPX_POINTS` (500) e a interface é redesenhada **uma vez**, ao
+  final do laço, via `refreshWaypointUI()`. Antes cada ponto refazia lista,
+  rota, faróis e consumo — comportamento O(n²).
 
 ## 2.4 Base de Faróis: procedência e reconciliação
 
@@ -161,24 +166,67 @@ linha.
 - **OpenStreetMap API** (Tile Layer): `https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png`
 - **OpenSeaMap API** (Tile Layer): `https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png`
 
-## 4. Segurança e Performance
+## 4. Segurança
 
-> **Estado atual: pendências abertas.** A auditoria de 07/09/2026 registrou seis
-> achados de segurança ainda não corrigidos. Eles estão fora do escopo da
-> v2.1.0 e aguardam autorização:
->
-> - `applyMirrorTelemetry()` atribui `innerHTML` a partir do payload recebido
->   pelo canal Realtime — quem tiver o token de acompanhamento injeta marcação
->   na tela do observador em terra.
-> - `generateReport()` e `exportGPX()` interpolam nome de embarcação, origem e
->   destino sem escape. Além do risco de injeção, um nome com `&` produz XML
->   mal-formado, rejeitado por Navionics, OpenCPN e Garmin.
-> - Sem Content-Security-Policy declarada, no HTML ou no `netlify.toml`.
-> - Leaflet e Supabase carregados de CDN sem `integrity` (SRI).
-> - `assets/js/admin.js` valida a senha no cliente, em texto claro.
-> - `assets/js/gatekeeper.js` aceita qualquer token ainda não usado, com a
->   lista de queimados no `localStorage` do próprio visitante.
+### 4.1 Fronteira de confiança
 
-- **Sanitize**: o app é inteiramente client-side, mas isso não elimina o risco —
-  dado vindo do canal Realtime e de arquivos GPX é externo e não confiável.
+O app é inteiramente client-side, o que **não** elimina risco. Três entradas são
+externas e não confiáveis:
+
+1. **Canal Realtime do Supabase** — público, identificado apenas pelo token do
+   link de acompanhamento. Quem tem o link pode publicar nele.
+2. **Arquivos GPX** — trazem texto arbitrário em `<name>` e `<desc>`.
+3. **Campos do formulário de viagem** — vão para o relatório exportado, para o
+   GPX e para o nome do arquivo baixado.
+
+### 4.2 Injeção na telemetria (corrigido na v2.2.0)
+
+O card de farol do HUD era montado como HTML e a **string pronta** era
+transmitida pelo canal; o observador em terra a atribuía a `innerHTML`. Isso
+dava a quem tivesse o link a capacidade de escrever marcação arbitrária na tela
+de quem acompanhava a viagem.
+
+A correção não foi sanitizar a string, e sim **mudar o que trafega**:
+`navLighthouseData` é um objeto tipado, e `renderLighthouseCard()` remonta a
+marcação com escape nos dois lados. A rota recebida também passa a ser validada
+como pares de coordenadas numéricos e dentro de faixa antes de entrar no mapa.
+
+### 4.3 Escape de saída
+
+| Função | Escape |
+|---|---|
+| `generateReport()` | `escapeHtml()` em nome, origem, destino, faróis e waypoints |
+| `exportGPX()` | `escapeXml()` — sem isso, `"SMIT & CIA"` gera XML mal-formado |
+| atributo `download` | `safeFileName()` |
+
+### 4.4 Transporte
+
+- Leaflet e Supabase com Subresource Integrity e **versão fixada** — o SRI é
+  incompatível com intervalo flutuante, e o Supabase estava em `@2`.
+- Content-Security-Policy e cabeçalhos de segurança no `netlify.toml`.
+
+### 4.5 Controle de acesso — o limite honesto
+
+Um site estático não tem onde guardar segredo. O que foi feito:
+
+- a senha do painel saiu do repositório; o build publica apenas o SHA-256, de
+  `ADMIN_GATE_HASH` (ver `scripts/build-config.js`);
+- o painel exibe aviso permanente de que é ferramenta local;
+- `gatekeeper.js` declara no próprio código que o token é convite rastreável, e
+  não credencial.
+
+O que **não** foi resolvido e não pode ser no cliente: o hash está no navegador
+e é atacável por dicionário. Controle de acesso real exige validação no
+servidor. O projeto já tem esse caminho montado — a função `check_nav_share`, no
+Supabase, valida token, revogação e expiração dos links de acompanhamento.
+
+### 4.6 Pendências registradas
+
+Estão cobertas pelas provas 9.4 e 9.7, que passam com **alerta**, não em verde:
+
+- `script-src` ainda admite `'unsafe-inline'` (a interface usa atributos
+  `onclick=`) e `'unsafe-eval'` (o Cesium compila WebAssembly). Reduzir os dois
+  depende de eliminar os manipuladores inline — trabalho da modularização.
+
+## 5. Performance
 - **Otimização**: O mapa usa `invalidateSize()` para garantir renderização correta ao redimensionar a janela ou rotacionar dispositivos móveis.
