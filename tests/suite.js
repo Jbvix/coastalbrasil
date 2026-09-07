@@ -858,6 +858,161 @@ t(S14, '14.5', 'Nenhum segredo novo exposto pelo workflow', () => {
 });
 
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SUÍTE 15 · Frota 3D                                            (v2.3.0)
+   Um casco mal declarado não quebra nada que um teste unitário perceba: o
+   navio simplesmente aparece de ré, ou afundado. Estas provas guardam os
+   invariantes do registro e a integridade dos arquivos GLB.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const S15 = '15 · Frota 3D';
+const fs15 = require('fs');
+const APP15 = fs15.readFileSync(ROOT + '/app.html', 'utf8');
+
+/* Extrai o literal SHIP_MODELS do app.html contando colchetes — mesma técnica
+   que o harness usa para as funções: lê o código de verdade, não uma cópia. */
+function lerShipModels() {
+  const i = APP15.indexOf('const SHIP_MODELS = [');
+  if (i < 0) return null;
+  let j = APP15.indexOf('[', i), d = 0, fim = -1;
+  for (let k = j; k < APP15.length; k++) {
+    if (APP15[k] === '[') d++;
+    else if (APP15[k] === ']') { d--; if (d === 0) { fim = k; break; } }
+  }
+  if (fim < 0) return null;
+  return eval(APP15.slice(j, fim + 1));   // literal fechado, sem chamadas
+}
+const FROTA = lerShipModels();
+
+t(S15, '15.1', 'O registro da frota existe e traz mais de um casco', () => {
+  ok(FROTA, 'SHIP_MODELS não foi encontrado em app.html');
+  ok(FROTA.length >= 2, `a frota tem ${FROTA ? FROTA.length : 0} casco(s) — o seletor perde o sentido`);
+  return { detail: FROTA.map(m => m.id).join(' · ') };
+});
+
+t(S15, '15.2', 'Todo casco declara os campos que o motor 3D exige', () => {
+  const exigidos = ['id', 'nome', 'classe', 'arquivo', 'loa', 'boca', 'calado',
+                    'headingOffset', 'headingOffsetEarth', 'credito'];
+  FROTA.forEach(m => exigidos.forEach(c => {
+    ok(m[c] !== undefined && m[c] !== null && m[c] !== '',
+       `o casco "${m.id}" não declara "${c}"`);
+  }));
+});
+
+t(S15, '15.3', 'Os arquivos GLB declarados existem no repositório', () => {
+  FROTA.forEach(m => {
+    const f = ROOT + '/' + m.arquivo;
+    ok(fs15.existsSync(f), `o casco "${m.id}" aponta para ${m.arquivo}, que não existe`);
+    const b = fs15.readFileSync(f);
+    // Cabeçalho glTF binário: mágica "glTF" + versão 2 + tamanho declarado.
+    ok(b.slice(0, 4).toString('ascii') === 'glTF', `${m.arquivo} não é um GLB`);
+    ok(b.readUInt32LE(4) === 2, `${m.arquivo} não é glTF 2.0`);
+    ok(b.readUInt32LE(8) === b.length,
+       `${m.arquivo} declara ${b.readUInt32LE(8)} bytes mas tem ${b.length} — arquivo truncado`);
+  });
+  return { detail: FROTA.map(m => (fs15.statSync(ROOT + '/' + m.arquivo).size / 1048576).toFixed(2) + ' MB').join(' · ') };
+});
+
+t(S15, '15.4', 'Nenhum casco pesa a ponto de inviabilizar rede de bordo', () => {
+  const LIMITE_MB = 4;   // a bordo a rede é 3G intermitente, não fibra
+  FROTA.forEach(m => {
+    const mb = fs15.statSync(ROOT + '/' + m.arquivo).size / 1048576;
+    ok(mb <= LIMITE_MB, `${m.id} pesa ${mb.toFixed(2)} MB (limite ${LIMITE_MB} MB)`);
+  });
+});
+
+t(S15, '15.5', 'Identificadores e arquivos não se repetem', () => {
+  const ids = FROTA.map(m => m.id), arqs = FROTA.map(m => m.arquivo);
+  ok(new Set(ids).size === ids.length, 'há id repetido — localStorage escolheria o errado');
+  ok(new Set(arqs).size === arqs.length, 'dois cascos apontam para o mesmo arquivo');
+});
+
+t(S15, '15.6', 'A linha d\'água mantém o casco flutuando, não voando nem submerso', () => {
+  FROTA.forEach(m => {
+    // O plano d'água fica em -altura*calado, com o modelo centrado: fora de
+    // (0, 0.5) a água sairia da caixa do casco — navio no ar ou sob a água.
+    ok(m.calado > 0 && m.calado < 0.5,
+       `o calado de "${m.id}" é ${m.calado}: fora do intervalo (0, 0.5)`);
+  });
+  return { detail: FROTA.map(m => m.id + ' ' + m.calado).join(' · ') };
+});
+
+t(S15, '15.7', 'Correções de proa são graus válidos e conscientes do motor', () => {
+  FROTA.forEach(m => {
+    [['headingOffset', m.headingOffset], ['headingOffsetEarth', m.headingOffsetEarth]].forEach(([c, v]) => {
+      ok(Number.isFinite(v) && v > -360 && v < 360, `"${m.id}".${c} = ${v} não é um ângulo válido`);
+      ok(v % 90 === 0, `"${m.id}".${c} = ${v} — a proa de um GLB cai sempre num múltiplo de 90°`);
+    });
+  });
+});
+
+t(S15, '15.8', 'As dimensões declaradas são de um rebocador, não de um chute', () => {
+  FROTA.forEach(m => {
+    ok(m.loa > 15 && m.loa < 60, `"${m.id}" tem LOA ${m.loa} m — fora da faixa de rebocador`);
+    ok(m.boca > 5 && m.boca < 20, `"${m.id}" tem boca ${m.boca} m — fora da faixa`);
+    // Rebocador é curto e gordo: a razão comprimento/boca fica perto de 3.
+    const r = m.loa / m.boca;
+    ok(r > 2 && r < 4, `"${m.id}" tem L/B = ${r.toFixed(2)}, que não é forma de rebocador`);
+  });
+});
+
+t(S15, '15.9', 'O casco padrão existe de fato no registro', () => {
+  const mp = /const SHIP_MODEL_PADRAO = '([^']+)'/.exec(APP15);
+  ok(mp, 'SHIP_MODEL_PADRAO não foi declarado');
+  ok(FROTA.some(m => m.id === mp[1]),
+     `o padrão é "${mp[1]}", que não está na frota — o painel cairia no primeiro casco em silêncio`);
+  return { detail: 'padrão: ' + mp[1] };
+});
+
+t(S15, '15.10', 'A troca de casco libera a memória de vídeo do anterior', () => {
+  const i = APP15.indexOf('async function carregarShipModel');
+  ok(i > 0, 'carregarShipModel não existe — a troca recriaria a cena inteira');
+  const corpo = APP15.slice(i, i + 2600);
+  // O WebGL não tem coleta de lixo: sem dispose(), cada troca prende dezenas
+  // de MB na GPU e a terceira trava um celular.
+  ok(/geometry\.dispose\(\)/.test(corpo), 'a geometria antiga não é descartada');
+  ok(/mat\.dispose\(\)/.test(corpo), 'o material antigo não é descartado');
+  ok(/\[k\]\.dispose\(\)/.test(corpo), 'as texturas antigas não são descartadas');
+});
+
+t(S15, '15.11', 'Nenhum caminho de modelo ficou escrito à mão fora do registro', () => {
+  // A v2.2.2 tinha 'assets/models/tug.glb' em dois lugares. Se voltar a haver
+  // caminho fora de SHIP_MODELS, o seletor deixa de valer para aquele ponto.
+  const fora = APP15.split('\n')
+    .map((l, n) => [n + 1, l])
+    .filter(([, l]) => /assets\/models\/[\w.-]+\.glb/.test(l))
+    .filter(([, l]) => !/arquivo:/.test(l));
+  ok(fora.length === 0,
+     'caminho de modelo fora do registro na(s) linha(s) ' + fora.map(([n]) => n).join(', '));
+});
+
+t(S15, '15.12', 'A constante única de proa foi mesmo aposentada', () => {
+  ok(!/SHIP_HEADING_OFFSET_DEG/.test(APP15),
+     'SHIP_HEADING_OFFSET_DEG ainda existe — um único offset não serve a dois cascos');
+  ok(/headingOffsetEarth \|\| 0/.test(APP15), 'o Cesium não lê o offset do casco escolhido');
+  ok(/shipModelAtual\(\)\.arquivo/.test(APP15), 'o globo não segue o casco escolhido');
+});
+
+t(S15, '15.13', 'A escolha do casco sobrevive ao recarregar', () => {
+  ok(/SHIP_MODEL_CHAVE = '[^']+'/.test(APP15), 'não há chave de localStorage para a escolha');
+  ok(/localStorage\.setItem\(SHIP_MODEL_CHAVE/.test(APP15), 'a escolha não é gravada');
+  ok(/localStorage\.getItem\(SHIP_MODEL_CHAVE\)/.test(APP15), 'a escolha não é lida na volta');
+  // Uma preferência antiga apontando para um casco removido não pode quebrar o painel.
+  ok(/\|\| SHIP_MODELS\[0\]/.test(APP15), 'sem recuo quando a preferência aponta para casco inexistente');
+});
+
+t(S15, '15.14', 'O crédito de cada modelo acompanha o casco exibido', () => {
+  FROTA.forEach(m => ok(m.credito.length > 15, `o crédito de "${m.id}" é curto demais para atribuir autoria`));
+  ok(/ship3dCredit/.test(APP15), 'o painel não tem elemento de crédito atualizável');
+  ok(!/Rastar 3200 tugboat.*CC-BY-4\.0<\/div>/.test(APP15),
+     'o crédito continua fixo no HTML e mentiria ao trocar de casco');
+});
+
+t(S15, '15.15', 'O seletor está ligado à troca de casco', () => {
+  ok(/id="ship3dModelSel"/.test(APP15), 'o seletor não existe no painel');
+  ok(/onchange="trocarShipModel\(this\.value\)"/.test(APP15), 'o seletor não dispara a troca');
+  ok(/function popularSeletorModelo/.test(APP15), 'nada preenche as opções do seletor');
+});
+
 /* ═══ RELATÓRIO ═══ */
 const byStatus = s => results.filter(r=>r.status===s).length;
 const ICON = { PASS:'\x1b[32m✔\x1b[0m', FAIL:'\x1b[31m✘\x1b[0m', WARN:'\x1b[33m▲\x1b[0m' };

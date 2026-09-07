@@ -1032,6 +1032,16 @@
       font-family: var(--font-body); font-size: 0.82rem; font-weight: 700; cursor: pointer;
     }
     .ship3d-mode.active { background: var(--navigation-blue); color: #fff; }
+    /* Seletor de casco: encolhe primeiro que o título quando a tela é estreita,
+       porque o nome do navio importa mais que a lista no cabeçalho. */
+    .ship3d-select {
+      background: rgba(255, 255, 255, 0.08); color: #fff; font-size: 0.72rem; font-weight: 600;
+      border: 1px solid var(--navigation-blue); border-radius: 6px; padding: 4px 6px;
+      max-width: 190px; min-width: 0; flex-shrink: 1; cursor: pointer;
+    }
+    .ship3d-select option { background: #0b1f30; color: #fff; }
+    @media (max-width: 480px) { .ship3d-select { max-width: 108px; } }
+
     .ship3d-view { flex: 1; position: relative; min-height: 0; }
     #ship3dCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
     #cesiumContainer { position: absolute; inset: 0; width: 100%; height: 100%; display: none; }

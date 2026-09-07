@@ -5,7 +5,7 @@
   COASTAL NAVIGATOR BRASIL — Sistema de Planejamento de Viagem Costeira
 ════════════════════════════════════════════════════════════════════════════════
 
-  Versão: 2.2.2
+  Versão: 2.3.0
   Autor: Jossian Brito (Charlie Bravo)
   LinkedIn: https://www.linkedin.com/in/jossianbrito/
   X: https://x.com/jossiancosta  ·  Medium: https://medium.com/@jossiancosta
@@ -20,9 +20,11 @@
     assets/js/nautical.js     algoritmos náuticos (distância, rumo, alcance, XTE)
     assets/js/report.js       gerador do relatório de derrota
     assets/js/mirror.js       espelhamento da navegação (transmissão + observador)
+    assets/models/*.glb       frota 3D (ver SHIP_MODELS em app.html)
     app.html                  interface, mapa, navegação e espelhamento
     tests/                    banco de provas — npm test
     tools/lf/                 extrator da Lista de Faróis da DHN
+    tools/glb/                preparo dos cascos 3D (FBX+PNG -> GLB)
     docs/CHANGELOG.md         histórico de versões
     docs/tecnica.md           documentação técnica
     docs/manual_usuario.md    manual do usuário
@@ -40,7 +42,7 @@
   <meta name="keywords"
     content="navegação costeira, planejamento de viagem, faróis, Brasil, OpenSeaMap, GPX, rebocadores">
 
-  <title>Coastal Navigator Brasil v2.2.2 - Planejamento de Viagem</title>
+  <title>Coastal Navigator Brasil v2.3.0 - Planejamento de Viagem</title>
 
   <!-- Leaflet CSS -->
   <!-- Subresource Integrity: o navegador recusa o arquivo se o conteúdo servido
@@ -71,7 +73,7 @@
     <header class="app-header">
       <div class="header-content">
         <div class="logo">
-          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.2.2</span></h1>
+          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.3.0</span></h1>
         </div>
 
         <div class="controls">
@@ -231,6 +233,8 @@
           <button id="s3dModeAtt" class="ship3d-mode active" onclick="setShip3DMode('attitude')">Atitude</button>
           <button id="s3dModeEarth" class="ship3d-mode" onclick="setShip3DMode('earth')">🌍 Earth</button>
         </div>
+        <select id="ship3dModelSel" class="ship3d-select" title="Trocar o casco exibido"
+                onchange="trocarShipModel(this.value)"></select>
         <div class="ship3d-actions">
           <button class="nav-icon-btn" title="Nivelar (zerar referência atual)" onclick="calibrateShip3D()" id="ship3dCalBtn">🎚️</button>
           <button class="nav-icon-btn" title="Fechar" onclick="closeShip3D()">✕</button>
@@ -247,7 +251,7 @@
         <div><span>Roll máx</span><strong id="s3dMax">0°</strong></div>
       </div>
       <div class="ship3d-status" id="ship3dStatus">Carregando…</div>
-      <div class="ship3d-credit">Modelo: “Rastar 3200 tugboat” por David Broutian — CC-BY-4.0</div>
+      <div class="ship3d-credit" id="ship3dCredit">Modelo: —</div>
     </div>
 
     <!-- Tela de bloqueio do observador (link revogado/expirado/inválido) -->
@@ -2906,6 +2910,7 @@
     */
     let s3dInited = false, s3dOpen = false, s3dRaf = null;
     let s3dTHREE = null, s3dScene, s3dCamera, s3dRenderer, s3dControls, s3dShip = null;
+    let s3dLoader = null, s3dWater = null;      // carregador GLTF e plano d'água reaproveitados na troca de casco
     let s3dRoll = 0, s3dPitch = 0, s3dHead = 0;        // valores suavizados (graus)
     let s3dRawRoll = 0, s3dRawPitch = 0;               // último cru dos sensores
     let s3dOffRoll = 0, s3dOffPitch = 0;               // calibração (nivelar)
@@ -2917,9 +2922,10 @@
     let cesiumRouteEntities = [];                 // entidades da rota no globo
     let cesiumRouteN = -1;                        // nº de waypoints já desenhados
     const CESIUM_CDN = 'https://cdn.jsdelivr.net/npm/cesium@1.115.0/Build/Cesium/';
-    // Correção de proa do modelo: a glb tem a proa fora do eixo que o Cesium
-    // assume em heading 0 — girar 90° anti-horário alinha o rumo real.
-    const SHIP_HEADING_OFFSET_DEG = -90;
+    /* Correção de proa: cada GLB foi modelado com a proa para um lado diferente,
+       e cada motor 3D tem a sua convenção de "frente". O Cesium supõe a proa em
+       +X; o Rastar 3200 tem a proa em +Z (daí -90°) e o ASD 2810 em -Z, que é o
+       oposto — daí +90°. Os valores vivem em SHIP_MODELS.headingOffsetEarth. */
 
     async function openShip3D() {
       document.getElementById('ship3dModal').classList.add('active');
@@ -3021,7 +3027,7 @@
       cesiumShip = cesiumViewer.entities.add({
         position: new Cesium.CallbackProperty(() => cesiumShipPosition(), false),
         orientation: new Cesium.CallbackProperty(() => cesiumShipOrientation(), false),
-        model: { uri: 'assets/models/tug.glb', minimumPixelSize: 80, maximumScale: 400 }
+        model: { uri: shipModelAtual().arquivo, minimumPixelSize: 80, maximumScale: 400 }
       });
       cesiumViewer.trackedEntity = cesiumShip;
       cesiumRouteN = -1; updateCesiumRoute();   // desenha os segmentos de waypoint
@@ -3050,7 +3056,7 @@
       const Cesium = window.Cesium; const s = shipEarthState();
       const pos = Cesium.Cartesian3.fromDegrees(s.lon, s.lat, 0);
       const hpr = new Cesium.HeadingPitchRoll(
-        Cesium.Math.toRadians(s.heading + SHIP_HEADING_OFFSET_DEG),
+        Cesium.Math.toRadians(s.heading + (shipModelAtual().headingOffsetEarth || 0)),
         Cesium.Math.toRadians(s.pitch), Cesium.Math.toRadians(s.roll));
       return Cesium.Transforms.headingPitchRollQuaternion(pos, hpr);
     }
@@ -3098,6 +3104,140 @@
 
     function setShip3DStatus(t) { const el = document.getElementById('ship3dStatus'); if (el) el.textContent = t; }
 
+    /*
+    ───────────────────────────────────────────────────────────────────────────
+    FROTA 3D — registro dos cascos disponíveis                    (v2.3.0)
+    ───────────────────────────────────────────────────────────────────────────
+    Cada rebocador é um GLB próprio. O registro guarda, além do arquivo, os
+    três números que só se descobrem OLHANDO o modelo — e que, se errados,
+    põem o navio de ré ou afundado:
+
+      proaEixo   Para que lado do modelo aponta a PROA, em coordenadas do
+                 próprio arquivo. O laço de animação faz rotation.y = -rumo,
+                 e essa convenção só fecha se a proa estiver em -Z. Um casco
+                 modelado com a proa em +Z navegaria de ré a 000°.
+                 Aqui é só documentação; quem corrige é headingOffset.
+
+      headingOffset      Graus somados ao rumo NA VISTA DE ATITUDE (three.js).
+      headingOffsetEarth Graus somados ao rumo NO GLOBO (Cesium), que assume
+                 a proa em +X — daí os dois valores diferirem em ~90°.
+
+      calado     Fração da altura total do modelo, do centro para baixo, onde
+                 fica a linha d'água. Exemplo do ASD 2810: a caixa tem
+                 20,77 m (do fundo dos dutos ao topo do mastro) e o calado
+                 real é 5,35 m; o fundo está em -20,77/2 = -10,39, logo a
+                 linha d'água cai em -10,39 + 5,35 = -5,04 → -5,04/20,77 =
+                 -0,243. Aumentar esse número AFUNDA o casco; diminuir o
+                 levanta e deixa o costado à mostra.
+    */
+    const SHIP_MODELS = [
+      {
+        id: 'asd2810',
+        nome: 'Damen ASD 2810 “SD Rebel”',
+        classe: 'ASD — Azimuth Stern Drive',
+        arquivo: 'assets/models/tug-asd2810.glb',
+        loa: 28.6, boca: 10.2, calado: 0.243,
+        proaEixo: '-Z', headingOffset: 0, headingOffsetEarth: 90,
+        credito: 'Modelo ASD 2810 — texturas PBR 4K remontadas e conversão FBX→glTF por Jossian Brito'
+      },
+      {
+        id: 'rastar3200',
+        nome: 'Rastar 3200',
+        classe: 'Rebocador portuário convencional',
+        arquivo: 'assets/models/tug.glb',
+        loa: 32.9, boca: 13.5, calado: 0.30,
+        proaEixo: '+Z', headingOffset: 0, headingOffsetEarth: -90,
+        credito: 'Modelo: “Rastar 3200 tugboat” por David Broutian — CC-BY-4.0'
+      }
+    ];
+    const SHIP_MODEL_PADRAO = 'asd2810';
+    const SHIP_MODEL_CHAVE = 'cnb_modelo3d';
+
+    /* Devolve o registro do casco escolhido, caindo no padrão se a preferência
+       salva apontar para um modelo que não existe mais. */
+    function shipModelAtual() {
+      let id = SHIP_MODEL_PADRAO;
+      try { id = localStorage.getItem(SHIP_MODEL_CHAVE) || SHIP_MODEL_PADRAO; } catch (e) { }
+      return SHIP_MODELS.find(m => m.id === id) || SHIP_MODELS[0];
+    }
+
+    /* Preenche o seletor do cabeçalho e marca o casco em uso. */
+    function popularSeletorModelo() {
+      const sel = document.getElementById('ship3dModelSel');
+      if (!sel || sel.options.length) return;
+      SHIP_MODELS.forEach(m => {
+        const o = document.createElement('option');
+        o.value = m.id; o.textContent = m.nome;
+        sel.appendChild(o);
+      });
+      sel.value = shipModelAtual().id;
+    }
+
+    /* Troca de casco sem recriar a cena: só o modelo é descartado e recarregado.
+       A câmera é reenquadrada porque um casco de 28 m e outro de 33 m não cabem
+       no mesmo raio de órbita. */
+    async function trocarShipModel(id) {
+      const m = SHIP_MODELS.find(x => x.id === id);
+      if (!m) return;
+      try { localStorage.setItem(SHIP_MODEL_CHAVE, id); } catch (e) { }
+      if (s3dInited) {
+        try { await carregarShipModel(m); } catch (e) {
+          setShip3DStatus('⚠️ Falha ao carregar o modelo: ' + ((e && e.message) || e));
+          return;
+        }
+      }
+      // No globo, o casco é uma entidade do Cesium — refaz a que já está lá.
+      if (cesiumShip) {
+        cesiumShip.model.uri = m.arquivo;
+        cesiumRouteN = -1;
+      }
+      setShip3DStatus('Casco em uso: ' + m.nome + ' — ' + m.loa.toFixed(1) + ' m × ' + m.boca.toFixed(1) + ' m.');
+    }
+
+    /* Baixa e monta um casco na cena, devolvendo-o já centrado no eixo de giro.
+       Descarta a geometria e as texturas do casco anterior — sem isso cada troca
+       deixaria dezenas de MB de VRAM presos, e três trocas travariam o celular. */
+    async function carregarShipModel(m) {
+      const THREE = s3dTHREE;
+      setShip3DStatus('Carregando ' + m.nome + '…');
+      const gltf = await new Promise((res, rej) => s3dLoader.load(m.arquivo, res,
+        (e) => { if (e.total) setShip3DStatus('Carregando ' + m.nome + '… ' + Math.round(e.loaded / e.total * 100) + '%'); }, rej));
+
+      if (s3dShip) {
+        s3dScene.remove(s3dShip);
+        s3dShip.traverse(n => {
+          if (n.isMesh) {
+            n.geometry.dispose();
+            for (const mat of [].concat(n.material)) {
+              for (const k of ['map', 'normalMap', 'metalnessMap', 'roughnessMap', 'emissiveMap', 'aoMap']) {
+                if (mat[k]) mat[k].dispose();
+              }
+              mat.dispose();
+            }
+          }
+        });
+        s3dShip = null;
+      }
+
+      const model = gltf.scene;
+      const box = new THREE.Box3().setFromObject(model);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      model.position.sub(center);                 // centraliza no eixo de rotação
+      s3dWater.position.y = -size.y * m.calado;   // linha d'água conforme o calado do casco
+      s3dShip = new THREE.Group(); s3dShip.rotation.order = 'YXZ'; s3dShip.add(model); s3dScene.add(s3dShip);
+
+      const maxDim = Math.max(size.x, size.y, size.z);
+      s3dControls.minDistance = maxDim * 0.8; s3dControls.maxDistance = maxDim * 4;
+      s3dCamera.position.set(maxDim * 1.1, maxDim * 0.6, maxDim * 1.6);
+      s3dControls.target.set(0, 0, 0); s3dControls.update();
+
+      const cred = document.getElementById('ship3dCredit');
+      if (cred) cred.textContent = m.credito;
+      const sel = document.getElementById('ship3dModelSel');
+      if (sel) sel.value = m.id;
+    }
+
     async function ensureShip3D() {
       if (s3dInited) { onShip3DResize(); return; }
       setShip3DStatus('Carregando biblioteca 3D e modelo…');
@@ -3109,37 +3249,33 @@
       const canvas = document.getElementById('ship3dCanvas');
       s3dRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
       s3dRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      // O ASD 2810 traz texturas PBR em sRGB; sem estes dois ajustes o casco
+      // vermelho sai lavado e o metal do guincho vira um borrão branco.
+      s3dRenderer.outputColorSpace = THREE.SRGBColorSpace;
+      s3dRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+      s3dRenderer.toneMappingExposure = 1.1;
       s3dScene = new THREE.Scene();
-      s3dScene.add(new THREE.HemisphereLight(0xcfe8ff, 0x16344d, 1.3));
-      const dir = new THREE.DirectionalLight(0xffffff, 1.6); dir.position.set(6, 12, 8); s3dScene.add(dir);
+      s3dScene.add(new THREE.HemisphereLight(0xcfe8ff, 0x16344d, 1.8));
+      const dir = new THREE.DirectionalLight(0xffffff, 2.2); dir.position.set(6, 12, 8); s3dScene.add(dir);
+      const fill = new THREE.DirectionalLight(0xffffff, 0.6); fill.position.set(-8, 4, -6); s3dScene.add(fill);
       s3dCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000);
 
-      const water = new THREE.Mesh(
+      s3dWater = new THREE.Mesh(
         new THREE.CircleGeometry(160, 48),
         new THREE.MeshStandardMaterial({ color: 0x0b3a5c, transparent: true, opacity: 0.55, roughness: 0.95 })
       );
-      water.rotation.x = -Math.PI / 2; s3dScene.add(water);
+      s3dWater.rotation.x = -Math.PI / 2; s3dScene.add(s3dWater);
 
       s3dControls = new OrbitControls(s3dCamera, canvas);
       s3dControls.enableDamping = true; s3dControls.enablePan = false;
 
       const draco = new DRACOLoader();
       draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/gltf/');
-      const loader = new GLTFLoader(); loader.setDRACOLoader(draco);
-      const gltf = await new Promise((res, rej) => loader.load('assets/models/tug.glb', res,
-        (e) => { if (e.total) setShip3DStatus('Carregando modelo… ' + Math.round(e.loaded / e.total * 100) + '%'); }, rej));
+      s3dLoader = new GLTFLoader(); s3dLoader.setDRACOLoader(draco);
 
-      const model = gltf.scene;
-      const box = new THREE.Box3().setFromObject(model);
-      const size = box.getSize(new THREE.Vector3());
-      const center = box.getCenter(new THREE.Vector3());
-      model.position.sub(center);                 // centraliza no eixo de rotação
-      water.position.y = -size.y * 0.30;          // linha d'água aprox.
-      s3dShip = new THREE.Group(); s3dShip.rotation.order = 'YXZ'; s3dShip.add(model); s3dScene.add(s3dShip);
-      const maxDim = Math.max(size.x, size.y, size.z);
-      s3dControls.minDistance = maxDim * 0.8; s3dControls.maxDistance = maxDim * 4;
-      s3dCamera.position.set(maxDim * 1.1, maxDim * 0.6, maxDim * 1.6);
-      s3dControls.target.set(0, 0, 0); s3dControls.update();
+      popularSeletorModelo();
+      await carregarShipModel(shipModelAtual());
+
       s3dInited = true;
       onShip3DResize();
       window.addEventListener('resize', onShip3DResize);
@@ -3206,7 +3342,8 @@
       const dh = ((tHead - s3dHead + 540) % 360) - 180; s3dHead += dh * k;
 
       const R = s3dTHREE.MathUtils.degToRad;
-      s3dShip.rotation.set(R(s3dPitch), R(-s3dHead), R(s3dRoll));
+      const proaOff = shipModelAtual().headingOffset || 0;   // alinha a proa do GLB ao rumo real
+      s3dShip.rotation.set(R(s3dPitch), R(-(s3dHead + proaOff)), R(s3dRoll));
       s3dMaxRoll = Math.max(s3dMaxRoll, Math.abs(s3dRoll));
       if (ship3dMode === 'attitude') {   // no modo Earth quem renderiza é o Cesium
         if (s3dControls) s3dControls.update();
@@ -3249,7 +3386,7 @@
       updateShareButtons();
 
       console.log('═══════════════════════════════════════════════════════════════');
-      console.log('  Coastal Navigator Brasil v2.2.2 - Inicializado ⚓');
+      console.log('  Coastal Navigator Brasil v2.3.0 - Inicializado ⚓');
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('Autor: Jossian Brito (Charlie Bravo)');
       console.log('58 Faróis curados carregados 💡 (52 DHN + 6 Validados)');

@@ -357,3 +357,114 @@ Três detalhes deliberados:
 
 **Limite conhecido:** o GitHub desativa workflows agendados em repositórios sem
 atividade por 60 dias, avisando por e-mail antes. Reative na aba Actions.
+
+---
+
+## 7. Frota 3D: o casco é um dado, não uma constante
+
+*(v2.3.0 — Jossian Brito, 2026-09-07)*
+
+Até a v2.2.2 havia **um** rebocador, com o caminho do arquivo escrito à mão em
+dois lugares (`ensureShip3D` e a entidade do Cesium) e a correção de proa numa
+constante global única. Acrescentar um segundo casco por esse caminho exigiria
+duplicar tudo. A v2.3.0 inverte a relação: o casco virou **dado** — uma entrada
+em `SHIP_MODELS` — e o código passou a ser genérico.
+
+### 7.1 O que um casco precisa declarar
+
+Um GLB não basta. Três números só se descobrem **olhando** o modelo, e errar
+qualquer um deles põe o navio de ré ou afundado:
+
+| Campo | O que é | O que acontece se estiver errado |
+|---|---|---|
+| `headingOffset` | graus somados ao rumo na vista de **Atitude** (three.js) | o navio navega de ré, ou de través |
+| `headingOffsetEarth` | idem no **globo** (Cesium) | idem, só no modo Earth |
+| `calado` | fração da altura da caixa, do centro para baixo, onde fica a linha d'água | o casco flutua no ar ou submerge até a ponte |
+
+A necessidade de **dois** offsets não é descuido: os motores discordam sobre
+qual eixo é "a frente". O Cesium supõe a proa em **+X**; o laço de atitude faz
+`rotation.y = -rumo`, convenção que só fecha com a proa em **−Z**. Como os dois
+GLB da frota foram modelados com a proa para lados opostos, os quatro valores
+são todos diferentes:
+
+| Casco | Proa no arquivo | `headingOffset` | `headingOffsetEarth` |
+|---|---|---|---|
+| Damen ASD 2810 | −Z | 0° | +90° |
+| Rastar 3200 | +Z | 0° | −90° |
+
+Os eixos de proa foram medidos, não adivinhados: renderizando cada GLB de
+`+Z`, `+X` e de cima. No ASD 2810 a vista de `+Z` mostra os **dutos Kort e os
+hélices** e o nome com o porto de registro — marcas de popa. No Rastar a mesma
+vista mostra a proa arredondada e o hélice aparece do lado oposto.
+
+### 7.2 De onde saiu o calado do ASD 2810
+
+A caixa envolvente do modelo mede **20,77 m** de altura — do fundo dos dutos ao
+topo do mastro. O modelo é centrado no seu próprio centro geométrico, logo o
+ponto mais baixo fica em `-20,77/2 = -10,39`. O calado real do Damen ASD 2810,
+medido até o fundo do duto, é **5,35 m**. Então:
+
+```
+y_linha_d'água = -10,39 + 5,35 = -5,04 m
+fração         = -5,04 / 20,77 = -0,243
+```
+
+Daí `calado: 0.243`. **Aumentar esse número afunda o casco; diminuir levanta e
+deixa o costado à mostra.** O valor foi conferido na renderização: o duto fica
+submerso e a defensa de proa toca a água — que é exatamente onde ela tem de
+tocar, já que é por ali que o rebocador empurra.
+
+Para o Rastar 3200 o valor permanece `0.30`, idêntico ao que a v2.2.2 usava
+(`-size.y * 0.30`). A troca de arquitetura **não** mexeu no casco antigo.
+
+### 7.3 Por que a troca descarta a geometria à mão
+
+`carregarShipModel()` percorre o casco anterior chamando `dispose()` em cada
+geometria, textura e material antes de soltar a referência. Sem isso o
+coletor de lixo do JavaScript libera os objetos, mas **não** a memória de vídeo
+que eles reservaram na GPU — o WebGL não tem coleta automática. O ASD 2810
+carrega 14 texturas; três trocas de casco deixariam dezenas de MB presos e
+travariam um celular.
+
+### 7.4 Como o ASD 2810 foi montado
+
+O arquivo veio de um FBX de 12,4 MB (`ASD_TUG_RED.fbx`, Kaydara 7500) com as
+texturas soltas em PNG. O caminho até o GLB de 1,25 MB:
+
+1. **FBX → glTF** com `FBX2glTF 0.9.7`. As seis geometrias e as coordenadas de
+   UV atravessaram intactas — mas **zero texturas foram ligadas**. Não é falha
+   do conversor: os materiais do FBX traziam `Kd = 0,00 0,00 0,00` e nenhuma
+   propriedade de difusa, então não havia em que pendurar a cor.
+2. **Religação dos canais PBR** com `@gltf-transform`, casando material e
+   textura pelo código de quatro dígitos do nome (`Hool_1002_mat` ↔
+   `ASD_TUG_RED_1002_BaseColor.png`). O primeiro passo de cada material é
+   `setBaseColorFactor([1,1,1,1])`: sem esse reset, o `Kd` preto herdado do FBX
+   multiplicaria toda textura por zero e o rebocador sairia **preto**.
+3. **Empacotamento ORM.** O glTF quer metalicidade e rugosidade numa textura
+   só — verde = rugosidade, azul = metal. Os PNG vinham separados, e foram
+   fundidos canal a canal. Onde faltava rugosidade (material 1004), entrou um
+   cinza constante de 0,6 em vez de deixar o canal vazio, que o motor leria
+   como espelho perfeito.
+4. **Redução.** 4096² → 1024² em WebP: **44 MB de PNG → 0,59 MB**. A malha caiu
+   de 488.616 para 130.484 triângulos (`meshoptimizer`, com as bordas
+   travadas para o casco não abrir costura), depois Draco.
+
+Resultado: **1,25 MB**, 6 materiais, 14 texturas, 4 com cor-base, 5 com
+metal/rugosidade, 3 com normal, 2 com emissiva.
+
+**O que falta no material original** (não é defeito da conversão): não existem
+cor-base para o guincho (`1005`) nem para os vidros (`1006`), nem normal para
+o mastro (`1001`), nem rugosidade para a cabine média (`1004`). O guincho
+recebeu um cinza-aço fixo e os vidros um azul escuro translúcido em
+`alphaMode: BLEND`. Se os mapas aparecerem, basta soltá-los em `tex1k/` e
+repetir o passo 2.
+
+### 7.5 Pendência registrada
+
+**A proa do Rastar 3200 aponta para o lado errado na vista de Atitude.** O
+modelo tem a proa em `+Z`, e o laço de atitude assume `−Z`; a rigor o casco
+navega de ré a 000°. O Cesium já corrigia isso com −90°, mas o three.js nunca
+corrigiu. A v2.3.0 **deixou o comportamento como estava** (`headingOffset: 0`)
+para não alterar, de carona, um casco que não era o alvo desta mudança. A
+correção é trocar esse 0 por 180 — mas é decisão do comandante, não efeito
+colateral.

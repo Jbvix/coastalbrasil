@@ -11,6 +11,76 @@ executável.
 
 ```
 
+## v2.3.0 (07/09/2026 - 22:56) — FROTA 3D: SEGUNDO CASCO E SELETOR DE MODELO
+
+Autor: Jossian Brito (Charlie Bravo)
+
+Pedido de bordo: *"precisamos diversificar os rebocadores"*. Até aqui o painel
+3D tinha um único casco, com o caminho do arquivo escrito à mão em dois lugares
+e a correção de proa numa constante global. A v2.3.0 transforma o casco em
+**dado** (`SHIP_MODELS`) e acrescenta o primeiro rebocador de propulsão
+azimutal da frota.
+
+### Acrescentado
+
+- **Damen ASD 2810 “SD Rebel”** — 28,6 m × 10,2 m, agora o casco **padrão**.
+  Seis materiais, 14 texturas PBR, 130.484 triângulos, **1,25 MB**. É um ASD de
+  verdade: os dois dutos Kort giratórios sob a popa estão no modelo.
+- **Seletor de casco** no cabeçalho do painel 3D. A escolha fica gravada em
+  `localStorage` e vale também para o modo 🌍 Earth.
+- **Crédito dinâmico** — cada casco declara a sua própria atribuição, em vez de
+  uma linha fixa que mentia assim que houvesse um segundo modelo.
+
+### Mudado
+
+- `ensureShip3D()` foi repartida: a cena é montada **uma vez**, e
+  `carregarShipModel()` troca só o casco. A troca chama `dispose()` em cada
+  geometria, textura e material do casco anterior — o WebGL não coleta memória
+  de vídeo sozinho, e sem isso três trocas travariam um celular.
+- A correção de proa deixou de ser a constante única `SHIP_HEADING_OFFSET_DEG`
+  e passou a ser **por casco e por motor** (`headingOffset` para o three.js,
+  `headingOffsetEarth` para o Cesium). Os dois GLB da frota foram modelados com
+  a proa para lados opostos, e os motores discordam sobre qual eixo é a frente.
+- A linha d'água deixou de ser o literal `0.30` e passou a ser o campo `calado`
+  de cada casco. O ASD 2810 usa **0,243**, derivado do calado real de 5,35 m
+  sobre uma caixa de 20,77 m de altura. O Rastar 3200 continua em **0,30** —
+  idêntico ao que a v2.2.2 fazia.
+- Ajustes de renderização exigidos pelas texturas PBR em sRGB:
+  `outputColorSpace = SRGBColorSpace`, tonemapping ACES e uma luz de
+  preenchimento. Sem eles o casco vermelho sai lavado.
+
+### Como o modelo foi montado
+
+FBX de 12,4 MB + 17 PNG soltos → GLB de 1,25 MB. O `FBX2glTF` levou as seis
+geometrias e as UV intactas mas **ligou zero texturas** — os materiais do FBX
+traziam `Kd = 0,00 0,00 0,00` e nenhuma difusa. Os canais PBR foram religados
+com `@gltf-transform`, casando material e textura pelo código de quatro dígitos
+do nome. Detalhe que decide tudo: `setBaseColorFactor([1,1,1,1])` antes de
+pendurar a cor-base — sem esse reset o `Kd` preto multiplicaria toda textura
+por zero e o rebocador sairia **preto**. Metal e rugosidade foram fundidos numa
+textura ORM (o glTF quer os dois no mesmo arquivo), 4096² virou 1024² em WebP
+(**44 MB → 0,59 MB**) e a malha caiu de 488.616 para 130.484 triângulos.
+
+Detalhes em `docs/tecnica.md` §7.
+
+### Provas
+
+Banco de provas sem alteração de linha de base: **97 provas, 93 passam, 0
+falham, 4 avisos**. O painel foi exercitado em navegador: abre com o ASD 2810
+(6 malhas, linha d'água em −5,05 m), troca para o Rastar 3200 (2 malhas,
+−6,92 m — exatamente o valor da v2.2.2), volta ao ASD e a escolha sobrevive em
+`localStorage`.
+
+### Pendência registrada, não corrigida
+
+**A proa do Rastar 3200 aponta para o lado errado na vista de Atitude.** O
+modelo tem a proa em `+Z` e o laço assume `−Z`; a rigor ele navega de ré a
+000°. O Cesium já compensava com −90°, o three.js nunca compensou. Ficou como
+estava (`headingOffset: 0`) para não alterar de carona um casco que não era o
+alvo desta mudança. A correção é trocar esse 0 por 180 — decisão do comandante.
+
+---
+
 ## v2.2.2 (07/09/2026 - 18:11) — CORREÇÃO DE REGRESSÃO: PERNA ATIVA TRAVADA
 
 Autor: Jossian Brito (Charlie Bravo)
