@@ -13,7 +13,8 @@ const ROOT = path.join(__dirname, '..');
  * app.html com os arquivos extraídos e recorta as funções dali, por contagem
  * de chaves — não há reimplementação em lugar nenhum.
  */
-const MODULOS = ['assets/js/lighthouses.js', 'assets/js/nautical.js'];
+const MODULOS = ['assets/js/lighthouses.js', 'assets/js/nautical.js',
+                 'assets/js/report.js', 'assets/js/mirror.js'];
 const SRC = [path.join(ROOT, 'app.html'), ...MODULOS.map(m => path.join(ROOT, m))]
   .map(f => fs.readFileSync(f, 'utf8')).join('\n');
 module.exports = module.exports || {};

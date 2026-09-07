@@ -608,7 +608,7 @@ t(S12, '12.1', 'Código repartido em módulos, nenhum arquivo gigante', () => {
   const fs12 = require('fs');
   const linhas = f => fs12.readFileSync(ROOT + '/' + f, 'utf8').split('\n').length;
   const arquivos = ['app.html', 'assets/css/app.css', 'assets/js/lighthouses.js',
-                    'assets/js/nautical.js', 'assets/js/report.js'];
+                    'assets/js/nautical.js', 'assets/js/report.js', 'assets/js/mirror.js'];
   arquivos.forEach(f => ok(fs12.existsSync(ROOT + '/' + f), 'ausente: ' + f));
   const grandes = arquivos.filter(f => linhas(f) > 3500);
   ok(grandes.length === 0, 'acima de 3500 linhas: ' +
@@ -622,6 +622,7 @@ t(S12, '12.4', 'Os módulos são carregados na ordem de dependência', () => {
      'módulos não referenciados no app.html');
   ok(pos('assets/js/lighthouses.js') < pos('assets/js/nautical.js'),
      'nautical.js usa `lighthouses`: precisa vir depois de lighthouses.js');
+  ok(pos('assets/js/mirror.js') > 0, 'mirror.js não referenciado no app.html');
 });
 t(S12, '12.2', 'Sem console.log de depuração em caminho quente', () => {
   const bloco = SRC.slice(SRC.indexOf('function createWaypoint'), SRC.indexOf('function getWaypointPopupContent'));
@@ -637,6 +638,93 @@ t(S12, '12.3', 'Laço de importação não chama função que abre modal bloquea
      'importGPX() chama createWaypoint() dentro de forEach e createWaypoint() dispara alert() a cada ponto sem combustível — ' +
      'a importação vira uma fila de caixas de diálogo até o usuário fechar todas');
 });
+
+
+/* ── SUÍTE 13 — ESPELHO: DIAGNÓSTICO E RECONEXÃO ────────────────────────── */
+const S13 = '13 · Espelho';
+const CSS = require('fs').readFileSync(ROOT + '/assets/css/app.css', 'utf8');
+
+t(S13, '13.1', 'Falha do canal não vira "erro de conexão" genérico', () => {
+  ok(!/setMirrorConn\('erro de conexão'/.test(SRC),
+     'a mensagem genérica não diz ao observador se o problema é o aparelho dele, ' +
+     'o link ou o servidor — e nenhuma dessas causas tem o mesmo conserto');
+});
+t(S13, '13.2', 'As causas de falha são distinguidas e explicadas', () => {
+  ['sem-rede', 'servidor', 'canal', 'silencio'].forEach(c =>
+    ok(new RegExp("'" + c + "':").test(SRC), 'causa não tratada: ' + c));
+  ok(/function diagnosticarEspelho/.test(SRC), 'sem função de diagnóstico');
+  ok(/navigator\.onLine/.test(SRC), 'não distingue falta de rede do observador');
+  const dicas = (SRC.match(/dica: '/g) || []).length;
+  ok(dicas >= 4, `apenas ${dicas} orientações escritas`);
+  return { detail: `${dicas} causas com rótulo e orientação em linguagem de bordo` };
+});
+t(S13, '13.3', 'Reconexão automática com espera progressiva', () => {
+  const m = SRC.match(/const MIRROR_BACKOFF_MS = \[([^\]]+)\]/);
+  ok(m, 'sem tabela de espera progressiva');
+  const v = m[1].split(',').map(x => parseInt(x.trim(), 10));
+  ok(v.length >= 3, 'poucos degraus de espera');
+  for (let i = 1; i < v.length; i++) ok(v[i] > v[i - 1], 'a espera precisa crescer: ' + v.join(','));
+  ok(v[0] >= 1000 && v[v.length - 1] <= 60000, 'faixa de espera implausível: ' + v.join(','));
+  ok(/function agendarReconexao/.test(SRC), 'sem agendamento de nova tentativa');
+  return { detail: v.map(x => x / 1000 + 's').join(' · ') + ' — e o banner mostra a contagem' };
+});
+t(S13, '13.4', 'Silêncio da embarcação é detectado (não basta estar conectado)', () => {
+  ok(/Date\.now\(\) - _mirrorLastMsg/.test(SRC),
+     '_mirrorLastMsg era gravado e NUNCA lido: conectado sem receber parecia normal');
+  ok(/const MIRROR_SILENCE_MS = \d+/.test(SRC), 'sem limiar de silêncio');
+  ok(/function armarVigiaDeSilencio/.test(SRC), 'sem vigia de silêncio');
+});
+t(S13, '13.5', 'Reconecta ao voltar a rede ou a aba', () => {
+  ok(/addEventListener\('online'/.test(SRC), 'não reage à volta da rede');
+  ok(/visibilitychange/.test(SRC), 'não reage ao retorno à aba');
+  ok(/addEventListener\('offline'/.test(SRC), 'não avisa quando a rede cai');
+});
+t(S13, '13.6', 'Bloqueio definitivo encerra as tentativas', () => {
+  const bloco = SRC.slice(SRC.indexOf('function showMirrorBlocked'),
+                          SRC.indexOf('function showMirrorBlocked') + 900);
+  ['mirrorRetryTimer', 'mirrorCountdownTimer', 'mirrorStaleTimer'].forEach(tm =>
+    ok(bloco.includes(tm), `${tm} continuaria rodando após link revogado/expirado`));
+});
+t(S13, '13.7', 'Estado "mudo" tem cor própria, distinta de "caiu"', () => {
+  ok(/\.mirror-conn\.warn\s*\{/.test(CSS),
+     'conectado-sem-receber e conexão-caída não podem ter a mesma cor');
+  ok(/\.mirror-conn\.ok\s*\{/.test(CSS) && /\.mirror-conn\.off\s*\{/.test(CSS));
+});
+t(S13, '13.8', 'Telemetria recebida zera a espera de reconexão', () => {
+  const bloco = SRC.slice(SRC.indexOf('function applyMirrorTelemetry'),
+                          SRC.indexOf('function applyMirrorTelemetry') + 400);
+  ok(/mirrorRetry = 0/.test(bloco), 'sem isso, uma queda antiga mantém a espera longa');
+});
+
+
+t(S13, '13.9', 'Registro do compartilhamento verifica o RETORNO, não só exceção', () => {
+  // supabase-js devolve { data, error } e só lança em falha de REDE. Um
+  // try/catch sozinho não enxerga erro vindo do servidor — foi assim que
+  // links nasceram sem token registrado, e o observador via "Link inválido".
+  ok(/function registrarShare/.test(SRC), 'sem função única de registro');
+  ok(/const \{ error \} = await supa\.rpc\('create_nav_share'/.test(SRC),
+     'o campo `error` do retorno precisa ser checado');
+  ok(!/_dbSynced = true;\s*\n\s*try/.test(SRC),
+     'marcar como sincronizado ANTES de chamar o servidor produz link morto');
+});
+t(S13, '13.10', 'Link não registrado é sinalizado ao comandante', () => {
+  ok(/AINDA NÃO REGISTRADO/.test(SRC), 'criação sem confirmação precisa avisar');
+  ok(/share-pendente/.test(SRC) && /\.share-pendente/.test(CSS),
+     'o estado pendente precisa aparecer na lista de compartilhamentos');
+  ok(/function ressincronizarShares/.test(SRC), 'sem nova tentativa de registro');
+});
+t(S13, '13.11', 'Revogação só remove da lista se o servidor confirmar', () => {
+  const bloco = SRC.slice(SRC.indexOf('async function revokeShare'),
+                          SRC.indexOf('async function revokeShare') + 1800);
+  ok(/const \{ error \} = await supa\.rpc\('revoke_nav_share'/.test(bloco),
+     'revogação sem verificar o retorno: o item some da lista e o acesso continua de pé');
+  ok(/NÃO foi possível revogar/.test(bloco), 'falha de revogação precisa ser dita');
+});
+t(S13, '13.12', 'Estado de registro sobrevive ao recarregar a página', () => {
+  ok(/dbOk: !!x\.dbOk/.test(SRC), 'loadShares precisa restaurar o estado de registro');
+  ok(/dbOk: !!s\.dbOk/.test(SRC), 'persistShares precisa gravar o estado de registro');
+});
+
 
 /* ═══ RELATÓRIO ═══ */
 const byStatus = s => results.filter(r=>r.status===s).length;

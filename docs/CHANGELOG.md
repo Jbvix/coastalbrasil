@@ -10,6 +10,66 @@ executável.
 ---
 
 ```
+
+## v2.2.1 (07/09/2026 - 16:00) — ESPELHAMENTO: DIAGNÓSTICO, RECONEXÃO E REGISTRO CONFIÁVEL
+
+Autor: Jossian Brito (Charlie Bravo)
+
+Aberto por um caso real: um link de acompanhamento compartilhado mostrava
+apenas "erro de conexão", sem nada que indicasse a causa.
+
+### Duas falhas independentes, encontradas ao investigar
+
+**1. O projeto Supabase estava suspenso.** Projetos do plano gratuito pausam
+após dias sem uso. Com o backend fora do ar, `check_nav_share` não respondia e
+o WebSocket do Realtime era recusado. O aplicativo dizia "erro de conexão" —
+mensagem que não distingue backend fora do ar de falta de internet no aparelho
+de quem olha, e não sugere nada.
+
+**2. O token nunca chegou ao servidor.** `createShare()` marcava o
+compartilhamento como sincronizado ANTES de chamar o servidor e descartava os
+dois desfechos com `.then(() => {}, () => {})`. Pior: `supa.rpc()` **não
+lança exceção** em erro do servidor — devolve `{ data, error }` e só lança em
+falha de rede, então o `try/catch` não via erro nenhum vindo do banco. O
+resultado é um link gerado, copiado e enviado cujo token não existe no
+servidor. Quem recebe vê "Link inválido", e ninguém sabe por quê.
+
+### Lado do observador
+
+- `diagnosticarEspelho()` separa três causas com donos diferentes:
+  `sem-rede` (aparelho do observador), `servidor` (backend fora do ar, nada que
+  o observador possa fazer) e `canal` (ligação caiu, reconecta).
+- Quarta situação, antes invisível: `silencio` — conectado, mas a embarcação
+  parou de transmitir. `_mirrorLastMsg` era gravado e **nunca lido**.
+- Reconexão automática com espera progressiva (2s, 4s, 8s, 15s, 30s) e
+  contagem regressiva visível no banner.
+- Tentativa imediata quando a rede volta ou o observador retorna à aba.
+- Cor própria (âmbar) para "mudo", distinta do vermelho de "caiu".
+- Cada causa traz orientação em linguagem de bordo na linha de status.
+
+### Lado da embarcação
+
+- `registrarShare()` verifica o campo `error` do retorno, não só exceções, e
+  só marca `dbOk` depois da confirmação do servidor.
+- Link não registrado é avisado na criação e fica **marcado na lista**, com
+  nova tentativa automática ao abrir o gerenciador e ao voltar a conexão.
+- `revokeShare()` só remove da lista se o servidor confirmar. Antes, falha de
+  revogação removia o item da tela enquanto quem tinha o link mantinha acesso —
+  e o comandante acreditava ter cortado.
+- O estado de registro sobrevive ao recarregar a página.
+
+### Modularização
+
+`assets/js/mirror.js` (303 linhas). O app.html voltou a 3.249 linhas.
+
+### Verificação
+
+86 provas, 82 aprovadas, zero em vermelho. A suíte 13 cobre o espelhamento.
+O teste de fumaça subiu para 28 passos e agora abre o modo espelho com o
+backend inalcançável, exigindo que o banner NOMEIE a causa e mostre a
+contagem da próxima tentativa.
+
+```
 CHANGELOG:
   v2.2.0 (07/09/2026) - SEGURANÇA, FLUXOS DE USO E MODULARIZAÇÃO
     Autor: Jossian Brito (Charlie Bravo)

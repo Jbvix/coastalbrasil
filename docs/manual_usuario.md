@@ -112,3 +112,43 @@ não como sinal náutico confirmado.
 
 ## 6. Dicas de Uso
 - **Mobile**: O app funciona offline se você mantiver a aba aberta. Ideal para consulta rápida no tablet durante a navegação.
+
+## 7. Compartilhar a navegação com quem ficou em terra
+
+Durante a Navegação GPS, o botão **📤 Compartilhar navegação** gera um link.
+Quem abrir esse link vê a sua posição, rumo, velocidade e a rota, ao vivo e
+somente-leitura. Nada é gravado em banco: a transmissão é efêmera.
+
+### Antes de enviar o link, confira a lista
+
+Um link só funciona depois que o servidor **registra** o token. Se o registro
+não passar, o item aparece marcado em âmbar na lista:
+
+> ⚠️ Ainda não registrado no servidor — quem abrir agora verá "Link inválido".
+
+Nesse caso **não envie ainda**. O aplicativo tenta de novo sozinho quando a
+conexão voltar e ao reabrir o gerenciador de compartilhamentos. A marca some
+quando o servidor confirma.
+
+### Revogar
+
+O lixeira ao lado de cada link corta o acesso. O item só sai da lista se o
+servidor confirmar a revogação — se não confirmar, você é avisado, porque a
+transmissão para mas quem tem o link pode manter acesso até a expiração.
+
+### O que o observador vê quando algo falha
+
+O banner no topo diz a causa, e a linha de status explica o que fazer:
+
+| Banner | O que é | Quem resolve |
+|---|---|---|
+| `ao vivo` | recebendo normalmente | — |
+| `aguardando embarcação…` | canal aberto, ninguém transmitindo ainda | o comandante, ao iniciar a navegação |
+| `sem transmissão há Xs` | conectado, mas a embarcação parou | perda de sinal a bordo, ou navegação encerrada |
+| `sem internet` | o aparelho de quem olha está sem rede | o próprio observador |
+| `servidor fora do ar` | o serviço não responde | ninguém em terra — avise o comandante |
+| `reconectando… · nova tentativa em Xs` | a ligação caiu, tentando de novo | volta sozinho |
+
+A reconexão é automática, com espera crescente (2s, 4s, 8s, 15s, 30s), e
+acontece na hora quando a rede volta ou quando o observador retorna à aba. Não
+é preciso recarregar a página.

@@ -12,6 +12,7 @@ um template literal. A v2.2.0 repartiu o arquivo.
 | `assets/css/app.css` | 1.077 | estilos |
 | `assets/js/report.js` | 472 | gerador do relatório de derrota |
 | `assets/js/nautical.js` | 327 | algoritmos náuticos e formatação |
+| `assets/js/mirror.js` | 303 | espelhamento da navegação (transmissão + observador) |
 | `assets/js/lighthouses.js` | 162 | base de 98 faróis (gerada por `tools/lf/`) |
 | `docs/CHANGELOG.md` | 570 | histórico, antes um comentário no topo do HTML |
 
@@ -251,3 +252,56 @@ Estão cobertas pelas provas 9.4 e 9.7, que passam com **alerta**, não em verde
 
 ## 5. Performance
 - **Otimização**: O mapa usa `invalidateSize()` para garantir renderização correta ao redimensionar a janela ou rotacionar dispositivos móveis.
+
+## 6. Espelhamento: o que a prática ensinou
+
+### 6.1 `supa.rpc()` não lança exceção em erro do servidor
+
+O cliente `supabase-js` devolve `{ data, error }`. Ele **só** lança em falha de
+rede. Envolver a chamada em `try/catch` e não olhar o campo `error` significa
+tratar como sucesso qualquer recusa vinda do banco — RLS, função inexistente,
+violação de restrição.
+
+Foi assim que links de acompanhamento nasceram mortos: o token era gerado,
+o link copiado e enviado, e nada havia sido escrito no servidor. Quem recebia
+via "Link inválido".
+
+```javascript
+// errado — enxerga só falha de rede
+try { await supa.rpc('create_nav_share', p); } catch (e) { /* ... */ }
+
+// certo
+const { error } = await supa.rpc('create_nav_share', p);
+s.dbOk = !error;
+```
+
+E jamais marcar como sincronizado **antes** de chamar.
+
+### 6.2 "Erro de conexão" não é diagnóstico
+
+Três causas, três donos:
+
+| Causa | Sintoma | Quem resolve |
+|---|---|---|
+| `sem-rede` | `navigator.onLine === false` | o próprio observador |
+| `servidor` | REST do backend não responde | ninguém em terra |
+| `canal` | REST responde, WebSocket caiu | reconexão automática |
+
+`diagnosticarEspelho()` distingue as três batendo em `/rest/v1/` com limite de
+6 s. Um 404 ou 401 conta como servidor vivo — significa apenas que a rota não
+existe ou exige credencial, não que o serviço caiu.
+
+### 6.3 Conectado não é o mesmo que recebendo
+
+`_mirrorLastMsg` era gravado a cada pacote e **nunca lido**. Um observador com
+o canal aberto e a embarcação muda via "ao vivo" indefinidamente.
+`armarVigiaDeSilencio()` verifica a cada 5 s e sinaliza em âmbar — cor distinta
+do vermelho de conexão caída, porque o problema é outro.
+
+### 6.4 Projeto Supabase suspenso
+
+Projetos do plano gratuito pausam após dias sem uso, e um projeto pausado
+recusa **tudo**: REST e Realtime. Para uma função que o usuário aciona quando
+está no mar, é uma dependência frágil. Duas saídas: manter o projeto ativo com
+acesso periódico, ou aceitar que o espelhamento é conveniência e dizer isso na
+interface — o que a v2.2.1 passou a fazer.

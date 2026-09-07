@@ -989,7 +989,21 @@
     }
     .mirror-conn.ok { background: var(--success-green); }
     .mirror-conn.off { background: var(--warning-red); }
+    /* Âmbar: conectado mas SEM receber. Não é falha de conexão — é a
+       embarcação que parou de transmitir. Estados diferentes, cores
+       diferentes: vermelho para "caiu", âmbar para "está mudo". */
+    .mirror-conn.warn { background: var(--lighthouse-amber); color: var(--deep-ocean); }
     #mirrorBannerToken { font-weight: 700; letter-spacing: 1px; margin-left: 6px; }
+
+    /* Compartilhamento criado mas ainda não confirmado pelo servidor: o link
+       existe na tela e NÃO funciona para quem o recebe. Precisa gritar. */
+    .share-item.pendente { border-left: 3px solid var(--lighthouse-amber); }
+    .share-pendente {
+      font-size: 0.75rem;
+      line-height: 1.4;
+      color: var(--lighthouse-amber);
+      margin: 4px 0 6px;
+    }
 
     /* Painel de atitude 3D */
     .ship3d-overlay {

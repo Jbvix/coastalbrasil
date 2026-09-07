@@ -1,6 +1,6 @@
 {
   "name": "coastal-navigator-brasil",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Planejamento de viagem marítima costeira do Brasil — banco de provas e ferramentas de dados",
   "private": true,
   "scripts": {

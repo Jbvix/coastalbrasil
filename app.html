@@ -5,7 +5,7 @@
   COASTAL NAVIGATOR BRASIL — Sistema de Planejamento de Viagem Costeira
 ════════════════════════════════════════════════════════════════════════════════
 
-  Versão: 2.2.0
+  Versão: 2.2.1
   Autor: Jossian Brito (Charlie Bravo)
   LinkedIn: https://www.linkedin.com/in/jossianbrito/
   X: https://x.com/jossiancosta  ·  Medium: https://medium.com/@jossiancosta
@@ -18,6 +18,8 @@
     assets/css/app.css        estilos
     assets/js/lighthouses.js  base de 98 faróis (Lista de Faróis DH2 40ª ed.)
     assets/js/nautical.js     algoritmos náuticos (distância, rumo, alcance, XTE)
+    assets/js/report.js       gerador do relatório de derrota
+    assets/js/mirror.js       espelhamento da navegação (transmissão + observador)
     app.html                  interface, mapa, navegação e espelhamento
     tests/                    banco de provas — npm test
     tools/lf/                 extrator da Lista de Faróis da DHN
@@ -38,7 +40,7 @@
   <meta name="keywords"
     content="navegação costeira, planejamento de viagem, faróis, Brasil, OpenSeaMap, GPX, rebocadores">
 
-  <title>Coastal Navigator Brasil v2.2.0 - Planejamento de Viagem</title>
+  <title>Coastal Navigator Brasil v2.2.1 - Planejamento de Viagem</title>
 
   <!-- Leaflet CSS -->
   <!-- Subresource Integrity: o navegador recusa o arquivo se o conteúdo servido
@@ -69,7 +71,7 @@
     <header class="app-header">
       <div class="header-content">
         <div class="logo">
-          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.2.0</span></h1>
+          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.2.1</span></h1>
         </div>
 
         <div class="controls">
@@ -470,6 +472,7 @@
   <script src="assets/js/lighthouses.js"></script>
   <script src="assets/js/nautical.js"></script>
   <script src="assets/js/report.js"></script>
+  <script src="assets/js/mirror.js"></script>
 
   <!-- three.js (carregado sob demanda ao abrir o painel 3D de atitude do rebocador) -->
   <script type="importmap">
@@ -2436,196 +2439,7 @@
 
     
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // ESPELHAMENTO DE NAVEGAÇÃO (token + Supabase Realtime broadcast)
-    // ═══════════════════════════════════════════════════════════════════════
-    /*
-    A embarcação transmite (broadcast) sua posição e telemetria por um canal
-    identificado por um token aleatório. Quem está em terra abre o app com
-    ?watch=TOKEN e recebe os mesmos dados ao vivo, em modo somente-leitura.
-    O Realtime é efêmero (não grava posição em banco).
-    */
-    const SUPA_URL = 'https://nsbeddfkcdyssrirrhzt.supabase.co';
-    const SUPA_KEY = 'sb_publishable_RJjmXL721BwcD8fHfF0jyw_zHtlBlTb';
-    let supaClient = null;
-    let mirrorShares = [];      // [{ token, label, channel, expiresAt, viewers }]
-    let mirrorToken = null;     // token do lado OBSERVADOR (?watch=)
-    let watchMode = false;      // true quando aberto como observador (?watch=)
-    let mirrorRouteLayer = null;
-    let mirrorWaypoints = [];        // waypoints recebidos (lado observador) p/ o botão INFO
-    let mirrorAttitude = null;       // atitude (roll/pitch/proa) recebida p/ o painel 3D do observador
-    let shipAttitude = null;         // atitude atual (sensores) p/ transmitir aos observadores
-    let viewerChannel = null;        // canal do observador (terra)
-    let viewerRecheckTimer = null;   // revalida periodicamente revogação/expiração
-    let _lastBroadcastMs = 0;            // throttle de transmissão
-    const MIRROR_INTERVAL_MS = 3000;     // transmite no máx. 1x a cada 3s (economiza cota do Supabase)
-    const SHARES_KEY = 'coastal_nav_shares';
-
-    function getSupa() {
-      if (!supaClient) {
-        if (!window.supabase || !window.supabase.createClient) return null;
-        supaClient = window.supabase.createClient(SUPA_URL, SUPA_KEY, {
-          realtime: { params: { eventsPerSecond: 5 } }
-        });
-      }
-      return supaClient;
-    }
-
-    /* Gera um token curto e legível para o canal de compartilhamento. */
-    function genToken() {
-      const bytes = new Uint8Array(6);
-      (window.crypto || window.msCrypto).getRandomValues(bytes);
-      return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
-    }
-
-    // ─── Registro persistente de compartilhamentos ───
-    function loadShares() {
-      try {
-        const arr = JSON.parse(localStorage.getItem(SHARES_KEY) || '[]');
-        mirrorShares = arr.map(x => ({ token: x.token, label: x.label, expiresAt: x.expiresAt || null, channel: null, viewers: 0 }));
-      } catch (e) { mirrorShares = []; }
-    }
-    function persistShares() {
-      try { localStorage.setItem(SHARES_KEY, JSON.stringify(mirrorShares.map(s => ({ token: s.token, label: s.label, expiresAt: s.expiresAt || null })))); } catch (e) { }
-    }
-
-    // ─── Canais (criados sob demanda; ativos enquanto navegando) ───
-    function ensureShareChannel(s) {
-      if (s.channel) return;
-      const supa = getSupa();
-      if (!supa) return;
-      // Garante a linha no banco (idempotente) — habilita revogação/expiração no servidor
-      if (!s._dbSynced) {
-        s._dbSynced = true;
-        try {
-          supa.rpc('create_nav_share', {
-            p_token: s.token, p_label: s.label,
-            p_vessel: tripData ? tripData.vesselName : null, p_expires: s.expiresAt || null
-          }).then(() => { }, () => { });
-        } catch (e) { }
-      }
-      s.channel = supa.channel('coastal-nav-' + s.token, { config: { broadcast: { self: false } } });
-      // Presença (Nível 2): conta observadores conectados a este compartilhamento
-      s.channel.on('presence', { event: 'sync' }, () => {
-        try { s.viewers = Object.keys(s.channel.presenceState()).length; } catch (e) { s.viewers = 0; }
-        if (document.getElementById('shareModal').classList.contains('active')) renderShareList();
-      });
-      s.channel.subscribe(() => { });
-    }
-    function ensureAllShareChannels() { mirrorShares.forEach(ensureShareChannel); }
-    function closeShareChannels() {
-      mirrorShares.forEach(s => {
-        if (s.channel) { try { getSupa().removeChannel(s.channel); } catch (e) { } s.channel = null; }
-      });
-    }
-
-    /* Abre o gerenciador de compartilhamentos. (chamado pelos botões 📤) */
-    function toggleShare() { openShareManager(); }
-    function openShareManager() {
-      if (watchMode) return;
-      ensureAllShareChannels();
-      renderShareList();
-      document.getElementById('shareModal').classList.add('active');
-    }
-    function closeShareModal() {
-      document.getElementById('shareModal').classList.remove('active');
-    }
-
-    /* Cria um novo compartilhamento nomeado (token + canal + linha no banco). */
-    async function createShare() {
-      const supa = getSupa();
-      if (!supa) { alert('⚠️ Tempo real indisponível (sem conexão).'); return; }
-      const input = document.getElementById('shareLabelInput');
-      const label = (input.value || '').trim() || ('Link ' + (mirrorShares.length + 1));
-      const hours = parseInt((document.getElementById('shareExpiry') || {}).value || '24', 10);
-      const expiresAt = hours > 0 ? new Date(Date.now() + hours * 3600000).toISOString() : null;
-      const s = { token: genToken(), label, expiresAt, channel: null, viewers: 0, _dbSynced: true };
-      mirrorShares.push(s);
-      persistShares();
-      input.value = '';
-      renderShareList();
-      updateShareButtons();
-      // Registra no banco (habilita revogação/expiração) e liga o canal de transmissão
-      try {
-        await supa.rpc('create_nav_share', {
-          p_token: s.token, p_label: s.label,
-          p_vessel: tripData ? tripData.vesselName : null, p_expires: expiresAt
-        });
-      } catch (e) { s._dbSynced = false; }
-      ensureShareChannel(s);
-    }
-
-    /* Revoga um compartilhamento específico (servidor + fecha canal; quem tem o link perde o acesso). */
-    async function revokeShare(token) {
-      const i = mirrorShares.findIndex(s => s.token === token);
-      if (i === -1) return;
-      const s = mirrorShares[i];
-      if (s.channel) { try { getSupa().removeChannel(s.channel); } catch (e) { } }
-      mirrorShares.splice(i, 1);
-      persistShares();
-      renderShareList();
-      updateShareButtons();
-      const supa = getSupa();
-      if (supa) { try { await supa.rpc('revoke_nav_share', { p_token: token }); } catch (e) { } }
-    }
-
-    function shareLinkFor(token) {
-      return `${location.origin + location.pathname}?watch=${token}`;
-    }
-
-    
-
-    /* Renderiza a lista de compartilhamentos no modal. */
-    function renderShareList() {
-      const el = document.getElementById('shareList');
-      if (!el) return;
-      if (!mirrorShares.length) {
-        el.innerHTML = '<p style="color:#90CAF9;font-size:.85rem;margin:8px 0;">Nenhum compartilhamento criado. Crie um link acima para alguém acompanhar em terra.</p>';
-        return;
-      }
-      const navMsg = navActive ? '' : '<p style="color:#FFB74D;font-size:.78rem;margin:0 0 8px;">⚠️ A transmissão começa quando você iniciar a Navegação GPS.</p>';
-      const fmtExp = iso => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-      el.innerHTML = navMsg + mirrorShares.map(s => {
-        const expired = s.expiresAt && new Date(s.expiresAt) <= new Date();
-        const expTxt = expired ? '⏳ expirado' : (s.expiresAt ? 'expira ' + fmtExp(s.expiresAt) : 'sem expiração');
-        const viewers = navActive ? ` · 👁️ ${s.viewers || 0} acompanhando` : '';
-        return `
-        <div class="share-item">
-          <div class="share-item-head">
-            <strong>${escapeHtml(s.label)}</strong>
-            <button class="nav-icon-btn" title="Revogar este acesso" onclick="revokeShare('${s.token}')">🗑️</button>
-          </div>
-          <div class="share-meta">${expTxt}${viewers}</div>
-          <div class="share-link-row">
-            <input type="text" readonly value="${shareLinkFor(s.token)}" onclick="this.select()">
-            <button class="btn" onclick="copyShareLinkText('${shareLinkFor(s.token)}', event)" title="Copiar">📋</button>
-          </div>
-        </div>`;
-      }).join('');
-    }
-
-    function copyShareLinkText(link, ev) {
-      const btn = ev && ev.target;
-      const done = () => { if (btn) { const o = btn.textContent; btn.textContent = '✅'; setTimeout(() => btn.textContent = o, 1500); } };
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(link).then(done).catch(done);
-      } else {
-        const t = document.createElement('textarea'); t.value = link; document.body.appendChild(t); t.select();
-        try { document.execCommand('copy'); } catch (e) { } document.body.removeChild(t); done();
-      }
-    }
-
-    /* Atualiza os botões 📤 conforme a quantidade de compartilhamentos. */
-    function updateShareButtons() {
-      const n = mirrorShares.length;
-      const big = document.getElementById('navShareBig');
-      if (big) {
-        big.classList.toggle('sharing', n > 0);
-        big.textContent = n > 0 ? `📤 Compartilhando (${n}) — gerenciar` : '📤 Compartilhar navegação';
-      }
-      const ic = document.getElementById('navShareBtn');
-      if (ic) ic.style.background = n > 0 ? 'rgba(105,240,174,0.5)' : 'transparent';
-    }
+    // Espelhamento da navegação: assets/js/mirror.js
 
     // ─── Relógio de data/hora na tela ───
     let _clockTimer = null;
@@ -2733,6 +2547,8 @@
       document.getElementById('navSimBtn').style.display = 'none';
       document.querySelector('.nav-hud-title').innerHTML = '<span class="nav-pulse"></span> ESPELHO';
       setMirrorConn('validando acesso…', '');
+      setMirrorHint('🔎 Verificando o link de acompanhamento…');
+      armarGatilhosDeReconexao(token);
       validateAndStartViewer(token);
       return true;
     }
@@ -2751,27 +2567,178 @@
         subscribeViewer(token);
         startViewerRecheck(token);
       } catch (e) {
-        // falha transitória de validação: permite acompanhar, mas avisa
-        setMirrorConn('validação indisponível', 'off');
+        /*
+        A validação não respondeu. Isso NÃO é motivo para bloquear o observador:
+        o link pode estar perfeito e o backend é que caiu. Mas também não pode
+        ser silencioso — antes dizia só "validação indisponível", que não
+        informa nada a quem está em terra esperando notícia do mar.
+        */
+        const causa = await diagnosticarEspelho();
+        reportarEspelho(causa);
         subscribeViewer(token);
+        startViewerRecheck(token);
       }
+    }
+
+    /*
+    ═══════════════════════════════════════════════════════════════════════
+    DIAGNÓSTICO E RECONEXÃO DO ESPELHO
+    ═══════════════════════════════════════════════════════════════════════
+
+    A versão anterior mostrava "erro de conexão" para QUALQUER falha e parava
+    ali. Quem estava em terra acompanhando uma viagem não tinha como saber se
+    o problema era o próprio celular, o link, ou o servidor — e nada voltava
+    sozinho: só recarregando a página.
+
+    São três causas com conserto diferente:
+
+      'sem-rede'  o dispositivo do OBSERVADOR está sem internet. Volta sozinho
+                  quando a rede voltar; nada a fazer além de esperar.
+      'servidor'  o backend não responde — projeto suspenso, manutenção ou
+                  queda. Não é o link nem a internet de quem olha, e não há
+                  nada que o observador possa fazer. Precisa ficar explícito.
+      'canal'     o servidor está de pé mas o canal de telemetria caiu.
+                  Reconecta sozinho.
+
+    A reconexão usa espera progressiva (2s, 4s, 8s, 15s, 30s) para não
+    martelar o servidor, e o banner mostra a contagem regressiva para o
+    observador saber que ainda está tentando.
+    */
+    const MIRROR_BACKOFF_MS = [2000, 4000, 8000, 15000, 30000];
+    const MIRROR_SILENCE_MS = 25000;   // sem telemetria por este tempo = silêncio
+
+    const MIRROR_DIAG = {
+      'sem-rede': {
+        rotulo: 'sem internet',
+        dica: '📵 O seu aparelho está sem conexão. O acompanhamento volta sozinho assim que a rede voltar.'
+      },
+      'servidor': {
+        rotulo: 'servidor fora do ar',
+        dica: '🛠️ O serviço de acompanhamento não está respondendo. Não é o seu link nem a sua internet — avise o comandante.'
+      },
+      'canal': {
+        rotulo: 'reconectando…',
+        dica: '📡 A ligação com a embarcação caiu. Tentando restabelecer.'
+      },
+      'silencio': {
+        rotulo: 'sem transmissão',
+        dica: '⚓ Conectado, mas a embarcação parou de transmitir. Pode ser perda de sinal a bordo ou a navegação encerrada.'
+      }
+    };
+
+    let mirrorRetry = 0;
+    let mirrorRetryTimer = null, mirrorCountdownTimer = null, mirrorStaleTimer = null;
+
+    function setMirrorHint(texto) {
+      const el = document.getElementById('navGpsStatus');
+      if (el) el.textContent = texto;
+    }
+
+    /*
+    Descobre POR QUE não está chegando telemetria.
+
+    Bate na API REST do próprio backend com um tempo-limite curto: se ela
+    responde (mesmo com 404, que só significa "rota inexistente"), o servidor
+    está vivo e o problema é do canal. Se não responde, ou o aparelho está sem
+    rede, ou o backend caiu.
+    */
+    async function diagnosticarEspelho() {
+      if (!navigator.onLine) return 'sem-rede';
+      try {
+        const ctrl = new AbortController();
+        const limite = setTimeout(() => ctrl.abort(), 6000);
+        const r = await fetch(SUPA_URL + '/rest/v1/', {
+          method: 'GET', headers: { apikey: SUPA_KEY },
+          signal: ctrl.signal, cache: 'no-store'
+        });
+        clearTimeout(limite);
+        return (r.ok || r.status === 404 || r.status === 401) ? 'canal' : 'servidor';
+      } catch (e) {
+        return navigator.onLine ? 'servidor' : 'sem-rede';
+      }
+    }
+
+    /* Mostra a causa no banner e a orientação na linha de status do HUD. */
+    function reportarEspelho(causa) {
+      const d = MIRROR_DIAG[causa] || MIRROR_DIAG['canal'];
+      setMirrorConn(d.rotulo, causa === 'silencio' ? 'warn' : 'off');
+      setMirrorHint(d.dica);
+    }
+
+    /* Agenda nova tentativa com espera progressiva e contagem visível. */
+    function agendarReconexao(token, causa) {
+      if (mirrorRetryTimer) clearTimeout(mirrorRetryTimer);
+      if (mirrorCountdownTimer) clearInterval(mirrorCountdownTimer);
+
+      const espera = MIRROR_BACKOFF_MS[Math.min(mirrorRetry, MIRROR_BACKOFF_MS.length - 1)];
+      mirrorRetry++;
+      const base = (MIRROR_DIAG[causa] || MIRROR_DIAG['canal']).rotulo;
+      let resta = Math.round(espera / 1000);
+
+      const tique = () => {
+        setMirrorConn(`${base} · nova tentativa em ${resta}s`, 'off');
+        if (--resta < 0) clearInterval(mirrorCountdownTimer);
+      };
+      tique();
+      mirrorCountdownTimer = setInterval(tique, 1000);
+      mirrorRetryTimer = setTimeout(() => subscribeViewer(token), espera);
+    }
+
+    /* Vigia o silêncio: conectado não significa recebendo. */
+    function armarVigiaDeSilencio() {
+      if (mirrorStaleTimer) clearInterval(mirrorStaleTimer);
+      mirrorStaleTimer = setInterval(() => {
+        if (!_mirrorLastMsg) return;                 // ainda não recebeu o 1º pacote
+        const parado = Date.now() - _mirrorLastMsg;
+        if (parado > MIRROR_SILENCE_MS) {
+          const d = MIRROR_DIAG['silencio'];
+          setMirrorConn(`${d.rotulo} há ${Math.round(parado / 1000)}s`, 'warn');
+          setMirrorHint(d.dica);
+        }
+      }, 5000);
     }
 
     /* Assina o canal de telemetria e registra presença (Nível 2). */
     function subscribeViewer(token) {
       const supa = getSupa();
-      if (!supa) return;
+      if (!supa) { reportarEspelho('servidor'); return; }
+      if (mirrorRetryTimer) { clearTimeout(mirrorRetryTimer); mirrorRetryTimer = null; }
+      if (mirrorCountdownTimer) { clearInterval(mirrorCountdownTimer); mirrorCountdownTimer = null; }
       if (viewerChannel) { try { supa.removeChannel(viewerChannel); } catch (e) { } }
+
       viewerChannel = supa.channel('coastal-nav-' + token, { config: { broadcast: { self: false } } });
       viewerChannel.on('broadcast', { event: 'tele' }, ({ payload }) => applyMirrorTelemetry(payload));
-      viewerChannel.subscribe(status => {
+      viewerChannel.subscribe(async status => {
         if (status === 'SUBSCRIBED') {
+          mirrorRetry = 0;                            // sucesso zera a espera
           setMirrorConn('aguardando embarcação…', 'ok');
+          setMirrorHint('📡 Canal aberto. Aguardando a embarcação transmitir.');
+          armarVigiaDeSilencio();
           try { viewerChannel.track({ at: Date.now() }); } catch (e) { }
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          setMirrorConn('erro de conexão', 'off');
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          const causa = await diagnosticarEspelho();
+          reportarEspelho(causa);
+          agendarReconexao(token, causa);
         }
       });
+    }
+
+    /*
+    Gatilhos que merecem uma tentativa imediata, sem esperar o cronômetro:
+    a rede voltou, ou o observador voltou para a aba.
+    */
+    function armarGatilhosDeReconexao(token) {
+      const tentarJa = () => {
+        if (!watchMode || !navigator.onLine) return;
+        if (viewerChannel && viewerChannel.state === 'joined') return;
+        mirrorRetry = 0;
+        subscribeViewer(token);
+      };
+      window.addEventListener('online', tentarJa);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') tentarJa();
+      });
+      window.addEventListener('offline', () => reportarEspelho('sem-rede'));
     }
 
     /* Revalida periodicamente: se revogado/expirado durante a sessão, bloqueia. */
@@ -2790,6 +2757,10 @@
     /* Mostra a tela de bloqueio e encerra a recepção. */
     function showMirrorBlocked(reason) {
       if (viewerRecheckTimer) { clearInterval(viewerRecheckTimer); viewerRecheckTimer = null; }
+      // Bloqueio é definitivo: para de tentar reconectar e de vigiar o silêncio.
+      if (mirrorRetryTimer) { clearTimeout(mirrorRetryTimer); mirrorRetryTimer = null; }
+      if (mirrorCountdownTimer) { clearInterval(mirrorCountdownTimer); mirrorCountdownTimer = null; }
+      if (mirrorStaleTimer) { clearInterval(mirrorStaleTimer); mirrorStaleTimer = null; }
       if (viewerChannel) { try { getSupa().removeChannel(viewerChannel); } catch (e) { } viewerChannel = null; }
       const M = {
         revogado: { icon: '🔒', title: 'Acesso revogado', msg: 'O comandante encerrou este compartilhamento. Peça um novo link, se necessário.' },
@@ -2808,7 +2779,9 @@
     let _mirrorLastMsg = 0;
     function applyMirrorTelemetry(p) {
       _mirrorLastMsg = Date.now();
+      mirrorRetry = 0;
       setMirrorConn('ao vivo', 'ok');
+      setMirrorHint('🟢 Recebendo telemetria da embarcação.');
       mirrorWaypoints = p.wps || [];   // habilita o botão INFO do observador
       mirrorAttitude = p.att || null;  // alimenta o painel 3D do observador
       mirrorPos = { lat: p.lat, lng: p.lng };  // posição p/ o modo Earth do observador
@@ -3208,7 +3181,7 @@
       updateShareButtons();
 
       console.log('═══════════════════════════════════════════════════════════════');
-      console.log('  Coastal Navigator Brasil v2.2.0 - Inicializado ⚓');
+      console.log('  Coastal Navigator Brasil v2.2.1 - Inicializado ⚓');
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('Autor: Jossian Brito (Charlie Bravo)');
       console.log('58 Faróis curados carregados 💡 (52 DHN + 6 Validados)');

@@ -70,7 +70,7 @@ const srv = http.createServer((req, res) => {
     'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js':
                                                         [path.join(FIXTURES, 'supabase.js'), 'text/javascript'],
   };
-  await page.route('**/*', route => {
+  await ctx.route('**/*', route => {
     const u = route.request().url();
     if (LOCAIS[u] && fs.existsSync(LOCAIS[u][0])) {
       const [f, tipo] = LOCAIS[u];
@@ -238,6 +238,39 @@ const srv = http.createServer((req, res) => {
   ok("fmtCoord sem 60,0'", !extra.coord60.includes("60.0'"), extra.coord60);
   ok('Alcance efetivo de Natal', +extra.alcance > 20 && +extra.alcance < 30, extra.alcance + ' NM');
   ok('Faróis desenhados no mapa', extra.marcadores > 50, extra.marcadores + ' elementos');
+
+  // 8. MODO ESPELHO com o backend inalcançável.
+  //    Este ambiente bloqueia saída externa, o que reproduz exatamente o
+  //    cenário do projeto Supabase suspenso: o observador em terra abre o
+  //    link e nada chega. O banner tem de dizer QUAL é a causa e mostrar que
+  //    está tentando de novo — não um "erro de conexão" mudo.
+  // A interceptação está no CONTEXTO, então esta aba herda as mesmas fixtures.
+  const espelho = await ctx.newPage();
+  await espelho.goto('http://localhost:8099/app.html?watch=ab457fdc1428',
+                     { waitUntil: 'load', timeout: 30000 });
+  /* O ciclo completo leva tempo por construção: ~6 s de limite no diagnóstico
+     + ~10 s até o canal declarar TIMED_OUT. Só então a reconexão é agendada e
+     a contagem aparece. Esperar menos testaria um estado intermediário. */
+  await espelho.waitForFunction(
+    () => /nova tentativa em \d+s/.test(
+      (document.getElementById('mirrorBannerStatus') || {}).textContent || ''),
+    null, { timeout: 45000 }
+  ).catch(() => {});
+  const esp = await espelho.evaluate(() => ({
+    banner: (document.getElementById('mirrorBannerStatus') || {}).textContent || '',
+    dica:   (document.getElementById('navGpsStatus') || {}).textContent || '',
+    token:  (document.getElementById('mirrorBannerToken') || {}).textContent || '',
+    modo:   document.body.classList.contains('mirror-mode')
+  }));
+  ok('Modo espelho reconhece o token da URL', esp.modo && esp.token.includes('ab457fdc1428'), esp.token);
+  ok('Banner nomeia a causa em vez de "erro de conexão"',
+     /servidor fora do ar|sem internet|reconectando/.test(esp.banner) && !/^erro de conexão$/.test(esp.banner),
+     esp.banner);
+  ok('Banner mostra que está tentando de novo', /nova tentativa em \d+s/.test(esp.banner), esp.banner);
+  ok('Linha de status orienta o observador', esp.dica.length > 30 && esp.dica !== 'Aguardando GPS…',
+     esp.dica.slice(0, 74));
+  await espelho.screenshot({ path: path.join(__dirname, 'smoke-espelho.png') });
+  await espelho.close();
 
   await page.screenshot({ path: path.join(__dirname, 'smoke.png'), fullPage: false });
   await browser.close(); srv.close();
