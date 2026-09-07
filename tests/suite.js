@@ -238,6 +238,89 @@ t(S4, '4.5', 'Along-track no meio da perna ≈ metade do comprimento', () => {
   eq(ct.along, legLen/2, 0.05); return { detail: `${ct.along.toFixed(2)} / ${legLen.toFixed(2)} NM` };
 });
 
+
+/* Derrota que FAZ CURVA — é o que expõe a escolha de perna. A saída de São
+   Luís aponta para o NORTE e a derrota depois desce para sudeste, então o
+   rumo do barco para as primeiras pernas passa de 90° de diferença. */
+const ROTA_CURVA = [
+  { name:'WP01', lat:-2.53, lng:-44.30 }, { name:'WP02', lat:-2.20, lng:-44.25 },
+  { name:'WP03', lat:-2.30, lng:-42.70 }, { name:'WP04', lat:-2.70, lng:-41.00 },
+  { name:'WP05', lat:-3.00, lng:-39.00 }, { name:'WP06', lat:-3.60, lng:-38.30 },
+  { name:'WP07', lat:-4.30, lng:-37.30 }, { name:'WP08', lat:-4.90, lng:-36.20 },
+  { name:'WP09', lat:-5.10, lng:-35.20 }, { name:'WP10', lat:-6.00, lng:-34.70 },
+  { name:'WP11', lat:-8.39, lng:-34.96 },
+];
+const meioDaPerna = i => ({
+  lat: (ROTA_CURVA[i].lat + ROTA_CURVA[i+1].lat) / 2,
+  lng: (ROTA_CURVA[i].lng + ROTA_CURVA[i+1].lng) / 2 });
+
+t(S4, '4.6', 'Iniciar a navegação no MEIO da derrota ancora na perna certa', () => {
+  // REGRESSÃO REAL: com o along-track ganhando sinal, o laço de avanço parava
+  // na primeira perna e o XTE era medido contra ela — 531 NM de erro lateral
+  // num barco que estava exatamente sobre a derrota.
+  const b = meioDaPerna(7);
+  A.setRota(ROTA_CURVA, 0);
+  A.advanceActiveLeg(b.lat, b.lng);
+  const leg = A.getLeg();
+  ok(leg === 7, `perna ativa ${leg}, esperado 7 (WP08→WP09)`);
+  const ct = crossTrackError(b.lat, b.lng, ROTA_CURVA[leg], ROTA_CURVA[leg+1]);
+  ok(Math.abs(ct.xte) < 0.1, `XTE ${Math.abs(ct.xte).toFixed(2)} NM sobre a própria derrota`);
+  return { detail: `perna ${leg} · XTE ${Math.abs(ct.xte).toFixed(3)} NM` };
+});
+t(S4, '4.7', 'XTE nunca fica da ordem da distância ao próximo waypoint', () => {
+  // O sintoma que o comandante viu: XTE 281,18 NM e "próximo WP" a 281,57 NM.
+  // Dois números quase iguais denunciam perna ativa errada.
+  let pior = 0, ondePior = -1;
+  for (let i = 0; i < ROTA_CURVA.length - 1; i++) {
+    const b = meioDaPerna(i);
+    A.setRota(ROTA_CURVA, 0);
+    A.advanceActiveLeg(b.lat, b.lng);
+    const leg = A.getLeg();
+    const xte = Math.abs(crossTrackError(b.lat, b.lng, ROTA_CURVA[leg], ROTA_CURVA[leg+1]).xte);
+    if (xte > pior) { pior = xte; ondePior = i; }
+  }
+  ok(pior < 1, `pior XTE ${pior.toFixed(2)} NM na perna ${ondePior}, com o barco sobre a derrota`);
+  return { detail: `pior caso ${pior.toFixed(3)} NM em ${ROTA_CURVA.length - 1} pernas` };
+});
+t(S4, '4.8', 'Progressão normal avança perna a perna', () => {
+  A.setRota(ROTA_CURVA, 0);
+  const vistas = [];
+  for (let i = 0; i < ROTA_CURVA.length - 1; i++) {
+    const b = meioDaPerna(i);
+    A.advanceActiveLeg(b.lat, b.lng);
+    vistas.push(A.getLeg());
+  }
+  const esperado = ROTA_CURVA.map((_, i) => i).slice(0, ROTA_CURVA.length - 1);
+  ok(vistas.join(',') === esperado.join(','), `sequência ${vistas.join(',')}`);
+  return { detail: 'pernas ' + vistas.join(' → ') };
+});
+t(S4, '4.9', 'Desvio legítimo NÃO reancora a perna', () => {
+  // 5 NM ao largo, dentro da perna 4: é desvio de rota, não perna errada.
+  const b = meioDaPerna(4);
+  const brgLeg = calculateBearing(ROTA_CURVA[4].lat, ROTA_CURVA[4].lng,
+                                  ROTA_CURVA[5].lat, ROTA_CURVA[5].lng);
+  const fora = offsetLatLng(b.lat, b.lng, brgLeg + 90, 5);
+  A.setRota(ROTA_CURVA, 4);
+  A.advanceActiveLeg(fora.lat, fora.lng);
+  ok(A.getLeg() === 4, `reancorou para ${A.getLeg()} num desvio de 5 NM`);
+  const ct = crossTrackError(fora.lat, fora.lng, ROTA_CURVA[4], ROTA_CURVA[5]);
+  return { detail: `perna mantida · XTE ${Math.abs(ct.xte).toFixed(1)} NM (desvio real)` };
+});
+t(S4, '4.10', 'Guarda de sanidade tem folga sobre desvio operacional', () => {
+  ok(A.RESYNC_NM >= 5 && A.RESYNC_NM <= 30,
+     `limiar de reancoragem em ${A.RESYNC_NM} NM — fora da faixa plausível`);
+  return { detail: `reancora acima de ${A.RESYNC_NM} NM, e só se houver perna 2× mais perto` };
+});
+t(S4, '4.11', 'distanceToLeg trava a projeção nas pontas do segmento', () => {
+  const a = ROTA_CURVA[4], b = ROTA_CURVA[5];
+  // muito antes do início: vale a distância até o waypoint inicial
+  const antes = offsetLatLng(a.lat, a.lng,
+    (calculateBearing(a.lat, a.lng, b.lat, b.lng) + 180) % 360, 50);
+  const d = A.distanceToLeg(antes.lat, antes.lng, a, b);
+  eq(d, calculateDistance(antes.lat, antes.lng, a.lat, a.lng), 0.01);
+  return { detail: `${d.toFixed(1)} NM = distância ao WP inicial, não à reta infinita` };
+});
+
 /* ── SUÍTE 5 — COMBUSTÍVEL / ETA ────────────────────────────────────────── */
 const S5 = '5 · Combustível/ETA';
 const td = (o={}) => Object.assign({ departureDate: new Date('2026-09-07T12:00:00Z'),

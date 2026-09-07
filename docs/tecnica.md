@@ -120,6 +120,31 @@ equador os dois divergem: de 10°S seguindo para leste o rumo inicial é 90,087�
 porque o grande círculo abaula em direção ao polo. Isso é comportamento
 correto, não defeito.
 
+### 2.1.1.1 Escolha da perna ativa (XTE)
+
+O erro lateral só faz sentido em relação à perna **certa**. Escolher a perna é
+um problema separado do cálculo do XTE, e mais delicado do que parece.
+
+`advanceActiveLeg()` avança pelo along-track, mas isso sozinho é frágil: numa
+derrota que faz curva, o barco fica a mais de 90° do rumo das primeiras pernas
+e o along-track — corretamente — fica negativo, travando o avanço. Foi a
+regressão da v2.2.1, que produziu XTE de 281 NM a bordo.
+
+Duas defesas, ambas necessárias:
+
+1. **Ancoragem no primeiro fixo.** Ao iniciar a navegação, a perna vem de
+   `nearestLegIndex()`, não do índice 0. Quem começa a navegar no meio da
+   viagem não deve ter o XTE medido contra a perna de saída do porto.
+2. **Guarda de sanidade.** A cada fixo, se o barco está a mais de `RESYNC_NM`
+   (10 NM) da perna ativa **e** existe outra pelo menos 2× mais próxima, o app
+   reancora. O fator 2 evita oscilação em derrotas que se aproximam de si
+   mesmas; os 10 NM não interferem em desvio legítimo por mau tempo.
+
+`distanceToLeg()` mede a distância ao **segmento**, com a projeção travada nas
+pontas — antes do início vale a distância ao waypoint inicial, depois do fim
+vale a do final. Medir contra a reta infinita daria respostas absurdas para
+pernas curtas.
+
 ### 2.1.2 Alcance de Faróis (`calculateVisibility` / `effectiveRange`)
 
 ```
