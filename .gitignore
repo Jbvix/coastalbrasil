@@ -146,3 +146,10 @@ Thumbs.db
 
 # Token Cesium injetado no build (não commitar)
 cesium-config.js
+
+# Artefatos gerados pelo banco de provas e pelo extrator da Lista de Faróis
+tests/_extracted.js
+tests/results.json
+tools/lf/*.pdf
+tools/lf/lf40_bruto.jsonl
+tools/lf/reconciliacao.json
