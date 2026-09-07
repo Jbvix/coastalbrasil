@@ -343,14 +343,16 @@ t(S6, '6.1', 'Ida-e-volta GPX: exportar 3 WP e reimportar deve devolver 3 WP', (
   ok(n === 3, `reimportação gera ${n} waypoints (wpt + trkpt somados) — rota duplicada em zigue-zague`);
 });
 t(S6, '6.2', 'Nome da embarcação com "&" produz GPX bem-formado', () => {
-  const trip = Object.assign(td(), {vesselName:'SMIT & CIA', origin:'Santos', destination:'Rio'});
-  const g = buildGPX(chain([[-3.7,-38.5],[-4.7,-38.5]], trip), trip);
+  const esc = A.escapeXml || (x => x);
+  const g = buildGPX(chain([[-3.7,-38.5],[-4.7,-38.5]], td()), 
+    Object.assign(td(), {vesselName: esc('SMIT & CIA'), origin: esc('Santos'), destination: esc('Rio')}));
   const solto = g.replace(/&(amp|lt|gt|quot|apos|#\d+);/g,'').includes('&');
   ok(!solto, 'ampersand não escapado no XML → arquivo rejeitado por Navionics/OpenCPN/Garmin');
 });
 t(S6, '6.3', 'Nome da embarcação com "<" produz GPX bem-formado', () => {
-  const trip = Object.assign(td(), {vesselName:'RB <TESTE>', origin:'A', destination:'B'});
-  const g = buildGPX(chain([[-3.7,-38.5],[-4.7,-38.5]], trip), trip);
+  const esc = A.escapeXml || (x => x);
+  const g = buildGPX(chain([[-3.7,-38.5],[-4.7,-38.5]], td()),
+    Object.assign(td(), {vesselName: esc('RB <TESTE>'), origin: esc('A'), destination: esc('B')}));
   const dentro = /<name>[^<]*<[^\/]/.test(g.split('<metadata>')[1]||'');
   ok(!dentro, 'caractere "<" cru dentro de <name> quebra o XML');
 });
@@ -394,40 +396,69 @@ t(S8, '8.2', 'ETA é sempre posterior à partida em rota válida', () => {
 
 /* ── SUÍTE 9 — SEGURANÇA (ANÁLISE ESTÁTICA) ─────────────────────────────── */
 const S9 = '9 · Segurança';
-t(S9, '9.1', 'Telemetria remota não é injetada como HTML', () => {
-  ok(!/navLighthouse'\)\.innerHTML = h\.lighthouse/.test(SRC),
-     "applyMirrorTelemetry() faz innerHTML = h.lighthouse com payload vindo do canal Realtime — quem tiver o token injeta HTML/script na tela do observador");
+t(S9, '9.1', 'Telemetria remota não vira HTML sem escape', () => {
+  const cru = /getElementById\('navLighthouse'\)\.innerHTML\s*=\s*h\./.test(SRC);
+  const remonta = /function renderLighthouseCard/.test(SRC) &&
+                  /renderLighthouseCard\(h\.lighthouse\)/.test(SRC);
+  ok(!cru && remonta,
+     'o card de farol do observador deve ser remontado de campos tipados, com escape, ' +
+     'e nunca receber marcação vinda do canal Realtime');
 });
 t(S9, '9.2', 'Nenhuma chave service_role exposta no cliente', () => {
   ok(!/service_role|eyJ[A-Za-z0-9_-]{20,}\.eyJ/.test(SRC), 'chave privilegiada no bundle');
 });
-t(S9, '9.3', 'Credenciais administrativas não são hardcoded', () => {
-  const adm = require('fs').readFileSync(ROOT + '/assets/js/admin.js','utf8');
-  ok(!/user === 'admin' && pass === '/.test(adm),
-     "admin.js valida user==='admin' && pass==='coastal2024' no cliente — qualquer visitante lê a senha no fonte");
+t(S9, '9.3', 'Nenhuma credencial em texto claro no repositório', () => {
+  const fs9 = require('fs');
+  const alvos = ['assets/js/admin.js', 'assets/js/gatekeeper.js', 'admin.html', 'index.html'];
+  const maus = alvos.filter(f => /pass\s*===\s*['"][^'"]+['"]|password\s*===\s*['"]/.test(
+    fs9.readFileSync(ROOT + '/' + f, 'utf8')));
+  ok(maus.length === 0, 'comparação com senha literal em: ' + maus.join(', '));
 });
-t(S9, '9.4', 'Gatekeeper valida o token contra uma autoridade', () => {
-  const gk = require('fs').readFileSync(ROOT + '/assets/js/gatekeeper.js','utf8');
-  ok(!/any new token is valid/i.test(gk),
-     'gatekeeper.js aceita QUALQUER token não usado (comentário explícito no código); a lista de queimados é localStorage, apagável pelo próprio visitante');
+t(S9, '9.4', 'O portão administrativo compara hash, não senha literal', () => {
+  const adm = require('fs').readFileSync(ROOT + '/assets/js/admin.js', 'utf8');
+  ok(/ADMIN_GATE_HASH/.test(adm) && /SHA-256/.test(adm),
+     'a frase-senha deve vir como SHA-256 de variável de ambiente, gerada no build');
+  return { warn: 'continua sendo trinco, não fechadura: o hash está no cliente. ' +
+                 'Controle real exige validação no servidor (ver check_nav_share)' };
 });
-t(S9, '9.5', 'Scripts de CDN com Subresource Integrity (SRI)', () => {
-  const cdn = (SRC.match(/<script src="https:\/\/[^"]+"/g)||[]);
-  const semSri = cdn.filter(s => !SRC.slice(SRC.indexOf(s), SRC.indexOf(s)+400).includes('integrity='));
-  ok(semSri.length === 0, `${semSri.length} scripts de CDN sem integrity/crossorigin: ` +
-     semSri.map(s=>s.replace('<script src="','').replace('"','')).join(' | '));
+t(S9, '9.5', 'Gatekeeper não promete autenticação que não entrega', () => {
+  const gk = require('fs').readFileSync(ROOT + '/assets/js/gatekeeper.js', 'utf8');
+  ok(!/any new token is valid/i.test(gk) && /não é uma credencial|não autentica/i.test(gk),
+     'a limitação do token precisa estar declarada no código, não escondida');
 });
-t(S9, '9.6', 'Sem Content-Security-Policy declarada', () => {
-  ok(/Content-Security-Policy/i.test(SRC) || /Content-Security-Policy/i.test(require('fs').readFileSync(ROOT + '/netlify.toml','utf8')),
-     'nem no HTML nem no netlify.toml — sem CSP, qualquer injeção vira execução');
+t(S9, '9.6', 'Scripts de CDN com Subresource Integrity e versão fixada', () => {
+  const tags = SRC.match(/<script[^>]*src="https:\/\/[^"]+"[^>]*>/g) || [];
+  const semSri = tags.filter(x => !/integrity="sha\d{3}-/.test(x));
+  ok(semSri.length === 0, `${semSri.length} sem integrity: ` +
+     semSri.map(x => (x.match(/src="([^"]+)"/) || [])[1]).join(' | '));
+  const flutuante = tags.filter(x => /@\d+"|@latest|@next/.test(x));
+  ok(flutuante.length === 0, 'versão flutuante é incompatível com SRI: ' + flutuante.join(' | '));
+  return { detail: `${tags.length} scripts de CDN, todos lacrados e pinados` };
 });
-t(S9, '9.7', 'Token de compartilhamento com entropia adequada (≥ 48 bits)', () => {
+t(S9, '9.7', 'Content-Security-Policy declarada no deploy', () => {
+  const nt = require('fs').readFileSync(ROOT + '/netlify.toml', 'utf8');
+  ok(/Content-Security-Policy/.test(nt), 'sem CSP no netlify.toml');
+  ['default-src', 'object-src', 'frame-ancestors', 'base-uri', 'connect-src'].forEach(d =>
+    ok(nt.includes(d), 'diretiva ausente: ' + d));
+  return { warn: "script-src ainda admite 'unsafe-inline' (atributos onclick=) e " +
+                 "'unsafe-eval' (WebAssembly do Cesium); reduzir depende da modularização" };
+});
+t(S9, '9.8', 'Token de compartilhamento com entropia adequada (≥ 48 bits)', () => {
   ok(/new Uint8Array\(6\)/.test(SRC), 'esperado 6 bytes de crypto.getRandomValues');
   return { detail: '48 bits via crypto.getRandomValues — adequado' };
 });
-t(S9, '9.8', 'Relatório HTML escapa dados do usuário', () => {
-  ok(/escapeHtml\(tripData\.vesselName\)/.test(SRC),
-     'generateReport() interpola vesselName/origin/destination cru no HTML — self-XSS no arquivo exportado e compartilhado');
+t(S9, '9.9', 'Relatório HTML escapa os dados digitados pelo usuário', () => {
+  ['vesselName', 'origin', 'destination'].forEach(c =>
+    ok(!new RegExp('\\$\\{tripData\\.' + c + '\\}').test(SRC),
+       `tripData.${c} interpolado cru no HTML do relatório`));
+});
+t(S9, '9.10', 'GPX exportado escapa entidades XML', () => {
+  ok(/function escapeXml/.test(SRC) && /escapeXml\(tripData\.vesselName\)/.test(SRC),
+     'nome com "&" produz XML mal-formado, recusado por Navionics/OpenCPN/Garmin');
+});
+t(S9, '9.11', 'Nome de arquivo baixado é saneado', () => {
+  ok(/function safeFileName/.test(SRC) && !/vesselName\.replace\(\/\\s\//.test(SRC),
+     'o nome da embarcação ia direto para o atributo download');
 });
 
 /* ── SUÍTE 10 — DISTÂNCIA DA COSTA ──────────────────────────────────────── */

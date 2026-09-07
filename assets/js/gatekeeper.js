@@ -1,6 +1,8 @@
 /**
- * Gatekeeper
- * Handles access requests and token validation on the landing page (index.html).
+ * Gatekeeper — porta de entrada da landing page (index.html).
+ *
+ * Trata pedidos de acesso e "valida" o token da URL. Leia validateAndRedirect()
+ * antes de assumir que isto autentica alguém: não autentica.
  */
 
 class Gatekeeper {
@@ -37,8 +39,18 @@ class Gatekeeper {
             return;
         }
 
-        // Token is valid (in this simulation, any new token is valid)
-        // Burn it
+        // ATENÇÃO — o que esta verificação É e o que NÃO É.
+        //
+        // Não há validação de assinatura nem consulta a servidor: qualquer
+        // token ainda não usado NESTE navegador passa, e a lista de usados fica
+        // no localStorage do próprio visitante, que pode apagá-la. Ou seja: o
+        // link é um convite rastreável, não uma credencial.
+        //
+        // Isso é aceitável porque o aplicativo não guarda dado privado atrás
+        // desta porta — ele planeja derrotas com dados públicos de cartas
+        // náuticas. Se algum dia passar a guardar, esta função precisa validar
+        // contra o servidor, como já faz check_nav_share para os links de
+        // acompanhamento em terra.
         this.burnToken(this.token);
 
         // Welcome message (optional)

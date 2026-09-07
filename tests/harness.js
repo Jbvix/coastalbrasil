@@ -30,7 +30,8 @@ function extractLighthouses() {
 
 const FNS = ['calculateDistance','calculateBearing','eyeHeight','calculateVisibility','effectiveRange',
              'findNearestLighthouse','crossTrackError','elapsedFuel','fmtDuration','fmtCoord',
-             'offsetLatLng','getCoastline','distanceFromCoast'];
+             'offsetLatLng','getCoastline','distanceFromCoast','escapeXml','escapeHtml',
+             'safeFileName'];
 
 const sandboxSrc = extractLighthouses() + '\n' +
   'let _coastline = null;\n' +

@@ -524,7 +524,13 @@
   <title>Coastal Navigator Brasil v2.0.9 - Planejamento de Viagem</title>
 
   <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Subresource Integrity: o navegador recusa o arquivo se o conteúdo servido
+       não corresponder ao hash. Sem isso, um comprometimento da CDN executaria
+       código arbitrário em todas as sessões. Versões PINADAS por exigência do
+       mecanismo: um intervalo flutuante muda de conteúdo e invalida o hash. -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H"
+    crossorigin="anonymous" referrerpolicy="no-referrer" />
 
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1999,10 +2005,16 @@
   </div>
 
   <!-- Leaflet JavaScript Library -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH"
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
   <!-- Supabase JS (Realtime broadcast p/ espelhamento de navegação via token) -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Estava em "@2", um intervalo flutuante: o conteúdo muda sem aviso e é
+       incompatível com SRI. Fixado na versão que o intervalo resolvia. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"
+    integrity="sha384-CLZeq1dk8+Uzrs7TVvBUdlFoV5F0DMqgRoeHa8g5wJcuPe5SkVfEvdxB0ZuzlnBQ"
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
   <!-- Token do Cesium (gerado no build do Netlify a partir da env CESIUM_ION_TOKEN) -->
   <script src="cesium-config.js"></script>
@@ -3312,6 +3324,33 @@
       event.target.value = '';
     }
 
+    /*
+    Reduz um texto livre a um nome de arquivo seguro.
+
+    O nome da embarcação é digitado pelo usuário e ia direto para o atributo
+    `download`. Barras, dois-pontos e caracteres de controle não pertencem a um
+    nome de arquivo e variam de comportamento entre sistemas.
+    */
+    function safeFileName(str, padrao) {
+      const limpo = String(str == null ? '' : str)
+        .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^\w\-. ]+/g, '').trim().replace(/\s+/g, '-').slice(0, 60);
+      return limpo || padrao;
+    }
+
+    /*
+    Escapa texto para dentro de um documento XML.
+
+    Sem isto, um nome de embarcação corriqueiro no mercado brasileiro — "SMIT &
+    CIA", "REBOCADORES & SERVIÇOS" — produz XML mal-formado, e o arquivo é
+    recusado por Navionics, OpenCPN e Garmin sem explicação útil ao usuário.
+    */
+    function escapeXml(str) {
+      return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+    }
+
     function exportGPX() {
       if (waypoints.length === 0) {
         alert('⚠️ Adicione waypoints antes de exportar!');
@@ -3324,7 +3363,7 @@
       // Metadata
       if (tripData) {
         gpx += '  <metadata>\n';
-        gpx += `    <name>${tripData.vesselName} - ${tripData.origin} para ${tripData.destination}</name>\n`;
+        gpx += `    <name>${escapeXml(tripData.vesselName)} - ${escapeXml(tripData.origin)} para ${escapeXml(tripData.destination)}</name>\n`;
         gpx += `    <desc>Derrota planejada - ${waypoints.length} waypoints</desc>\n`;
         gpx += `    <time>${tripData.departureDate.toISOString()}</time>\n`;
         gpx += '  </metadata>\n';
@@ -3333,15 +3372,15 @@
       // Waypoints
       waypoints.forEach(wp => {
         gpx += `  <wpt lat="${wp.lat}" lon="${wp.lng}">\n`;
-        gpx += `    <name>${wp.name}</name>\n`;
-        gpx += `    <desc>ETA: ${wp.eta.toLocaleString('pt-BR')}</desc>\n`;
+        gpx += `    <name>${escapeXml(wp.name)}</name>\n`;
+        gpx += `    <desc>ETA: ${escapeXml(wp.eta.toLocaleString('pt-BR'))}</desc>\n`;
         gpx += `  </wpt>\n`;
       });
 
       // Track (rota)
       if (waypoints.length >= 2) {
         gpx += '  <trk>\n';
-        gpx += `    <name>Rota ${tripData ? tripData.vesselName : 'Costeira'}</name>\n`;
+        gpx += `    <name>Rota ${escapeXml(tripData ? tripData.vesselName : 'Costeira')}</name>\n`;
         gpx += '    <trkseg>\n';
 
         waypoints.forEach(wp => {
@@ -3361,7 +3400,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `rota-${tripData ? tripData.vesselName.replace(/\s/g, '-') : 'costeira'}.gpx`;
+      a.download = `rota-${safeFileName(tripData && tripData.vesselName, 'costeira')}.gpx`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -3994,18 +4033,55 @@
         }
       });
 
-      // Atualiza o card de farol no HUD
-      const el = document.getElementById('navLighthouse');
+      // Atualiza o card de farol no HUD.
+      // O card é descrito por um OBJETO, não por uma string de HTML: é este
+      // objeto que vai na telemetria para o observador em terra. Transmitir
+      // marcação pronta permitiria a quem tem o token injetar HTML na tela
+      // alheia — ver renderLighthouseCard().
       if (activeLh) {
         const { lh, dist, st } = activeLh;
         const brg = calculateBearing(lat, lng, lh.lat, lh.lng);
         const rel = (brg - cog + 360) % 360;
-        const relTxt = st.abeam ? 'de través' : (rel < 180 ? `${Math.round(rel)}° EB` : `${Math.round(360 - rel)}° BB`);
-        el.innerHTML = `💡 <strong>${lh.name}</strong> — ${lh.character}<br>` +
-          `dist ${dist.toFixed(1)} NM · marcação ${Math.round(brg).toString().padStart(3, '0')}° (${relTxt})`;
+        navLighthouseData = {
+          name: lh.name,
+          character: lh.character,
+          dist: dist,
+          brg: brg,
+          rel: st.abeam ? 'de través' : (rel < 180 ? `${Math.round(rel)}° EB` : `${Math.round(360 - rel)}° BB`)
+        };
       } else {
-        el.textContent = '💡 Nenhum farol no alcance';
+        navLighthouseData = null;
       }
+      renderLighthouseCard(navLighthouseData);
+    }
+
+    /*
+    Estado do card de farol do HUD, em forma de DADO (não de marcação).
+
+    Origem do cuidado: a telemetria de espelhamento chega por um canal público
+    do Supabase Realtime, identificado apenas pelo token do link. Qualquer um
+    que tenha o link pode publicar nesse canal. Se o observador recebesse HTML
+    e o atribuísse a innerHTML, esse alguém escreveria marcação arbitrária na
+    tela de quem acompanha a viagem em terra.
+
+    Por isso o par transmite/recebe trafega campos tipados e a marcação é
+    remontada aqui, com escape, dos dois lados.
+    */
+    let navLighthouseData = null;
+
+    function renderLighthouseCard(d) {
+      const el = document.getElementById('navLighthouse');
+      if (!el) return;
+      if (!d || typeof d !== 'object' || !d.name) {
+        el.textContent = '💡 Nenhum farol no alcance';
+        return;
+      }
+      const num = (v, casas) => (Number.isFinite(+v) ? (+v).toFixed(casas) : '--');
+      const brg = Number.isFinite(+d.brg)
+        ? Math.round(+d.brg).toString().padStart(3, '0') : '---';
+      el.innerHTML =
+        `💡 <strong>${escapeHtml(d.name)}</strong> — ${escapeHtml(d.character || '')}<br>` +
+        `dist ${num(d.dist, 1)} NM · marcação ${brg}° (${escapeHtml(d.rel || '')})`;
     }
 
     /* Detecta a passagem pelo través: cruzamento de 90° (EB) ou 270° (BB). */
@@ -4581,7 +4657,7 @@
         sog: g('navSog'), cog: g('navCog'), xte: g('navXte'), xteSide: g('navXteSide'),
         nextWp: g('navNextWp'), eta: g('navEta'), fuelUsed: g('navFuelUsed'),
         fuelLeft: g('navFuelLeft'), fuelLeftCls: document.getElementById('navFuelLeft').className,
-        fuelDev: g('navFuelDev'), lighthouse: document.getElementById('navLighthouse').innerHTML,
+        fuelDev: g('navFuelDev'), lighthouse: navLighthouseData,
         status: g('navGpsStatus')
       };
     }
@@ -4713,8 +4789,13 @@
       if (!trackVisible) showTrack();   // observador vê o rastro automaticamente
       if (navFollow) map.panTo([p.lat, p.lng], { animate: true, duration: 0.5 });
 
-      // Rota espelhada
-      if (p.route && p.route.length >= 2) {
+      // Rota espelhada — o conteúdo vem do canal, então só entra no mapa o
+      // que for um par de coordenadas numérico e dentro de faixa válida.
+      const rotaOk = Array.isArray(p.route) && p.route.length >= 2 && p.route.every(pt =>
+        Array.isArray(pt) && pt.length === 2 &&
+        Number.isFinite(+pt[0]) && Number.isFinite(+pt[1]) &&
+        Math.abs(+pt[0]) <= 90 && Math.abs(+pt[1]) <= 180);
+      if (rotaOk) {
         if (!mirrorRouteLayer) {
           mirrorRouteLayer = L.polyline(p.route, { color: '#FFA726', weight: 3, opacity: 0.8 }).addTo(map);
         } else {
@@ -4730,7 +4811,9 @@
       set('navFuelDev', h.fuelDev);
       const fl = document.getElementById('navFuelLeft');
       if (h.fuelLeft != null) { fl.textContent = h.fuelLeft; if (h.fuelLeftCls) fl.className = h.fuelLeftCls; }
-      if (h.lighthouse != null) document.getElementById('navLighthouse').innerHTML = h.lighthouse;
+      // NUNCA atribuir innerHTML com conteúdo vindo do canal: a marcação é
+      // remontada aqui a partir dos campos, com escape.
+      if (h.lighthouse !== undefined) renderLighthouseCard(h.lighthouse);
       if (p.vessel) document.getElementById('mirrorBannerToken').textContent = p.vessel + ' #' + mirrorToken;
     }
 
@@ -5087,7 +5170,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Relatório de Viagem - ${tripData.vesselName}</title>
+  <title>Relatório de Viagem - ${escapeHtml(tripData.vesselName)}</title>
   <style>
     * {
       margin: 0;
@@ -5262,7 +5345,7 @@
       <div class="info-grid">
         <div class="info-item">
           <div class="info-label">Nome da Embarcação</div>
-          <div class="info-value">${tripData.vesselName}</div>
+          <div class="info-value">${escapeHtml(tripData.vesselName)}</div>
         </div>
         <div class="info-item">
           <div class="info-label">Velocidade Média</div>
@@ -5270,11 +5353,11 @@
         </div>
         <div class="info-item">
           <div class="info-label">Porto de Origem</div>
-          <div class="info-value">${tripData.origin}</div>
+          <div class="info-value">${escapeHtml(tripData.origin)}</div>
         </div>
         <div class="info-item">
           <div class="info-label">Porto de Destino</div>
-          <div class="info-value">${tripData.destination}</div>
+          <div class="info-value">${escapeHtml(tripData.destination)}</div>
         </div>
         <div class="info-item">
           <div class="info-label">Data/Hora de Saída</div>
@@ -5349,7 +5432,7 @@
             <td>${wp.eta.toLocaleString('pt-BR')}</td>
             <td>${wp.distance.toFixed(2)} NM${i > 0 ? ` (Total: ${wp.totalDistance.toFixed(2)})` : ''}</td>
             <td class="${wp.lighthouseVisible ? 'status-ok' : 'status-warning'}">
-              ${wp.lighthouseVisible ? '✓ ' + wp.nearestLighthouse.name : '⚠ Fora de alcance'}
+              ${wp.lighthouseVisible ? '✓ ' + escapeHtml(wp.nearestLighthouse.name) : '⚠ Fora de alcance'}
             </td>
             <td>${wp.fuelUsed.toFixed(0)} L</td>
             <td class="${wp.fuelRemaining / tripData.fuelInitial < 0.2 ? 'status-critical' : wp.fuelRemaining / tripData.fuelInitial < 0.4 ? 'status-warning' : 'status-ok'}">
@@ -5447,11 +5530,11 @@
         const lh = item.lighthouse;
         report += `
           <tr>
-            <td><strong>${lh.name}</strong></td>
-            <td>${item.waypoint}</td>
+            <td><strong>${escapeHtml(lh.name)}</strong></td>
+            <td>${escapeHtml(item.waypoint)}</td>
             <td>${lh.lat.toFixed(4)}°, ${lh.lng.toFixed(4)}°</td>
             <td>${effectiveRange(lh).toFixed(1)} NM (lum ${lh.rangeLum} · geo ${calculateVisibility(lh.altitude).toFixed(1)})</td>
-            <td>${lh.character}</td>
+            <td>${escapeHtml(lh.character)}</td>
           </tr>`;
       });
 
@@ -5518,7 +5601,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `relatorio-viagem-${tripData.vesselName.replace(/\s/g, '-')}-${new Date().toISOString().slice(0, 10)}.html`;
+      a.download = `relatorio-viagem-${safeFileName(tripData.vesselName, 'embarcacao')}-${new Date().toISOString().slice(0, 10)}.html`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

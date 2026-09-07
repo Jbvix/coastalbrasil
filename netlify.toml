@@ -2,6 +2,52 @@
   publish = "."
   command = "node scripts/build-config.js"
 
+# ── Cabeçalhos de segurança ────────────────────────────────────────────────
+# A Content-Security-Policy abaixo restringe DE ONDE cada tipo de recurso pode
+# vir. Ela é a segunda linha de defesa: a primeira é não injetar conteúdo
+# externo no DOM (ver renderLighthouseCard no app.html).
+#
+# RESSALVA REGISTRADA — 'unsafe-inline' e 'unsafe-eval' em script-src:
+#   · 'unsafe-inline' é exigido hoje porque a interface usa atributos onclick=
+#     e blocos <script> inline. Removê-los é trabalho da modularização; até lá
+#     a política restringe as ORIGENS, não a execução inline.
+#   · 'unsafe-eval' é exigido pelo Cesium (modo Earth), que compila WebAssembly
+#     e cria workers. Sem ele o globo não carrega.
+# Reduzir esses dois é o próximo passo depois de eliminar os manipuladores
+# inline; a política já está pronta para receber nonces.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = """
+      default-src 'self';
+      base-uri 'self';
+      object-src 'none';
+      frame-ancestors 'none';
+      form-action 'self';
+      script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://unpkg.com https://cdn.jsdelivr.net;
+      worker-src 'self' blob:;
+      child-src 'self' blob:;
+      style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com;
+      font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;
+      img-src 'self' data: blob: https://*.tile.openstreetmap.org https://tiles.openseamap.org https://unpkg.com https://cdn.jsdelivr.net https://*.cesium.com https://*.googleapis.com https://api.visitorbadge.io;
+      media-src 'self' blob: data:;
+      connect-src 'self' blob: https://nsbeddfkcdyssrirrhzt.supabase.co wss://nsbeddfkcdyssrirrhzt.supabase.co https://cdn.jsdelivr.net https://unpkg.com https://*.cesium.com https://*.googleapis.com;
+      upgrade-insecure-requests
+      """
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    X-Frame-Options = "DENY"
+    Cross-Origin-Opener-Policy = "same-origin"
+    # A navegação depende do GPS, do sensor de orientação (painel 3D de atitude)
+    # e do wake lock (tela acesa no passadiço). Tudo liberado só para a origem.
+    Permissions-Policy = "geolocation=(self), accelerometer=(self), gyroscope=(self), magnetometer=(self), camera=(), microphone=(), payment=(), usb=()"
+
+# O token do Cesium é gerado no build e não deve ser cacheado agressivamente.
+[[headers]]
+  for = "/cesium-config.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

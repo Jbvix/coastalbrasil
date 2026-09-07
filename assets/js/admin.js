@@ -1,6 +1,15 @@
 /**
- * Admin Access Manager
- * Handles simulation of token-based authentication, request routing, and session state.
+ * Painel administrativo — gerador de links de acesso.
+ *
+ * AVISO DE PROJETO: este painel roda inteiramente no navegador e NÃO constitui
+ * controle de acesso. A sessão fica no localStorage do próprio visitante e o
+ * portão de entrada é um trinco de conveniência (ver login()). Não coloque aqui
+ * nada que dependa de sigilo.
+ *
+ * Autenticação de verdade precisa acontecer no servidor. O aplicativo já tem
+ * esse caminho montado para os links de acompanhamento em terra: a função
+ * check_nav_share, no Supabase, valida token, revogação e expiração antes de
+ * liberar a telemetria.
  */
 
 class AccessManager {
@@ -32,8 +41,7 @@ class AccessManager {
             genUsername: document.getElementById('gen-username'),
             genResult: document.getElementById('gen-result'),
             genDisplay: document.getElementById('gen-url-display'),
-            // Admin Login Elements
-            adminUser: document.getElementById('admin-user'),
+            // Portão do painel (ver login(): é trinco, não fechadura)
             adminPass: document.getElementById('admin-pass'),
             loginError: document.getElementById('login-error')
         };
@@ -62,16 +70,60 @@ class AccessManager {
         this.showHero();
     }
 
-    login() {
-        const user = this.elements.adminUser.value;
-        const pass = this.elements.adminPass.value;
+    /**
+     * Portão do painel administrativo.
+     *
+     * ANTES: a senha estava escrita em texto claro neste arquivo, que é
+     * servido a qualquer visitante. Qualquer pessoa que abrisse o código-fonte
+     * lia a senha — e senhas costumam ser reaproveitadas em outros lugares.
+     *
+     * AGORA: o build publica apenas o SHA-256 da frase-senha, vindo da variável
+     * de ambiente ADMIN_GATE_HASH (ver scripts/build-config.js). A senha em si
+     * não existe no repositório.
+     *
+     * O QUE ISSO NÃO É: uma barreira de segurança. O hash está no cliente e é
+     * atacável por dicionário; todo o código do painel é público. É um trinco,
+     * não uma fechadura. Sem hash configurado, o painel abre direto e exibe o
+     * aviso — melhor do que uma falsa sensação de proteção.
+     *
+     * Controle de acesso real exige validação no servidor. O app já faz isso
+     * para os links de acompanhamento, pela função check_nav_share no Supabase;
+     * o mesmo caminho serviria aqui.
+     */
+    async sha256Hex(texto) {
+        const bytes = new TextEncoder().encode(texto);
+        const digest = await crypto.subtle.digest('SHA-256', bytes);
+        return Array.from(new Uint8Array(digest))
+            .map(b => b.toString(16).padStart(2, '0')).join('');
+    }
 
-        // Hardcoded Credentials
-        if (user === 'admin' && pass === 'coastal2024') {
+    async login() {
+        const esperado = (window.ADMIN_GATE_HASH || '').trim().toLowerCase();
+
+        if (!esperado) {
+            this.createSession('Administrador', true);
+            this.showDashboard('Administrador');
+            return;
+        }
+
+        const pass = this.elements.adminPass.value;
+        let informado = '';
+        try {
+            informado = await this.sha256Hex(pass);
+        } catch (e) {
+            // crypto.subtle exige contexto seguro (https ou localhost)
+            this.elements.loginError.textContent =
+                'Verificação indisponível: abra a página por HTTPS ou localhost.';
+            this.elements.loginError.style.display = 'block';
+            return;
+        }
+
+        if (informado === esperado) {
             this.createSession('Administrador', true);
             this.showDashboard('Administrador');
             this.elements.loginError.style.display = 'none';
         } else {
+            this.elements.loginError.textContent = 'Frase-senha incorreta.';
             this.elements.loginError.style.display = 'block';
         }
     }
