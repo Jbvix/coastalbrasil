@@ -1,0 +1,14 @@
+{
+  "name": "coastal-navigator-brasil",
+  "version": "2.1.0",
+  "description": "Planejamento de viagem marítima costeira do Brasil — banco de provas e ferramentas de dados",
+  "private": true,
+  "scripts": {
+    "test": "node tests/suite.js",
+    "lf:parse": "python3 tools/lf/parse_lf.py tools/lf/LF-40ED-2026-2027.pdf tools/lf/lf40_bruto.jsonl",
+    "lf:reconciliar": "python3 tools/lf/reconciliar.py tools/lf/lf40_bruto.jsonl app.html tools/lf/reconciliacao.json",
+    "lf:gerar": "python3 tools/lf/gerar_base.py tools/lf/reconciliacao.json tools/lf/lf40_bruto.jsonl data/farois_LF40ED.json"
+  },
+  "author": "Jossian Brito (Charlie Bravo)",
+  "license": "CC-BY-NC-4.0"
+}

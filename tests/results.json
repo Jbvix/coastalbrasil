@@ -1,0 +1,478 @@
+[
+  {
+    "suite": "1 · Geodésia",
+    "id": "1.1",
+    "desc": "Distância ponto→mesmo ponto = 0 NM",
+    "status": "PASS",
+    "detail": ""
+  },
+  {
+    "suite": "1 · Geodésia",
+    "id": "1.2",
+    "desc": "1° de latitude = 60 NM (definição da milha náutica)",
+    "status": "PASS",
+    "detail": "60.0405 NM"
+  },
+  {
+    "suite": "1 · Geodésia",
+    "id": "1.3",
+    "desc": "1° de longitude no equador ≈ 60 NM",
+    "status": "PASS",
+    "detail": "60.0405 NM"
+  },
+  {
+    "suite": "1 · Geodésia",
+    "id": "1.4",
+    "desc": "1° de longitude a 60°S ≈ 30 NM (cos 60° = 0,5)",
+    "status": "PASS",
+    "detail": "30.0199 NM"
+  },
+  {
+    "suite": "1 · Geodésia",
+    "id": "1.5",
+    "desc": "Erro vs. Vincenty/WGS-84 ≤ 0,5% (afirmado no docstring)",
+    "status": "PASS",
+    "detail": "erro máx 0.440% (2030.2 vs 2021.3 NM)"
+  },
+  {
+    "suite": "1 · Geodésia",
+    "id": "1.6",
+    "desc": "Rumo cardinal exato: N/S no meridiano, E/W no equador",
+    "status": "PASS",
+    "detail": ""
+  },
+  {
+    "suite": "1 · Geodésia",
+    "id": "1.9",
+    "desc": "Rumo é ORTODRÔMICO (inicial), não loxodrômico — comportamento correto",
+    "status": "PASS",
+    "detail": "rumo inicial 90.087° a 10°S (a derrota abaula para o polo) — correto para grande círculo"
+  },
+  {
+    "suite": "1 · Geodésia",
+    "id": "1.7",
+    "desc": "Rumo sempre normalizado em [0,360)",
+    "status": "PASS",
+    "detail": ""
+  },
+  {
+    "suite": "1 · Geodésia",
+    "id": "1.8",
+    "desc": "Distância é simétrica (A→B = B→A)",
+    "status": "PASS",
+    "detail": ""
+  },
+  {
+    "suite": "2 · Visibilidade",
+    "id": "2.1",
+    "desc": "Fórmula d = 2,08·(√h1 + √h2) com olho padrão de 5 m",
+    "status": "PASS",
+    "detail": "40 m + olho 5 m = 17.81 NM"
+  },
+  {
+    "suite": "2 · Visibilidade",
+    "id": "2.2",
+    "desc": "Exemplos numéricos do docstring conferem com o código",
+    "status": "PASS",
+    "detail": "24.1 NM (olho 5 m) · 28.7 NM (olho 20 m)"
+  },
+  {
+    "suite": "2 · Visibilidade",
+    "id": "2.3",
+    "desc": "Monotonicidade: mais alto ⇒ enxerga mais longe",
+    "status": "PASS",
+    "detail": ""
+  },
+  {
+    "suite": "2 · Visibilidade",
+    "id": "2.4",
+    "desc": "Altitude 0 m = horizonte do próprio observador ≈ 4,65 NM",
+    "status": "PASS",
+    "detail": "4.65 NM"
+  },
+  {
+    "suite": "2 · Visibilidade",
+    "id": "2.5",
+    "desc": "Altura do olho é parametrizável pelo tripData",
+    "status": "PASS",
+    "detail": "navio 28.7 NM · lancha 22.3 NM · padrão 24.1 NM"
+  },
+  {
+    "suite": "2 · Visibilidade",
+    "id": "2.6",
+    "desc": "Critério de visibilidade é o MESMO no plano e na navegação",
+    "status": "PASS",
+    "detail": ""
+  },
+  {
+    "suite": "2 · Visibilidade",
+    "id": "2.7",
+    "desc": "Alcance efetivo nunca excede o alcance geográfico",
+    "status": "PASS",
+    "detail": ""
+  },
+  {
+    "suite": "3 · Base de faróis",
+    "id": "3.1",
+    "desc": "Contagem confere com a documentação",
+    "status": "PASS",
+    "detail": ""
+  },
+  {
+    "suite": "3 · Base de faróis",
+    "id": "3.2",
+    "desc": "Identificadores únicos (a máquina de alertas indexa por id)",
+    "status": "PASS",
+    "detail": ""
+  },
+  {
+    "suite": "3 · Base de faróis",
+    "id": "3.3",
+    "desc": "Nomes repetidos têm ids distintos (dois \"Farol de Conceição\")",
+    "status": "PASS",
+    "detail": "Farol de Conceição → conceicao-3492 / conceicao-4004"
+  },
+  {
+    "suite": "3 · Base de faróis",
+    "id": "3.4",
+    "desc": "Altitudes dentro da faixa física (5 a 350 m)",
+    "status": "PASS",
+    "detail": "14..329 m · mediana 50 m"
+  },
+  {
+    "suite": "3 · Base de faróis",
+    "id": "3.5",
+    "desc": "Altitudes acima de 200 m vêm da fonte oficial",
+    "status": "PASS",
+    "detail": "Farol de Fernando de Noronha 329 m (LF nº 1112)"
+  },
+  {
+    "suite": "3 · Base de faróis",
+    "id": "3.6",
+    "desc": "Coordenadas dentro da área de interesse do Brasil",
+    "status": "PASS",
+    "detail": ""
+  },
+  {
+    "suite": "3 · Base de faróis",
+    "id": "3.7",
+    "desc": "Esquema completo e tipado em todos os registros",
+    "status": "PASS",
+    "detail": ""
+  },
+  {
+    "suite": "3 · Base de faróis",
+    "id": "3.8",
+    "desc": "Sem faróis coincidentes (< 0,1 NM entre si)",
+    "status": "PASS",
+    "detail": ""
+  },
+  {
+    "suite": "3 · Base de faróis",
+    "id": "3.9",
+    "desc": "Registros fora da LF-40ED estão explicitamente marcados",
+    "status": "WARN",
+    "detail": "3 sem respaldo na LF-40ED: da Barra da Tijuca, de Martin Vaz, de Trindade"
+  },
+  {
+    "suite": "3 · Base de faróis",
+    "id": "3.10",
+    "desc": "Cobertura da fonte oficial ≥ 95%",
+    "status": "PASS",
+    "detail": "95/98 (96.9%) rastreáveis à LF-40ED"
+  },
+  {
+    "suite": "4 · XTE / derrota",
+    "id": "4.1",
+    "desc": "Sobre a derrota ⇒ XTE ≈ 0",
+    "status": "PASS",
+    "detail": ""
+  },
+  {
+    "suite": "4 · XTE / derrota",
+    "id": "4.2",
+    "desc": "Sinal correto: ao norte de um rumo 090 ⇒ bombordo (negativo)",
+    "status": "PASS",
+    "detail": "-6.012 NM"
+  },
+  {
+    "suite": "4 · XTE / derrota",
+    "id": "4.3",
+    "desc": "Magnitude: 1 NM perpendicular ⇒ |XTE| ≈ 1 NM",
+    "status": "PASS",
+    "detail": "0.992 NM"
+  },
+  {
+    "suite": "4 · XTE / derrota",
+    "id": "4.4",
+    "desc": "Along-track deve ser NEGATIVO quando o barco está a ré do WP inicial",
+    "status": "FAIL",
+    "detail": "along = 5.00 NM (deveria ser ≈ −5); acos() só devolve 0..π, o sinal é perdido"
+  },
+  {
+    "suite": "4 · XTE / derrota",
+    "id": "4.5",
+    "desc": "Along-track no meio da perna ≈ metade do comprimento",
+    "status": "PASS",
+    "detail": "29.96 / 59.92 NM"
+  },
+  {
+    "suite": "5 · Combustível/ETA",
+    "id": "5.1",
+    "desc": "Consumo acumulado = tempo × taxa (10 kt, 100 L/h, 60 NM ⇒ 600 L)",
+    "status": "PASS",
+    "detail": "60.0 NM / 600 L"
+  },
+  {
+    "suite": "5 · Combustível/ETA",
+    "id": "5.2",
+    "desc": "ETA acumula corretamente ao longo de 3 waypoints",
+    "status": "PASS",
+    "detail": "12.01 h"
+  },
+  {
+    "suite": "5 · Combustível/ETA",
+    "id": "5.3",
+    "desc": "elapsedFuel: partida no futuro ⇒ 0 L",
+    "status": "PASS",
+    "detail": ""
+  },
+  {
+    "suite": "5 · Combustível/ETA",
+    "id": "5.4",
+    "desc": "elapsedFuel: nunca excede a capacidade do tanque",
+    "status": "PASS",
+    "detail": "5000 L (tanque cheio)"
+  },
+  {
+    "suite": "5 · Combustível/ETA",
+    "id": "5.5",
+    "desc": "Combustível insuficiente aborta a inclusão do waypoint",
+    "status": "PASS",
+    "detail": ""
+  },
+  {
+    "suite": "5 · Combustível/ETA",
+    "id": "5.6",
+    "desc": "Percentual de saldo permanece em [0,100] no plano nominal",
+    "status": "PASS",
+    "detail": ""
+  },
+  {
+    "suite": "5 · Combustível/ETA",
+    "id": "5.7",
+    "desc": "Apagar o PRIMEIRO waypoint deve rebasear a rota (dist/ETA/consumo)",
+    "status": "FAIL",
+    "detail": "novo WP inicial ficou com distance=60.0 NM, totalDistance=60.0 NM e fuelUsed=600 L herdados do waypoint apagado"
+  },
+  {
+    "suite": "5 · Combustível/ETA",
+    "id": "5.8",
+    "desc": "Apagar um waypoint do MEIO rebaseia corretamente",
+    "status": "PASS",
+    "detail": "120.1 NM"
+  },
+  {
+    "suite": "6 · GPX",
+    "id": "6.1",
+    "desc": "Ida-e-volta GPX: exportar 3 WP e reimportar deve devolver 3 WP",
+    "status": "FAIL",
+    "detail": "reimportação gera 6 waypoints (wpt + trkpt somados) — rota duplicada em zigue-zague"
+  },
+  {
+    "suite": "6 · GPX",
+    "id": "6.2",
+    "desc": "Nome da embarcação com \"&\" produz GPX bem-formado",
+    "status": "FAIL",
+    "detail": "ampersand não escapado no XML → arquivo rejeitado por Navionics/OpenCPN/Garmin"
+  },
+  {
+    "suite": "6 · GPX",
+    "id": "6.3",
+    "desc": "Nome da embarcação com \"<\" produz GPX bem-formado",
+    "status": "FAIL",
+    "detail": "caractere \"<\" cru dentro de <name> quebra o XML"
+  },
+  {
+    "suite": "6 · GPX",
+    "id": "6.4",
+    "desc": "Nomes dos pontos do GPX importado são preservados",
+    "status": "FAIL",
+    "detail": "importGPX lê pointName mas chama createWaypoint(lat, lng) — o nome original é descartado"
+  },
+  {
+    "suite": "6 · GPX",
+    "id": "6.5",
+    "desc": "Importação tem limite de pontos (proteção contra travamento)",
+    "status": "FAIL",
+    "detail": "sem teto de pontos: cada ponto refaz lista+rota+faróis (O(n²)) — trilha com milhares de trkpt congela o navegador"
+  },
+  {
+    "suite": "7 · Formatação",
+    "id": "7.1",
+    "desc": "fmtCoord segue o padrão náutico documentado (03°43.6'S)",
+    "status": "FAIL",
+    "detail": "obtido \"3°43.6'S\" — grau sem zero à esquerda, divergindo do próprio docstring"
+  },
+  {
+    "suite": "7 · Formatação",
+    "id": "7.2",
+    "desc": "fmtCoord: hemisfério correto nos quatro quadrantes",
+    "status": "PASS",
+    "detail": ""
+  },
+  {
+    "suite": "7 · Formatação",
+    "id": "7.3",
+    "desc": "fmtDuration formata horas e minutos",
+    "status": "PASS",
+    "detail": ""
+  },
+  {
+    "suite": "7 · Formatação",
+    "id": "7.4",
+    "desc": "fmtCoord arredonda 59,96' sem gerar 60,0'",
+    "status": "FAIL",
+    "detail": "obtido \"3°60.0'S\" — deveria virar 04°00.0'S"
+  },
+  {
+    "suite": "8 · Data/hora",
+    "id": "8.1",
+    "desc": "Data padrão do modal de viagem usa hora LOCAL (input datetime-local)",
+    "status": "FAIL",
+    "detail": "openTripModal() usa now.toISOString().slice(0,16) = UTC; em UTC−3 a partida nasce 3 h adiantada, contaminando ETA e consumo"
+  },
+  {
+    "suite": "8 · Data/hora",
+    "id": "8.2",
+    "desc": "ETA é sempre posterior à partida em rota válida",
+    "status": "PASS",
+    "detail": ""
+  },
+  {
+    "suite": "9 · Segurança",
+    "id": "9.1",
+    "desc": "Telemetria remota não é injetada como HTML",
+    "status": "FAIL",
+    "detail": "applyMirrorTelemetry() faz innerHTML = h.lighthouse com payload vindo do canal Realtime — quem tiver o token injeta HTML/script na tela do observador"
+  },
+  {
+    "suite": "9 · Segurança",
+    "id": "9.2",
+    "desc": "Nenhuma chave service_role exposta no cliente",
+    "status": "PASS",
+    "detail": ""
+  },
+  {
+    "suite": "9 · Segurança",
+    "id": "9.3",
+    "desc": "Credenciais administrativas não são hardcoded",
+    "status": "FAIL",
+    "detail": "admin.js valida user==='admin' && pass==='coastal2024' no cliente — qualquer visitante lê a senha no fonte"
+  },
+  {
+    "suite": "9 · Segurança",
+    "id": "9.4",
+    "desc": "Gatekeeper valida o token contra uma autoridade",
+    "status": "FAIL",
+    "detail": "gatekeeper.js aceita QUALQUER token não usado (comentário explícito no código); a lista de queimados é localStorage, apagável pelo próprio visitante"
+  },
+  {
+    "suite": "9 · Segurança",
+    "id": "9.5",
+    "desc": "Scripts de CDN com Subresource Integrity (SRI)",
+    "status": "FAIL",
+    "detail": "2 scripts de CDN sem integrity/crossorigin: https://unpkg.com/leaflet@1.9.4/dist/leaflet.js | https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
+  },
+  {
+    "suite": "9 · Segurança",
+    "id": "9.6",
+    "desc": "Sem Content-Security-Policy declarada",
+    "status": "FAIL",
+    "detail": "nem no HTML nem no netlify.toml — sem CSP, qualquer injeção vira execução"
+  },
+  {
+    "suite": "9 · Segurança",
+    "id": "9.7",
+    "desc": "Token de compartilhamento com entropia adequada (≥ 48 bits)",
+    "status": "PASS",
+    "detail": "48 bits via crypto.getRandomValues — adequado"
+  },
+  {
+    "suite": "9 · Segurança",
+    "id": "9.8",
+    "desc": "Relatório HTML escapa dados do usuário",
+    "status": "FAIL",
+    "detail": "generateReport() interpola vesselName/origin/destination cru no HTML — self-XSS no arquivo exportado e compartilhado"
+  },
+  {
+    "suite": "10 · Distância da costa",
+    "id": "10.1",
+    "desc": "Sobre um farol costeiro ⇒ ≈ 0 NM",
+    "status": "PASS",
+    "detail": "0.00 NM"
+  },
+  {
+    "suite": "10 · Distância da costa",
+    "id": "10.2",
+    "desc": "10 NM ao largo do Mucuripe ⇒ ≈ 10 NM",
+    "status": "PASS",
+    "detail": "8.55 NM"
+  },
+  {
+    "suite": "10 · Distância da costa",
+    "id": "10.3",
+    "desc": "Ilhas oceânicas não distorcem a poligonal costeira",
+    "status": "FAIL",
+    "detail": "ilhas costeiras afastadas tratadas como litoral: Farol de Alcatrazes, Farol de Laje de Santos, Farol de Queimada Grande, Farol de Arvoredo — a poligonal salta para o mar e subestima a distância da costa"
+  },
+  {
+    "suite": "11 · Cruzamento OSM",
+    "id": "11.1",
+    "desc": "Base OSM de referência é legível como JSON UTF-8",
+    "status": "FAIL",
+    "detail": "osm_lighthouses_v2.json está em UTF-16LE com BOM — JSON.parse() padrão falha; exige transcodificação manual"
+  },
+  {
+    "suite": "11 · Cruzamento OSM",
+    "id": "11.2",
+    "desc": "Sem arquivos de dados vazios versionados",
+    "status": "FAIL",
+    "detail": "osm_lighthouses.json está commitado com 0 bytes"
+  },
+  {
+    "suite": "11 · Cruzamento OSM",
+    "id": "11.3",
+    "desc": "Altitude ou altura de estrutura confere com a base OSM",
+    "status": "PASS",
+    "detail": "71/72 (99%) conferem com um dos dois campos"
+  },
+  {
+    "suite": "11 · Cruzamento OSM",
+    "id": "11.4",
+    "desc": "Altitude do foco nunca é menor que a altura da estrutura",
+    "status": "PASS",
+    "detail": "94 faróis com os dois campos publicados, todos coerentes"
+  },
+  {
+    "suite": "12 · Higiene",
+    "id": "12.1",
+    "desc": "app.html dentro de um limite gerenciável (≤ 3000 linhas)",
+    "status": "FAIL",
+    "detail": "5617 linhas em arquivo único (HTML+CSS+JS+base de dados+relatório) — sem módulos, sem build, sem testes"
+  },
+  {
+    "suite": "12 · Higiene",
+    "id": "12.2",
+    "desc": "Sem console.log de depuração em caminho quente",
+    "status": "FAIL",
+    "detail": "createWaypoint() emite 28 console.log por waypoint — na importação de uma trilha longa isso domina o tempo de execução"
+  },
+  {
+    "suite": "12 · Higiene",
+    "id": "12.3",
+    "desc": "Laço de importação não chama função que abre modal bloqueante",
+    "status": "FAIL",
+    "detail": "importGPX() chama createWaypoint() dentro de forEach e createWaypoint() dispara alert() a cada ponto sem combustível — a importação vira uma fila de caixas de diálogo até o usuário fechar todas"
+  }
+]
