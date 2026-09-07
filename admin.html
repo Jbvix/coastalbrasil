@@ -44,21 +44,25 @@
 
             <div class="access-request-container">
                 <h3><i class="fa-solid fa-lock"></i> Login Administrativo</h3>
-                <p class="small-text">Área restrita a administradores autorizados.</p>
+                <p class="small-text">Ferramenta local para gerar links de acesso.</p>
 
                 <form id="admin-login-form" onsubmit="event.preventDefault(); accessManager.login();">
                     <div class="input-group" style="margin: 10px 0;">
-                        <input type="text" id="admin-user" placeholder="Usuário" required
-                            style="background: rgba(0,0,0,0.2); border: 1px solid var(--ocean-blue); color: white;">
-                    </div>
-                    <div class="input-group" style="margin: 10px 0;">
-                        <input type="password" id="admin-pass" placeholder="Senha" required
+                        <input type="password" id="admin-pass" placeholder="Frase-senha" autocomplete="current-password"
                             style="background: rgba(0,0,0,0.2); border: 1px solid var(--ocean-blue); color: white;">
                     </div>
                     <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 10px;">Entrar</button>
                     <p id="login-error" style="color: #ff4444; font-size: 0.8rem; margin-top: 10px; display: none;">
-                        Credenciais inválidas.</p>
+                        Frase-senha incorreta.</p>
                 </form>
+
+                <p style="font-size: 0.75rem; line-height: 1.5; margin-top: 14px; padding: 10px 12px;
+                          border-left: 3px solid #FFA726; background: rgba(255,167,38,0.08); color: #FFD9A0;">
+                    <strong>Este painel roda no navegador e não é uma barreira de segurança.</strong>
+                    A frase-senha é um trinco de conveniência e todo o código desta página é
+                    público. Não guarde aqui nada que dependa de sigilo. Os links gerados são
+                    convites rastreáveis, não credenciais.
+                </p>
             </div>
         </div>
     </section>
@@ -175,6 +179,10 @@
         </div>
     </div>
 
+    <!-- Gerado no build (scripts/build-config.js) a partir das variáveis de
+         ambiente do Netlify. Publica window.ADMIN_GATE_HASH. Ausente em
+         desenvolvimento local — o painel então abre direto, com o aviso. -->
+    <script src="cesium-config.js"></script>
     <script src="assets/js/admin.js"></script>
 </body>
 

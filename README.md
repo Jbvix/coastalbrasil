@@ -1,11 +1,16 @@
-# Coastal Navigator Brasil v2.0.9 ⛳
+# Coastal Navigator Brasil v2.2.1 ⛳
 
 Aplicativo web gratuito e open-source para planejamento de viagens marítimas costeiras no Brasil.
 
 ## Funcionalidades Principais
 
 - Mapa interativo com OpenSeaMap
-- Database curada com 58 faróis brasileiros (base oficial DHN + validados)
+- Database de 98 faróis brasileiros reconciliada com a **Lista de Faróis DH2, 40ª edição
+  2026-2027** (DHN/CHM — Marinha do Brasil), corrigida até o Aviso aos Navegantes 14/2026.
+  95 dos 98 registros são rastreáveis ao número de ordem da publicação; os 3 restantes
+  estão marcados no código como fora da fonte oficial.
+- Alcance efetivo de cada farol calculado como `min(alcance luminoso, alcance geográfico)`,
+  com a altura do olho do observador configurável na viagem
 - Cálculos automáticos: distância (NM), tempo, ETA, consumo de combustível
 - Visibilidade automática de faróis por waypoint
 - Consumo detalhado por período de 12h com data/hora real
@@ -22,7 +27,7 @@ Ideal para alunos de Ciências Náuticas, Aquaviários, CFN, rebocadores e profi
 Acesse diretamente no navegador (sem instalação):
 
 - Landing page + manual: [index.html](index.html)
-- Aplicativo: [coastal-navigator-brasil-v2-0-9.html](coastal-navigator-brasil-v2-0-9.html)
+- Aplicativo: [app.html](app.html)
 
 ## Deploy
 
