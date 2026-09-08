@@ -954,7 +954,9 @@
       <p class="hero-subtitle">Sistema de Planejamento de Viagem Marítima</p>
       <p class="hero-description">
         Planeje suas viagens costeiras. Cálculos automáticos de ETA, consumo de combustível,
-        rotas otimizadas e database completo de 70 faróis da costa brasileira. Desenvolvido por profissional do mar,
+        rotas otimizadas e base de 98 faróis reconciliada com a Lista de Faróis DH2 da DHN
+        (40ª edição 2026-2027). Navegação por GPS, painel 3D de atitude e espelhamento da
+        viagem para quem ficou em terra. Desenvolvido por profissional do mar,
         para profissionais do mar.
       </p>
       <p
@@ -975,7 +977,7 @@
           <i class="fa-brands fa-whatsapp"></i> Falar no WhatsApp
         </a>
       </div>
-      <div class="version-badge">Versão 2.0.5 - Totalmente Funcional</div>
+      <div class="version-badge">Versão 2.3.1 &middot; 123 provas automatizadas</div>
     </div>
   </section>
 
@@ -1020,10 +1022,12 @@
         <!-- Feature 4 -->
         <div class="feature-card">
           <div class="feature-icon">💡</div>
-          <h3 class="feature-title">70 Faróis Brasileiros</h3>
+          <h3 class="feature-title">98 Faróis da Lista da DHN</h3>
           <p class="feature-description">
-            Database completo com faróis de toda costa brasileira. Sistema verifica automaticamente
-            faróis visíveis em cada waypoint.
+            Base reconciliada com a <strong>Lista de Faróis DH2, 40ª edição 2026-2027</strong>
+            (DHN/CHM — Marinha do Brasil): altitude do foco, alcances luminoso e geográfico,
+            característica e altura da estrutura. O sistema calcula o alcance real conforme a
+            altura do olho do observador e avisa quais faróis são avistáveis em cada waypoint.
           </p>
         </div>
 
@@ -1060,10 +1064,44 @@
         <!-- Feature 8 -->
         <div class="feature-card">
           <div class="feature-icon">🗺️</div>
-          <h3 class="feature-title">OpenSeaMap Integration</h3>
+          <h3 class="feature-title">Cartas OpenSeaMap</h3>
           <p class="feature-description">
-            Mapas náuticos com camadas de navegação.
+            Mapas náuticos com as camadas de navegação sobrepostas ao mapa base.
+          </p>
+        </div>
 
+        <!-- Feature 9 -->
+        <div class="feature-card">
+          <div class="feature-icon">🧭</div>
+          <h3 class="feature-title">Navegação por GPS com XTE</h3>
+          <p class="feature-description">
+            Acompanha a derrota em tempo real: perna ativa, distância ao próximo waypoint,
+            rumo a governar e <strong>afastamento da linha da rota (XTE)</strong> — o número que
+            diz o quanto o navio saiu do traçado, com alertas sonoros de aproximação.
+          </p>
+        </div>
+
+        <!-- Feature 10 -->
+        <div class="feature-card">
+          <div class="feature-icon">🚢</div>
+          <h3 class="feature-title">Painel 3D de Atitude</h3>
+          <p class="feature-description">
+            O rebocador em 3D inclinando conforme os sensores do celular a bordo — jogo, caturro
+            e proa do GPS, com registro do jogo máximo. Frota selecionável:
+            <strong>Damen ASD 2810</strong> (propulsão azimutal, com os dutos giratórios sob a
+            popa) ou <strong>Rastar 3200</strong>. Há ainda o modo 🌍 Earth, com o navio
+            navegando a rota sobre o globo.
+          </p>
+        </div>
+
+        <!-- Feature 11 -->
+        <div class="feature-card">
+          <div class="feature-icon">📡</div>
+          <h3 class="feature-title">Espelho para quem ficou em terra</h3>
+          <p class="feature-description">
+            Um link envia posição, rumo, velocidade e atitude para a família ou o armador
+            acompanharem a viagem ao vivo, sem instalar nada. Cada link é revogável, expira, e
+            o observador vê o motivo em português quando o sinal cai — não um "erro" mudo.
           </p>
         </div>
       </div>
@@ -1297,23 +1335,38 @@
             <span class="manual-toggle">▼</span>
           </div>
           <div class="manual-content">
-            <h4>70 Faróis Disponíveis</h4>
-            <p>Sistema inclui database completo com faróis de toda costa brasileira:</p>
+            <h4>98 Faróis, com procedência declarada</h4>
+            <p>
+              A base vem da <strong>Lista de Faróis DH2, 40ª edição 2026-2027</strong>
+              (DHN/CHM — Marinha do Brasil). <strong>95 dos 98</strong> registros são
+              rastreáveis ao número de ordem da publicação oficial; os 3 restantes vêm de
+              fonte aberta e estão marcados como tal no código. A base não é editada à mão:
+              é gerada por um extrator e conferida por provas automatizadas.
+            </p>
 
-            <h4>Distribuição por Região:</h4>
+            <h4>Distribuição pela costa (por latitude):</h4>
             <ul>
-              <li><strong>Região Norte:</strong> 5 faróis (Macapá, Belém, Santarém, Salinópolis, Manaus)</li>
-              <li><strong>Nordeste:</strong> 32 faróis (Maranhão, Piauí, Ceará, RN, PB, PE, AL, SE, BA)</li>
-              <li><strong>Sudeste:</strong> 19 faróis (ES, RJ, SP)</li>
-              <li><strong>Sul:</strong> 14 faróis (PR, SC, RS)</li>
+              <li><strong>Costa Norte</strong> (acima de 01°S): 6 faróis</li>
+              <li><strong>Costa Nordeste</strong> (01°S a 13°S): 35 faróis</li>
+              <li><strong>Costa Leste</strong> (13°S a 18°30'S): 10 faróis</li>
+              <li><strong>Costa Sudeste</strong> (18°30'S a 25°30'S): 28 faróis</li>
+              <li><strong>Costa Sul</strong> (abaixo de 25°30'S): 19 faróis</li>
             </ul>
+            <p>
+              De 04°26'N (Cabo Orange) a 33°45'S (Barra do Chuí). O foco mais alto é o
+              <strong>Farol de Fernando de Noronha</strong>, a 329 m; o de maior alcance
+              luminoso é o <strong>Farol de Abrolhos</strong>, com 51 NM.
+            </p>
 
             <h4>Informações por Farol:</h4>
             <ul>
               <li><strong>Nome:</strong> Identificação oficial</li>
               <li><strong>Posição:</strong> Latitude/Longitude (graus decimais)</li>
-              <li><strong>Altura:</strong> Em metros acima do nível do mar</li>
-              <li><strong>Alcance:</strong> Em milhas náuticas (range nominal)</li>
+              <li><strong>Altitude do foco:</strong> metros acima do nível do mar — é a
+                  altura da LUZ, não a da torre, e é ela que entra no cálculo do alcance</li>
+              <li><strong>Altura da estrutura:</strong> metros da torre, informada à parte</li>
+              <li><strong>Alcance luminoso:</strong> até onde a luz chega, em milhas náuticas</li>
+              <li><strong>Alcance geográfico:</strong> até onde a curvatura da Terra permite ver</li>
               <li><strong>Característica:</strong> Padrão de luz (Fl W 5s = Flash branco 5 segundos)</li>
             </ul>
 
@@ -1345,7 +1398,7 @@
             <h4>Verificação Automática</h4>
             <p>Para cada waypoint, o sistema:</p>
             <ol>
-              <li>Calcula distância até todos os 70 faróis</li>
+              <li>Calcula distância até todos os 98 faróis</li>
               <li>Identifica o mais próximo</li>
               <li>Verifica se está dentro do alcance</li>
               <li>Exibe status: "✓ Visível" ou "⚠ Fora de alcance"</li>
@@ -1623,10 +1676,15 @@
               <li><strong>Solução:</strong> Recarregue página (F5), limpe cache</li>
             </ul>
 
-            <h4>3. Contagem errada:</h4>
+            <h4>3. Números que não fecham (contagem, distância, XTE):</h4>
             <ul>
-              <li><strong>Causa:</strong> Bug corrigido em v2.0.4+</li>
-              <li><strong>Solução:</strong> Use versão 2.0.5 ou superior</li>
+              <li><strong>Causa:</strong> quase sempre é versão antiga em cache</li>
+              <li><strong>Solução:</strong> confira o selo de versão no topo da página inicial.
+                  Se não disser <strong>2.3.1</strong>, recarregue sem cache
+                  (Ctrl+Shift+R, ou Cmd+Shift+R no Mac)</li>
+              <li><strong>Se persistir:</strong> a versão publicada passa por 123 provas
+                  automatizadas a cada mudança — um número errado que sobrevive a isso é
+                  achado novo. Relate pelo WhatsApp com uma captura de tela</li>
             </ul>
 
             <h4>4. Relatório não gera:</h4>
@@ -1726,6 +1784,126 @@
           </div>
         </div>
 
+        <!-- SEÇÃO 11: NAVEGAÇÃO E PAINEL 3D -->
+        <div class="manual-section">
+          <div class="manual-header" onclick="toggleManual(this)">
+            <h3>🧭 11. Navegando: GPS, XTE e o Painel 3D</h3>
+            <span class="manual-toggle">▼</span>
+          </div>
+          <div class="manual-content">
+            <h4>Da rota planejada para a rota navegada</h4>
+            <p>
+              Planejar é uma coisa; navegar é outra. Com a rota pronta, ative a navegação por GPS:
+              o sistema passa a acompanhar a <strong>perna ativa</strong> — o trecho entre o
+              waypoint que ficou para trás e o próximo — e mostra a cada instante o rumo a
+              governar, a distância que falta e o ETA recalculado com a velocidade real.
+            </p>
+
+            <h4>XTE: o número que diz se você saiu da linha</h4>
+            <p>
+              <strong>Cross-Track Error</strong> é a distância perpendicular do navio até a linha
+              reta entre os dois waypoints da perna ativa. Zero significa em cima do traçado.
+              Dois décimos de milha para bombordo significam exatamente isso — e a indicação diz
+              para que lado governar para voltar.
+            </p>
+            <div class="tip-box">
+              <strong>⚠️ LEIA O XTE COM A CARTA AO LADO:</strong> um XTE pequeno diz que você está
+              sobre a linha que <em>você</em> traçou. Não diz que essa linha tem água. Profundidade,
+              obstruções e áreas restritas continuam sendo assunto da carta náutica oficial.
+            </div>
+
+            <h4>O painel 3D de atitude 🚢</h4>
+            <p>
+              O botão 🚢 na barra de navegação abre o rebocador em três dimensões, inclinando
+              conforme os sensores do próprio celular a bordo:
+            </p>
+            <ul>
+              <li><strong>Jogo</strong> — o balanço de bordo a bordo. Acima de 20° o número fica vermelho</li>
+              <li><strong>Caturro</strong> — a proa mergulhando e subindo</li>
+              <li><strong>Proa</strong> — vinda do GPS, não da bússola</li>
+              <li><strong>Jogo máx</strong> — o maior balanço desde a última nivelada</li>
+            </ul>
+
+            <h4>Nivele antes de confiar 🎚️</h4>
+            <p>
+              O celular quase nunca está aprumado no console. Com o navio parado e direito, toque
+              em <strong>🎚️</strong>: o painel passa a contar jogo e caturro a partir dali. É o
+              mesmo gesto de zerar um inclinômetro — sem ele, um aparelho apoiado torto mostra 8°
+              de banda com o navio a direito. O mesmo toque zera o registro de jogo máximo.
+            </p>
+
+            <h4>Escolhendo o casco</h4>
+            <p>No alto do painel há uma lista com a frota disponível:</p>
+            <ul>
+              <li><strong>Damen ASD 2810 “SD Rebel”</strong> (padrão) — 28,6 m × 10,2 m. É um ASD
+                  de verdade: os <strong>dois dutos Kort giratórios sob a popa</strong> estão no
+                  modelo, e é por eles que um azimutal empurra de través sem guinar</li>
+              <li><strong>Rastar 3200</strong> — 32,9 m × 13,5 m, rebocador portuário convencional</li>
+            </ul>
+            <p>
+              A escolha fica gravada no aparelho e vale também para o modo 🌍 <strong>Earth</strong>,
+              onde o mesmo rebocador navega a sua rota sobre o globo.
+            </p>
+            <div class="tip-box">
+              <strong>💡 DICA:</strong> a biblioteca 3D e o modelo só são baixados quando você abre
+              o painel — quem nunca usa o 3D não paga por ele. O ASD 2810 pesa 1,25 MB; em rede
+              fraca, a barra conta os por cento.
+            </div>
+          </div>
+        </div>
+
+        <!-- SEÇÃO 12: ESPELHAMENTO -->
+        <div class="manual-section">
+          <div class="manual-header" onclick="toggleManual(this)">
+            <h3>📡 12. Compartilhar a viagem com quem ficou em terra</h3>
+            <span class="manual-toggle">▼</span>
+          </div>
+          <div class="manual-content">
+            <h4>O que o espelho faz</h4>
+            <p>
+              Gera um <strong>link</strong>. Quem abrir esse link vê, ao vivo, a posição do navio
+              no mapa, o rumo, a velocidade, o waypoint em que está e a mesma atitude 3D que a
+              ponte está vendo. Não precisa instalar nada nem ter conta.
+            </p>
+
+            <h4>Como usar</h4>
+            <ol>
+              <li>Com a navegação ativa, toque no botão de compartilhar</li>
+              <li>Dê um nome ao destinatário (“Casa”, “Armador”, “Prático”)</li>
+              <li>Envie o link gerado</li>
+              <li><strong>Confira a lista:</strong> o link só funciona se aparecer como
+                  registrado. Um link que não registrou no servidor mostra aviso — não envie
+                  antes de ver a confirmação</li>
+            </ol>
+
+            <h4>Revogar</h4>
+            <p>
+              Cada link é revogável a qualquer momento e tem prazo de validade. Revogado, o
+              observador perde o acesso na hora. A revogação só sai da lista quando o servidor
+              confirma — se o sinal cair no meio, o link continua listado, porque dizer que
+              revogou sem ter revogado seria pior do que não revogar.
+            </p>
+
+            <h4>Quando algo falha, o observador vê o motivo</h4>
+            <p>
+              Quem está em terra não vê um “erro” mudo. Vê a causa, em português de bordo:
+            </p>
+            <ul>
+              <li><strong>Sem internet</strong> no aparelho dele</li>
+              <li><strong>Link revogado ou expirado</strong> pelo comandante</li>
+              <li><strong>Embarcação em silêncio</strong> — conectado, mas sem receber nada há
+                  mais de 25 segundos. Normalmente é o navio fora de cobertura</li>
+              <li><strong>Serviço fora do ar</strong> — e aí a reconexão é automática, com espera
+                  progressiva (2s, 4s, 8s, 15s, 30s) e contagem visível</li>
+            </ul>
+            <div class="tip-box">
+              <strong>💡 DICA:</strong> “conectado” e “recebendo” são coisas diferentes. O painel
+              distingue as duas — um canal aberto por onde não passa nada tem cor própria, e não
+              se disfarça de tudo bem.
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   </section>
@@ -1767,12 +1945,12 @@
           <strong>Desenvolvido por:</strong> Jossian Brito (Charlie Bravo)<br>
           Chief Engineer at TugLife Systems | Maritime Technology Specialist<br>
           <br>
-          © 2026 Coastal Navigator Brasil v2.2.0<br>
+          © 2026 Coastal Navigator Brasil v2.3.1<br>
           Todos os direitos reservados.<br>
           <br>
           <small>
             Sistema desenvolvido com foco em qualidade, segurança e usabilidade.<br>
-            70 Faróis da costa brasileira | Cálculos náuticos | Interface mobile-first
+            98 Faróis da Lista DH2/DHN | Cálculos náuticos ortodrômicos | Interface mobile-first
           </small>
         </p>
       </div>

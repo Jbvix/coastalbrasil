@@ -1043,6 +1043,123 @@ t(S15, '15.17', 'Todo casco declara para onde aponta a sua proa no arquivo', () 
   return { detail: FROTA.map(m => `${m.id} ${m.proaEixo}→${m.headingOffset}°`).join(' · ') };
 });
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SUÍTE 16 · Coerência da vitrine                                (v2.3.1)
+   A página inicial é a única parte do produto que ninguém executa — e por isso
+   a que envelhece sem avisar. Ela chegou a anunciar "70 faróis" com 98 na base
+   e a exibir TRÊS versões diferentes ao mesmo tempo (2.0.5 no selo, 2.2.0 no
+   rodapé, 2.3.0 no aplicativo). Estas provas fecham essa porta.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const S16 = '16 · Coerência da vitrine';
+const fs16 = require('fs');
+const APP16 = fs16.readFileSync(ROOT + '/app.html', 'utf8');
+const IDX16 = fs16.readFileSync(ROOT + '/index.html', 'utf8');
+const RDM16 = fs16.readFileSync(ROOT + '/README.md', 'utf8');
+
+// A versão canônica é a do cabeçalho do app.html; tudo mais deve concordar.
+const VER = (/^\s*Versão:\s*(\d+\.\d+\.\d+)\s*$/m.exec(APP16) || [])[1];
+
+t(S16, '16.1', 'Existe uma versão canônica declarada no app.html', () => {
+  ok(VER, 'o cabeçalho do app.html não declara "Versão: X.Y.Z"');
+  return { detail: 'v' + VER };
+});
+
+t(S16, '16.2', 'Todas as versões visíveis ao usuário concordam', () => {
+  // Cada uma destas aparece numa tela diferente. Divergir é o defeito original.
+  const pontos = [
+    ['app.html · <title>',        APP16, new RegExp('<title>Coastal Navigator Brasil v(\\d+\\.\\d+\\.\\d+)')],
+    ['app.html · cabeçalho',      APP16, /<span class="version">v(\d+\.\d+\.\d+)<\/span>/],
+    ['app.html · console',        APP16, /Coastal Navigator Brasil v(\d+\.\d+\.\d+) - Inicializado/],
+    ['index.html · selo',         IDX16, /class="version-badge">Versão (\d+\.\d+\.\d+)/],
+    ['index.html · rodapé',       IDX16, /Coastal Navigator Brasil v(\d+\.\d+\.\d+)<br>/],
+    ['README.md · título',        RDM16, /^# Coastal Navigator Brasil v(\d+\.\d+\.\d+)/m],
+  ];
+  const divergentes = [];
+  pontos.forEach(([nome, src, re]) => {
+    const m = re.exec(src);
+    if (!m) divergentes.push(`${nome}: não declara versão`);
+    else if (m[1] !== VER) divergentes.push(`${nome}: v${m[1]} (canônica é v${VER})`);
+  });
+  ok(divergentes.length === 0, 'versões em desacordo — ' + divergentes.join(' · '));
+  return { detail: `${pontos.length} pontos, todos em v${VER}` };
+});
+
+t(S16, '16.3', 'A vitrine não anuncia contagem de faróis diferente da base', () => {
+  const real = lighthouses.length;
+  // A página cita a contagem de duas formas, e as duas podem envelhecer:
+  //   · o TOTAL ("98 faróis"), em vários lugares;
+  //   · o RATEIO por trecho de costa (6 + 35 + 10 + 28 + 19).
+  // Um rateio que não fecha com o total é tão errado quanto um total errado —
+  // e foi exatamente o que aconteceu: a página trazia 5+32+19+14 = 70.
+  const citados = [...IDX16.matchAll(/(\d{1,4})\s*[Ff]ar[óo]is/g)].map(m => +m[1]);
+  ok(citados.length > 0, 'a vitrine não menciona a base de faróis');
+
+  const totais = citados.filter(n => n === real);
+  const parciais = citados.filter(n => n !== real);
+  ok(totais.length > 0, `nenhuma menção ao total real de ${real} faróis`);
+
+  const soma = parciais.reduce((a, b) => a + b, 0);
+  ok(parciais.length === 0 || soma === real,
+     `o rateio por trecho de costa soma ${soma} (${parciais.join('+')}), ` +
+     `mas a base tem ${real} faróis`);
+  return { detail: `total ${real} citado ${totais.length}x · rateio ${parciais.join('+')}=${soma}` };
+});
+
+t(S16, '16.4', 'A vitrine não deixou versões antigas para trás', () => {
+  // Um "use a versão 2.0.5" esquecido manda o usuário procurar algo que não existe.
+  const antigas = [...IDX16.matchAll(/[Vv]ers[ãa]o\s+(\d+\.\d+\.\d+)|v(\d+\.\d+\.\d+)/g)]
+    .map(m => m[1] || m[2])
+    .filter(v => v !== VER);
+  ok(antigas.length === 0, 'versão obsoleta citada na página: ' + [...new Set(antigas)].join(', '));
+});
+
+t(S16, '16.5', 'A vitrine anuncia a procedência da base, não só o número', () => {
+  // "98 faróis" sem dizer de onde é propaganda; com a fonte, é informação náutica.
+  ok(/Lista de Far[óo]is DH2/.test(IDX16), 'a página não cita a Lista de Faróis DH2');
+  ok(/40[ªa]\s*edi[çc][ãa]o/.test(IDX16), 'a página não cita a edição da publicação');
+  ok(/DHN/.test(IDX16), 'a página não cita a origem (DHN)');
+});
+
+t(S16, '16.6', 'Recursos entregues estão anunciados na vitrine', () => {
+  // Funcionalidade que existe e não aparece na vitrine é trabalho jogado fora.
+  const exigidos = [
+    ['painel 3D',      /3D/],
+    ['seleção de casco', /ASD 2810|Rastar/],
+    ['espelhamento',   /[Ee]spelho|em terra/],
+    ['navegação/XTE',  /XTE/],
+  ];
+  const ausentes = exigidos.filter(([, re]) => !re.test(IDX16)).map(([n]) => n);
+  ok(ausentes.length === 0, 'recurso entregue mas não anunciado: ' + ausentes.join(', '));
+});
+
+t(S16, '16.7', 'O manual da vitrine cobre navegação e espelhamento', () => {
+  const secoes = (IDX16.match(/class="manual-section"/g) || []).length;
+  ok(secoes >= 12, `o manual tem ${secoes} seções — navegação e espelhamento não cabem`);
+  ok(/manual-header/.test(IDX16) && (IDX16.match(/class="manual-content"/g) || []).length === secoes,
+     'cabeçalhos e conteúdos do manual não se emparelham');
+  return { detail: secoes + ' seções' };
+});
+
+t(S16, '16.8', 'A ressalva de finalidade educativa continua na página', () => {
+  // Some numa refatoração de layout e ninguém nota — mas é o que separa uma
+  // ferramenta de estudo de algo que alguém usaria no lugar da carta náutica.
+  ok(/FINALIDADE ESTRITAMENTE EDUCATIVA/i.test(IDX16), 'a ressalva educativa sumiu da vitrine');
+  ok(/carta[s]? n[áa]utica/i.test(IDX16), 'sumiu o aviso de que não substitui a carta náutica');
+});
+
+t(S16, '16.9', 'O número de provas anunciado na vitrine é o real', () => {
+  // Anunciar "122 provas" e ter 90 é propaganda. Conta as chamadas t(...) do
+  // próprio arquivo de provas — a fonte, não uma nota à parte que diverge.
+  const suite = fs16.readFileSync(__dirname + '/suite.js', 'utf8');
+  const reais = (suite.match(/^t\(S\d+,\s*'/gm) || []).length;
+  const m = /(\d{2,4})\s*provas automatizadas/.exec(IDX16);
+  ok(m, 'a vitrine não anuncia o número de provas');
+  ok(+m[1] === reais, `a vitrine anuncia ${m[1]} provas, mas existem ${reais}`);
+  const m2 = /passa por (\d{2,4}) provas/.exec(IDX16);
+  ok(!m2 || +m2[1] === reais, `o manual cita ${m2 && m2[1]} provas, mas existem ${reais}`);
+  return { detail: reais + ' provas, anunciadas corretamente' };
+});
+
 /* ═══ RELATÓRIO ═══ */
 const byStatus = s => results.filter(r=>r.status===s).length;
 const ICON = { PASS:'\x1b[32m✔\x1b[0m', FAIL:'\x1b[31m✘\x1b[0m', WARN:'\x1b[33m▲\x1b[0m' };
