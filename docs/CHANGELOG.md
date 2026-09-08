@@ -11,6 +11,64 @@ executável.
 
 ```
 
+## v2.3.1 (07/09/2026 - 23:55) — A VITRINE ALCANÇA O PRODUTO
+
+Autor: Jossian Brito (Charlie Bravo)
+
+A página inicial é a única parte do produto que ninguém executa — e por isso a
+que envelhece sem avisar. Enquanto o aplicativo chegava à v2.3.0, ela ainda
+anunciava **70 faróis** (a base tem 98) e exibia **três versões diferentes ao
+mesmo tempo**: 2.0.5 no selo, 2.2.0 no rodapé, 2.3.0 no aplicativo.
+
+### Corrigido
+
+- **70 → 98 faróis**, com a procedência que faltava: Lista de Faróis DH2, 40ª
+  edição 2026-2027 (DHN/CHM — Marinha do Brasil), 95 dos 98 rastreáveis ao
+  número de ordem da publicação.
+- **O rateio por trecho de costa não fechava.** A página trazia 5+32+19+14 = 70.
+  Recalculado dos dados reais, por faixa de latitude com critério declarado:
+  6 + 35 + 10 + 28 + 19 = **98**.
+- **Versão unificada em 2.3.1** nos seis pontos visíveis ao usuário (título,
+  cabeçalho e console do app; selo e rodapé da vitrine; título do README).
+  Site e aplicativo saem do mesmo deploy: versão é uma só.
+- **"Use a versão 2.0.5 ou superior"**, na seção de solução de problemas,
+  mandava o usuário procurar algo que não existe mais. Trocado por orientação
+  de recarregar sem cache e conferir o selo.
+- Campos por farol descritos como realmente são: **altitude do foco** (a altura
+  da LUZ, que é a que entra no cálculo do alcance) separada da **altura da
+  estrutura**, e **alcance luminoso** separado do **geográfico**.
+
+### Acrescentado
+
+Três recursos entregues havia versões e nunca anunciados:
+
+- **Navegação por GPS com XTE** — cartão novo e a seção 11 do manual, com a
+  ressalva de que um XTE pequeno diz que se está sobre a linha que *você*
+  traçou, não que essa linha tem água.
+- **Painel 3D de atitude** — jogo, caturro, proa, jogo máximo, a nivelagem pelo
+  🎚️, a frota selecionável (ASD 2810 / Rastar 3200) e o modo Earth.
+- **Espelhamento da viagem** — seção 12 do manual: gerar, conferir o registro
+  antes de enviar, revogar, e as quatro causas que o observador vê em terra.
+
+### Provas
+
+Suíte 16 nova — **Coerência da vitrine**, 9 provas — e é a parte que importa
+mais que a correção em si, porque a correção envelhece de novo:
+
+- **16.2** reprova se qualquer um dos seis pontos de versão divergir;
+- **16.3** reprova total errado **e** rateio que não soma o total — o defeito
+  original teria sido pego aqui;
+- **16.4** reprova versão obsoleta citada na página;
+- **16.6** reprova recurso entregue mas não anunciado;
+- **16.8** reprova se a ressalva de finalidade educativa sumir num rearranjo de
+  layout;
+- **16.9** reprova se o número de provas anunciado não for o real, contando as
+  chamadas do próprio arquivo de provas.
+
+Total: **123 provas, 119 passam, 0 falham, 4 avisos.**
+
+---
+
 ## v2.3.0 (07/09/2026 - 22:56) — FROTA 3D: SEGUNDO CASCO E SELETOR DE MODELO
 
 Autor: Jossian Brito (Charlie Bravo)
