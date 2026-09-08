@@ -11,6 +11,88 @@ executável.
 
 ```
 
+## v2.3.2 (08/09/2026 - 03:05) — QUATRO ACHADOS DE BORDO NO PAINEL 3D
+
+Autor: Jossian Brito (Charlie Bravo)
+
+Quatro defeitos relatados de bordo. Três tinham a mesma raiz.
+
+### 1 e 4 · O casco afundava no zoom out, e vinha fundo demais na Atitude
+
+Relato: *"no Google Earth, ao dar zoom out ele começa a afundar, ficando só o
+mastro"*, e *"na Atitude parece um pouco afundado"*.
+
+**Mesma causa.** O Cesium assenta a **origem do modelo** na altitude 0 e, para o
+navio não sumir ao longe, o **AMPLIA** (`minimumPixelSize`). Se a origem não é a
+linha d'água, o erro é multiplicado pela ampliação. Medido: a origem do ASD 2810
+estava **4,96 m acima** da linha d'água; a 400× (`maximumScale`) isso vira quase
+**2 km** de afundamento — some o casco, sobra o mastro. O Rastar 3200 tinha o
+mesmo defeito com 0,69 m, 7× menor, e por isso nunca chamou atenção.
+
+**Correção na geometria, não no código.** Os dois GLB foram reancorados com a
+origem na linha d'água e no meio-navio (`tools/glb/reancorar.mjs`). Um offset no
+código teria de perseguir a escala do Cesium a cada quadro; uma âncora na
+geometria vale para todo motor e toda escala. De quebra, o eixo de jogo e
+caturro passa a ficar **na linha d'água** — onde um navio balança de verdade, e
+não no centro de uma caixa que inclui o topo do mastro.
+
+**Sobre o calado.** O valor anterior media 5,35 m do ponto mais baixo do modelo.
+Só que o ponto mais baixo do ASD 2810 é a ponta do **SKEG**, não a quilha: o
+perfil do casco mostra o skeg descendo até y=−10,31 com meia-boca de **0,13 m**
+— uma lâmina — enquanto o casco de verdade começa em y=−8,50. Medir "do fundo"
+sem notar isso foi o que deixou o rebocador afundado. Agora **4,80 m**, escolhido
+sobre uma escada de renderizações: é onde a cinta de defensa fica inteira acima
+d'água, que é a posição em que ela empurra.
+
+### 2 · Os dois rebocadores sem iluminação no modo Earth
+
+O Cesium ilumina pela posição **real do Sol** na hora do relógio da cena. Abrir o
+modo Earth de madrugada no litoral brasileiro põe o rebocador do lado escuro da
+Terra: aparece chapado, sem relevo. Entrou um **farol de câmera** (headlight),
+que ilumina sempre o que se está olhando, a qualquer hora, sem falsear o terreno.
+
+### 3 · Identidade brasileira
+
+`SD REBEL` → **AGUIA**, `VALETTA` → **BRASIL**, `K` da chaminé → **B**.
+
+Cinco ocorrências do nome e três do porto no costado, mais duas marcas na
+chaminé — todas localizadas por detecção, não por coordenada digitada.
+
+**O texto vivia em dois mapas.** Trocada só a cor, `SD REBEL` continuava
+reaparecendo sob luz rasante, por cima do `AGUIA`: a tinta das letras tem
+**rugosidade** diferente da chapa do costado, e o nome estava gravado ali também.
+Fantasma visível na renderização e invisível na textura de cor. Os dois mapas
+compartilham as UV, então as mesmas caixas serviram aos dois.
+
+Dois erros de preenchimento cometidos e corrigidos no caminho, ambos anotados no
+código: interpolar na **vertical** arrasta o brilho da letra pela coluna e deixa
+estrias; e num painel de cor **limitada** (a marca da chaminé) a interpolação vai
+buscar amostra além da borda e espalha cinza sobre o azul — ali o preenchimento
+tem de ser chapado.
+
+### Mudado também
+
+- **`assets/js/ship3d.js`** — o painel 3D saiu do `app.html`, que bateu no teto
+  de 3.500 linhas que a prova 12.1 guarda. Mesmo caminho de `nautical.js`,
+  `report.js` e `mirror.js`. Raspar comentário para caber teria burlado a prova.
+- O campo `calado` passa a ser **metros** e documentação: quem posiciona a água
+  agora é a âncora do GLB, e a água fica em `y=0` nos dois motores.
+- Enquadramento da câmera refeito: com a origem na linha d'água, mirar em `y=0`
+  deixava o mastro fora de quadro.
+
+### Provas
+
+**123 provas, 119 passam, 0 falham, 4 avisos.**
+
+A **15.6** foi reescrita e agora vale muito mais: em vez de conferir uma fração
+declarada, ela **lê a caixa envolvente do próprio GLB** (pelos min/max dos
+acessores de POSITION e pelo grafo de nós, sem descomprimir malha) e exige que
+`y=0` caia dentro do casco — obra viva abaixo, obra morta acima — que o calado
+declarado bata com a geometria, e que a origem esteja no meio-navio. **Ela teria
+pegado o defeito relatado no dia em que ele nasceu.**
+
+---
+
 ## v2.3.1 (07/09/2026 - 23:55) — A VITRINE ALCANÇA O PRODUTO
 
 Autor: Jossian Brito (Charlie Bravo)

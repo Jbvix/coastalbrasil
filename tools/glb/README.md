@@ -86,3 +86,51 @@ números que não se adivinham — `headingOffset`, `headingOffsetEarth` e
 `npm test` guarda os invariantes; ela reprova arquivo truncado, casco pesado
 demais, calado fora da faixa e caminho de modelo escrito à mão fora do
 registro.
+
+## Repintar a identidade do casco (v2.3.2)
+
+`pintar.py` + `aplicar_nomes.py` trocam nome, porto de registro e marca da
+chaminé nas texturas, localizando o texto **por detecção** — nunca por
+coordenada digitada.
+
+```bash
+python3 aplicar_nomes.py          # textures/ -> textures-br/
+```
+
+Depois é só repetir os passos 2 e 3 da receita acima, apontando para
+`textures-br/`.
+
+### Três armadilhas, todas encontradas na prática
+
+1. **O texto vive em DOIS mapas.** A tinta das letras tem rugosidade diferente
+   da chapa: o nome está na cor **e** na rugosidade. Trocada só a cor, o nome
+   antigo reaparece sob luz rasante por cima do novo — fantasma visível na
+   renderização e invisível na textura de cor. Os dois mapas compartilham as
+   UV, então as mesmas caixas servem aos dois.
+
+2. **A letra inverte de sinal entre os mapas.** Na cor ela é mais **clara** que
+   o fundo; na rugosidade, mais **escura**. Amostrar com o mesmo critério nos
+   dois devolve o valor do fundo num deles, e a letra sai invisível. Daí existir
+   `cor_media()` e `cor_letra_escura()`.
+
+3. **O preenchimento depende do fundo.** Costado com degradê pede interpolação
+   **por linha** (`apagar`) — na vertical, o brilho da própria letra é arrastado
+   pela coluna e deixa estrias. Painel de cor chapada e **limitada**, como a
+   marca da chaminé, pede preenchimento sólido (`apagar_chapado`): ali a
+   interpolação busca amostra além da borda do painel e espalha cinza sobre o
+   azul.
+
+## Reancorar um casco na linha d'água
+
+```bash
+node reancorar.mjs entrada.glb saida.glb 4.80
+```
+
+O último argumento é o calado em metros **acima do ponto mais baixo do modelo**.
+Cuidado ao medi-lo: no ASD 2810 o ponto mais baixo é a ponta do **skeg** (uma
+lâmina de 0,13 m de meia-boca), não a quilha, que só começa 1,8 m acima. Ver
+`docs/tecnica.md` §7.6.
+
+Sem essa âncora o casco afunda ao dar zoom out no modo Earth — o Cesium assenta
+a origem do modelo na altitude 0 e a amplia com a distância, multiplicando
+qualquer erro de origem. A prova 15.6 guarda o invariante.

@@ -691,7 +691,8 @@ t(S12, '12.1', 'Código repartido em módulos, nenhum arquivo gigante', () => {
   const fs12 = require('fs');
   const linhas = f => fs12.readFileSync(ROOT + '/' + f, 'utf8').split('\n').length;
   const arquivos = ['app.html', 'assets/css/app.css', 'assets/js/lighthouses.js',
-                    'assets/js/nautical.js', 'assets/js/report.js', 'assets/js/mirror.js'];
+                    'assets/js/nautical.js', 'assets/js/report.js', 'assets/js/mirror.js',
+                    'assets/js/ship3d.js'];
   arquivos.forEach(f => ok(fs12.existsSync(ROOT + '/' + f), 'ausente: ' + f));
   const grandes = arquivos.filter(f => linhas(f) > 3500);
   ok(grandes.length === 0, 'acima de 3500 linhas: ' +
@@ -866,25 +867,26 @@ t(S14, '14.5', 'Nenhum segredo novo exposto pelo workflow', () => {
    ═══════════════════════════════════════════════════════════════════════════ */
 const S15 = '15 · Frota 3D';
 const fs15 = require('fs');
-const APP15 = fs15.readFileSync(ROOT + '/app.html', 'utf8');
+const APP15 = fs15.readFileSync(ROOT + '/app.html', 'utf8');       // marcação do painel
+const S3D15 = fs15.readFileSync(ROOT + '/assets/js/ship3d.js', 'utf8'); // lógica da frota
 
 /* Extrai o literal SHIP_MODELS do app.html contando colchetes — mesma técnica
    que o harness usa para as funções: lê o código de verdade, não uma cópia. */
 function lerShipModels() {
-  const i = APP15.indexOf('const SHIP_MODELS = [');
+  const i = S3D15.indexOf('const SHIP_MODELS = [');
   if (i < 0) return null;
-  let j = APP15.indexOf('[', i), d = 0, fim = -1;
-  for (let k = j; k < APP15.length; k++) {
-    if (APP15[k] === '[') d++;
-    else if (APP15[k] === ']') { d--; if (d === 0) { fim = k; break; } }
+  let j = S3D15.indexOf('[', i), d = 0, fim = -1;
+  for (let k = j; k < S3D15.length; k++) {
+    if (S3D15[k] === '[') d++;
+    else if (S3D15[k] === ']') { d--; if (d === 0) { fim = k; break; } }
   }
   if (fim < 0) return null;
-  return eval(APP15.slice(j, fim + 1));   // literal fechado, sem chamadas
+  return eval(S3D15.slice(j, fim + 1));   // literal fechado, sem chamadas
 }
 const FROTA = lerShipModels();
 
 t(S15, '15.1', 'O registro da frota existe e traz mais de um casco', () => {
-  ok(FROTA, 'SHIP_MODELS não foi encontrado em app.html');
+  ok(FROTA, 'SHIP_MODELS não foi encontrado em assets/js/ship3d.js');
   ok(FROTA.length >= 2, `a frota tem ${FROTA ? FROTA.length : 0} casco(s) — o seletor perde o sentido`);
   return { detail: FROTA.map(m => m.id).join(' · ') };
 });
@@ -926,14 +928,80 @@ t(S15, '15.5', 'Identificadores e arquivos não se repetem', () => {
   ok(new Set(arqs).size === arqs.length, 'dois cascos apontam para o mesmo arquivo');
 });
 
-t(S15, '15.6', 'A linha d\'água mantém o casco flutuando, não voando nem submerso', () => {
+/* Lê a caixa envolvente de um GLB pelo JSON, sem descomprimir malha: os
+   acessores de POSITION são obrigados pelo glTF a declarar min/max, e o grafo
+   de nós dá as transformações. É assim que se confere a ÂNCORA do casco. */
+function caixaGLB(caminho) {
+  const b = fs15.readFileSync(caminho);
+  const tamJson = b.readUInt32LE(12);
+  const gltf = JSON.parse(b.subarray(20, 20 + tamJson).toString('utf8'));
+  const mul = (A, B) => {                       // 4x4 coluna-maior, como o glTF
+    const C = new Array(16).fill(0);
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++)
+      for (let k = 0; k < 4; k++) C[j * 4 + i] += A[k * 4 + i] * B[j * 4 + k];
+    return C;
+  };
+  const local = (n) => {
+    if (n.matrix) return n.matrix.slice();
+    const [tx, ty, tz] = n.translation || [0, 0, 0];
+    const [sx, sy, sz] = n.scale || [1, 1, 1];
+    const [x, y, z, w] = n.rotation || [0, 0, 0, 1];
+    const R = [1-2*(y*y+z*z), 2*(x*y+z*w), 2*(x*z-y*w), 0,
+               2*(x*y-z*w), 1-2*(x*x+z*z), 2*(y*z+x*w), 0,
+               2*(x*z+y*w), 2*(y*z-x*w), 1-2*(x*x+y*y), 0, 0, 0, 0, 1];
+    for (let c = 0; c < 3; c++) for (let r = 0; r < 3; r++) R[c*4+r] *= [sx,sy,sz][c];
+    R[12] = tx; R[13] = ty; R[14] = tz;
+    return R;
+  };
+  const cx = { min: [1e9,1e9,1e9], max: [-1e9,-1e9,-1e9] };
+  const anda = (i, M) => {
+    const n = gltf.nodes[i], W = mul(M, local(n));
+    if (n.mesh != null) for (const p of gltf.meshes[n.mesh].primitives) {
+      const ai = p.attributes && p.attributes.POSITION;
+      if (ai == null) continue;
+      const a = gltf.accessors[ai];
+      if (!a.min || !a.max) continue;
+      for (let k = 0; k < 8; k++) {             // os 8 cantos da caixa local
+        const v = [k & 1 ? a.max[0] : a.min[0], k & 2 ? a.max[1] : a.min[1], k & 4 ? a.max[2] : a.min[2]];
+        for (let r = 0; r < 3; r++) {
+          const q = W[r] * v[0] + W[4+r] * v[1] + W[8+r] * v[2] + W[12+r];
+          cx.min[r] = Math.min(cx.min[r], q); cx.max[r] = Math.max(cx.max[r], q);
+        }
+      }
+    }
+    (n.children || []).forEach(c => anda(c, W));
+  };
+  const I = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+  (gltf.scenes[gltf.scene || 0].nodes || []).forEach(i => anda(i, I));
+  return cx;
+}
+
+t(S15, '15.6', 'A origem do casco está na linha d\'água, não no centro da caixa', () => {
+  /*
+  ESTA PROVA EXISTE POR CAUSA DE UM DEFEITO REAL. No modo Earth o Cesium
+  assenta a ORIGEM do modelo na altitude 0 e, para o navio não sumir ao longe,
+  o AMPLIA (minimumPixelSize). Origem fora da linha d'água vira erro
+  multiplicado pela ampliação: no ASD 2810 eram 4,96 m que, a 400x, viravam
+  quase 2 km de afundamento — sumia o casco e sobrava o mastro.
+  Ancorar na linha d'água é o que torna o casco correto em qualquer escala.
+  */
   FROTA.forEach(m => {
-    // O plano d'água fica em -altura*calado, com o modelo centrado: fora de
-    // (0, 0.5) a água sairia da caixa do casco — navio no ar ou sob a água.
-    ok(m.calado > 0 && m.calado < 0.5,
-       `o calado de "${m.id}" é ${m.calado}: fora do intervalo (0, 0.5)`);
+    const c = caixaGLB(ROOT + '/' + m.arquivo);
+    // y=0 tem de cair DENTRO do casco: obra viva abaixo, obra morta acima.
+    ok(c.min[1] < 0, `"${m.id}": nada abaixo da linha d'água (min y = ${c.min[1].toFixed(2)}) — casco voando`);
+    ok(c.max[1] > 0, `"${m.id}": nada acima da linha d'água (max y = ${c.max[1].toFixed(2)}) — casco submerso`);
+    // E o calado declarado tem de bater com o que a geometria mostra.
+    ok(Math.abs(-c.min[1] - m.calado) < 0.15,
+       `"${m.id}" declara calado ${m.calado} m mas a geometria tem ${(-c.min[1]).toFixed(2)} m sob a linha d'água`);
+    // Guinada gira em torno do próprio navio: origem no meio-navio.
+    const desX = (c.min[0] + c.max[0]) / 2, desZ = (c.min[2] + c.max[2]) / 2;
+    ok(Math.abs(desX) < 0.5 && Math.abs(desZ) < 0.5,
+       `"${m.id}" não está centrado: eixo a ${desX.toFixed(2)} m da linha de centro e ${desZ.toFixed(2)} m do meio-navio`);
   });
-  return { detail: FROTA.map(m => m.id + ' ' + m.calado).join(' · ') };
+  return { detail: FROTA.map(m => {
+    const c = caixaGLB(ROOT + '/' + m.arquivo);
+    return `${m.id} ${(-c.min[1]).toFixed(2)}m sob / ${c.max[1].toFixed(2)}m sobre`;
+  }).join(' · ') };
 });
 
 t(S15, '15.7', 'Correções de proa são graus válidos e conscientes do motor', () => {
@@ -956,7 +1024,7 @@ t(S15, '15.8', 'As dimensões declaradas são de um rebocador, não de um chute'
 });
 
 t(S15, '15.9', 'O casco padrão existe de fato no registro', () => {
-  const mp = /const SHIP_MODEL_PADRAO = '([^']+)'/.exec(APP15);
+  const mp = /const SHIP_MODEL_PADRAO = '([^']+)'/.exec(S3D15);
   ok(mp, 'SHIP_MODEL_PADRAO não foi declarado');
   ok(FROTA.some(m => m.id === mp[1]),
      `o padrão é "${mp[1]}", que não está na frota — o painel cairia no primeiro casco em silêncio`);
@@ -964,9 +1032,9 @@ t(S15, '15.9', 'O casco padrão existe de fato no registro', () => {
 });
 
 t(S15, '15.10', 'A troca de casco libera a memória de vídeo do anterior', () => {
-  const i = APP15.indexOf('async function carregarShipModel');
+  const i = S3D15.indexOf('async function carregarShipModel');
   ok(i > 0, 'carregarShipModel não existe — a troca recriaria a cena inteira');
-  const corpo = APP15.slice(i, i + 2600);
+  const corpo = S3D15.slice(i, i + 2600);
   // O WebGL não tem coleta de lixo: sem dispose(), cada troca prende dezenas
   // de MB na GPU e a terceira trava um celular.
   ok(/geometry\.dispose\(\)/.test(corpo), 'a geometria antiga não é descartada');
@@ -977,7 +1045,7 @@ t(S15, '15.10', 'A troca de casco libera a memória de vídeo do anterior', () =
 t(S15, '15.11', 'Nenhum caminho de modelo ficou escrito à mão fora do registro', () => {
   // A v2.2.2 tinha 'assets/models/tug.glb' em dois lugares. Se voltar a haver
   // caminho fora de SHIP_MODELS, o seletor deixa de valer para aquele ponto.
-  const fora = APP15.split('\n')
+  const fora = (APP15 + '\n' + S3D15).split('\n')
     .map((l, n) => [n + 1, l])
     .filter(([, l]) => /assets\/models\/[\w.-]+\.glb/.test(l))
     .filter(([, l]) => !/arquivo:/.test(l));
@@ -986,18 +1054,18 @@ t(S15, '15.11', 'Nenhum caminho de modelo ficou escrito à mão fora do registro
 });
 
 t(S15, '15.12', 'A constante única de proa foi mesmo aposentada', () => {
-  ok(!/SHIP_HEADING_OFFSET_DEG/.test(APP15),
+  ok(!/SHIP_HEADING_OFFSET_DEG/.test(APP15 + S3D15),
      'SHIP_HEADING_OFFSET_DEG ainda existe — um único offset não serve a dois cascos');
-  ok(/headingOffsetEarth \|\| 0/.test(APP15), 'o Cesium não lê o offset do casco escolhido');
-  ok(/shipModelAtual\(\)\.arquivo/.test(APP15), 'o globo não segue o casco escolhido');
+  ok(/headingOffsetEarth \|\| 0/.test(S3D15), 'o Cesium não lê o offset do casco escolhido');
+  ok(/shipModelAtual\(\)\.arquivo/.test(S3D15), 'o globo não segue o casco escolhido');
 });
 
 t(S15, '15.13', 'A escolha do casco sobrevive ao recarregar', () => {
-  ok(/SHIP_MODEL_CHAVE = '[^']+'/.test(APP15), 'não há chave de localStorage para a escolha');
-  ok(/localStorage\.setItem\(SHIP_MODEL_CHAVE/.test(APP15), 'a escolha não é gravada');
-  ok(/localStorage\.getItem\(SHIP_MODEL_CHAVE\)/.test(APP15), 'a escolha não é lida na volta');
+  ok(/SHIP_MODEL_CHAVE = '[^']+'/.test(S3D15), 'não há chave de localStorage para a escolha');
+  ok(/localStorage\.setItem\(SHIP_MODEL_CHAVE/.test(S3D15), 'a escolha não é gravada');
+  ok(/localStorage\.getItem\(SHIP_MODEL_CHAVE\)/.test(S3D15), 'a escolha não é lida na volta');
   // Uma preferência antiga apontando para um casco removido não pode quebrar o painel.
-  ok(/\|\| SHIP_MODELS\[0\]/.test(APP15), 'sem recuo quando a preferência aponta para casco inexistente');
+  ok(/\|\| SHIP_MODELS\[0\]/.test(S3D15), 'sem recuo quando a preferência aponta para casco inexistente');
 });
 
 t(S15, '15.14', 'O crédito de cada modelo acompanha o casco exibido', () => {
@@ -1010,12 +1078,12 @@ t(S15, '15.14', 'O crédito de cada modelo acompanha o casco exibido', () => {
 t(S15, '15.15', 'O seletor está ligado à troca de casco', () => {
   ok(/id="ship3dModelSel"/.test(APP15), 'o seletor não existe no painel');
   ok(/onchange="trocarShipModel\(this\.value\)"/.test(APP15), 'o seletor não dispara a troca');
-  ok(/function popularSeletorModelo/.test(APP15), 'nada preenche as opções do seletor');
+  ok(/function popularSeletorModelo/.test(S3D15), 'nada preenche as opções do seletor');
 });
 
 t(S15, '15.16', 'A proa é normalizada no modelo, não somada ao rumo', () => {
-  const i = APP15.indexOf('async function carregarShipModel');
-  const corpo = APP15.slice(i, i + 4200);
+  const i = S3D15.indexOf('async function carregarShipModel');
+  const corpo = S3D15.slice(i, i + 4200);
   // Somar graus ao rumo corrige a guinada e deixa caturro e jogo INVERTIDOS:
   // com ordem YXZ a rotação em Y é a mais externa e preserva a altura, então
   // Ry(180°) reposiciona a proa sem desfazer o mergulho. A correção tem de
@@ -1025,7 +1093,7 @@ t(S15, '15.16', 'A proa é normalizada no modelo, não somada ao rumo', () => {
      'o pivô não aplica headingOffset ao modelo');
   ok(/pivoProa\.add\(model\)/.test(corpo),
      'o modelo precisa estar DENTRO do pivô, já centrado, para girar no próprio centro');
-  ok(/s3dShip\.rotation\.set\(R\(s3dPitch\), R\(-s3dHead\), R\(s3dRoll\)\)/.test(APP15),
+  ok(/s3dShip\.rotation\.set\(R\(s3dPitch\), R\(-s3dHead\), R\(s3dRoll\)\)/.test(S3D15),
      'o laço de atitude ainda soma correção ao rumo — caturro e jogo ficariam invertidos');
 });
 

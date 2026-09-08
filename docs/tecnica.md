@@ -511,3 +511,53 @@ pelo motivo do §7.1.1: consertaria a guinada e deixaria caturro e jogo
 invertidos. O que entrou foi a normalização no pivô, que resolve os três eixos
 de uma vez — e que, de quebra, é o que torna o registro extensível: o próximo
 casco só precisa declarar para onde aponta a sua proa.
+
+
+### 7.6 A âncora na linha d'água
+
+*(v2.3.2)*
+
+Até a v2.3.1 os GLB tinham a origem onde o modelador a deixou, e o código
+compensava: a vista de Atitude recentrava pelo centro da caixa e punha a água em
+`-altura × calado`. Funcionava ali e **quebrava no globo**.
+
+O Cesium assenta a **origem do modelo** na altitude da entidade e, para o navio
+não sumir ao longe, o **amplia** (`minimumPixelSize: 80`). Origem fora da linha
+d'água vira erro multiplicado pela ampliação:
+
+```
+erro do ASD 2810 : 4,96 m
+maximumScale     : 400
+afundamento      : ~1.984 m  →  some o casco, sobra o mastro
+```
+
+Corrigir no código exigiria perseguir a escala do Cesium a cada quadro. Corrigir
+na geometria custa uma vez: `tools/glb/reancorar.mjs` translada o casco até a
+origem cair na linha d'água e no meio-navio. Vale para todo motor e toda escala,
+e põe o eixo de jogo e caturro **na linha d'água**, que é onde um navio balança.
+
+**Medir o calado exige cuidado.** O ponto mais baixo do ASD 2810 não é a quilha,
+é a ponta do skeg. O perfil de meia-boca por faixa de 0,25 m mostra:
+
+| Y (m) | meia-boca | o que é |
+|---|---|---|
+| −10,50 a −9,00 | 0,13 a 0,67 m | **skeg** — uma lâmina |
+| −8,75 | 2,29 m | começo do bojo |
+| −8,50 | 4,14 m | **quilha / fundo do casco** |
+| −4,75 | 5,16 m | boca máxima |
+
+Medir "do fundo" tomando a ponta do skeg pela quilha inflou o calado em ~1,7 m e
+deixou o rebocador afundado na vista de Atitude.
+
+### 7.7 Texto de casco vive em dois mapas
+
+Trocar o nome pintado no costado não é trocar a textura de cor. A tinta das
+letras tem **rugosidade** diferente da chapa, e o nome fica gravado no mapa de
+rugosidade também. Editada só a cor, o nome antigo continua aparecendo sob luz
+rasante, por cima do novo — fantasma visível na renderização e **invisível** na
+textura de cor, o que torna o defeito difícil de rastrear.
+
+Os dois mapas compartilham as UV, então as caixas medidas na cor servem à
+rugosidade. Um detalhe inverte: na cor as letras são **mais claras** que o fundo;
+na rugosidade são **mais escuras**. Amostrar a cor da letra com o mesmo critério
+nos dois casos devolve o valor do fundo num deles, e a letra sai invisível.
