@@ -180,7 +180,7 @@ No alto do painel há uma **lista com os rebocadores disponíveis**:
 
 | Casco | Comprimento × boca | Tipo |
 |---|---|---|
-| **Damen ASD 2810 “SD Rebel”** *(padrão)* | 28,6 m × 10,2 m | ASD — Azimuth Stern Drive |
+| **ASD 2810 “Aguia”** *(padrão)* | 28,6 m × 10,2 m | ASD — Azimuth Stern Drive, bandeira do Brasil |
 | **Rastar 3200** | 32,9 m × 13,5 m | Rebocador portuário convencional |
 
 Escolha e o painel troca na hora. O ASD 2810 é o padrão por ser o que
