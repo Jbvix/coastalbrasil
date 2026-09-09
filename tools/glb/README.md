@@ -134,3 +134,56 @@ lâmina de 0,13 m de meia-boca), não a quilha, que só começa 1,8 m acima. Ver
 Sem essa âncora o casco afunda ao dar zoom out no modo Earth — o Cesium assenta
 a origem do modelo na altitude 0 e a amplia com a distância, multiplicando
 qualquer erro de origem. A prova 15.6 guarda o invariante.
+
+## Repintar um casco inteiro (libré) — v2.4.0
+
+`repintar_libre.py` troca a pintura preservando todo o desgaste da textura.
+
+```bash
+python3 repintar_libre.py          # textures-br/ -> textures-saam/
+```
+
+### Duas técnicas, porque o problema é dois
+
+- **Cor saturada → outra cor saturada** (vermelho → azul): gira o matiz e
+  **preserva saturação e valor**. Estrias de ferrugem, linhas de chapa, sombras
+  e sujeira sobrevivem. Pintar com cor chapada mata tudo isso.
+- **Cinza → cor** (superestrutura → amarelo): rotação de matiz **não funciona**,
+  porque cinza tem saturação zero e girar zero dá zero. Aqui se tinge:
+  multiplica-se a cor-alvo pela luminância relativa. Mesmo princípio de pintar
+  sobre primer.
+
+### Separar obra viva de obra morta
+
+A textura é um plano e não sabe o que fica submerso — **só a geometria sabe**:
+
+```bash
+node mascara_uv.mjs casco.glb mascara.raw 0.70 2048
+```
+
+Percorre cada triângulo da malha do casco, lê a altura dos vértices e marca a
+área correspondente em UV. Duas armadilhas:
+
+1. **UV fora de `[0,1]`.** Neste modelo 100% dos vértices vêm deslocados por um
+   inteiro; sem envolver as coordenadas a máscara sai com 0,0% de cobertura.
+2. **Ilhas compartilhadas.** Se obra viva e obra morta dividirem pixels, máscara
+   nenhuma resolve. Confira ANTES: no ASD 2810 são 295 células só abaixo, 2.465
+   só acima e **zero compartilhadas**.
+
+### A altura do corte se mede
+
+O ponto mais largo do casco é a cinta de defensa. No ASD 2810 fica em
+**y = +1,00 m** acima da linha d'água, e o corte do preto vai na base dela,
+**+0,70 m**. Meça com um perfil de meia-boca por faixa; não escolha a olho.
+
+### Cor de material sem mapa
+
+O guincho (`1005`) não tem textura de cor, só metalicidade — a cor vem de um
+fator:
+
+```bash
+COR_GUINCHO=F5BE1E node montar_modelo.mjs cru.glb tex1k/ saida.glb
+```
+
+O glTF guarda `baseColorFactor` em espaço **linear**. `montar_modelo.mjs`
+converte de sRGB; passar o hex direto faz a cor sair lavada.

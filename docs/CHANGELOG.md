@@ -11,6 +11,84 @@ executável.
 
 ```
 
+## v2.4.0 (09/09/2026) — TERCEIRO CASCO: LIBRÉ SAAM AZUL E AMARELO
+
+Autor: Jossian Brito (Charlie Bravo)
+
+A partir de uma foto do **SAAM CRAO**, o ASD 2810 ganhou uma segunda pintura:
+azul e amarelo, no padrão da frota SAAM. Entra como **terceiro casco**, não como
+substituição — um simulador que mostra duas librés reais de rebocador brasileiro
+vale mais que um que mostra uma.
+
+| | Hex | Onde |
+|---|---|---|
+| Azul SAAM | `#0E6EB8` | costado acima da cinta, amurada |
+| Amarelo SAAM | `#F5BE1E` | superestrutura, passadiço, mastro, guincho |
+| Preto de casco | `#161A1E` | obra viva, cinta de defensa |
+
+*(As duas primeiras foram estimadas da foto, tirada sob céu encoberto.)*
+
+### Duas técnicas, porque o problema é dois
+
+**Vermelho → azul** é rotação de matiz. O vermelho já é saturado: gira-se o
+matiz e **preservam-se saturação e valor**. Sobrevivem intactas as estrias de
+ferrugem, as linhas de chapa, as sombras, a sujeira. Repintar com cor chapada
+mataria tudo isso e o casco viraria plástico.
+
+**Cinza → amarelo** não pode ser rotação: cinza tem saturação **zero**, e girar
+matiz de zero dá zero. Ali é tingimento — multiplica-se a cor-alvo pela
+luminância relativa do pixel. O meio-tom cai na cor da lata, o realce continua
+claro, a sombra continua escura. É o mesmo princípio de pintar sobre primer.
+
+Cobertura medida: casco **90,5% azul**, cabine média **77,2% amarelo**,
+cabine/mastro **44,4%**, amurada **54,5% azul**.
+
+### Separar obra viva de obra morta exige a GEOMETRIA, não a textura
+
+A textura é um plano: ela não sabe o que fica submerso. Para o costado ficar
+preto abaixo da cinta, `tools/glb/mascara_uv.mjs` percorre cada **triângulo** da
+malha do casco, lê a altura dos vértices e pinta a área correspondente em UV.
+
+Dois obstáculos, ambos reais:
+
+1. **100% dos vértices têm UV fora de `[0,1]`** — o mapeamento vem deslocado por
+   um inteiro. Sem envolver as coordenadas, o triângulo cai fora do buffer e a
+   máscara saía com **0,0%** de cobertura.
+2. Restava a dúvida que decidia a viabilidade: **e se obra viva e obra morta
+   dividissem os mesmos pixels?** Aí nenhuma máscara resolveria. Medido antes de
+   prosseguir: **295 células só abaixo, 2.465 só acima, zero compartilhadas.**
+
+### A altura do corte foi medida, não estimada
+
+O perfil de meia-boca por faixa de 0,25 m mostra o ponto mais largo do casco em
+**y = +1,00 m** acima da linha d'água — é a **cinta de defensa**. O corte do
+preto ficou em **+0,70 m**, a base da cinta, e não num número escolhido a olho.
+
+### Outros acertos da libré
+
+- **Convés fora do tingimento.** Tingi-lo de amarelo dava um tombadilho cor de
+  gema; no SAAM a chapa do convés é escura.
+- **Guincho amarelo.** O material `1005` não tem mapa de cor, só metalicidade —
+  a cor vem de um fator. `montar_modelo.mjs` ganhou a variável `COR_GUINCHO`,
+  **com conversão sRGB → linear**: o glTF guarda `baseColorFactor` em espaço
+  linear, e passar o hex direto faria o amarelo SAAM sair creme.
+
+### Provas
+
+O casco novo foi reconhecido pela suíte 15 **sem nenhuma prova nova** — o
+registro de frota da v2.3.0 fazendo o seu trabalho. 15.3 confere integridade do
+GLB, 15.4 o peso (1,28 MB), 15.6 a âncora na linha d'água, 15.5 a unicidade.
+
+**134 provas, 130 passam, 0 falham, 4 avisos.**
+
+### Não incluído
+
+Identidade SAAM (`SAAM AGUIA` / `RIO DE JANEIRO` no costado, marca da chaminé)
+ficou de fora: é etapa própria, ainda não autorizada. O casco novo mantém
+`AGUIA` / `BRASIL` e o quadrado azul com `B`.
+
+---
+
 ## v2.3.3 (09/09/2026) — O BOTÃO QUE NÃO PODIA ESTAR NA BARRA
 
 Autor: Jossian Brito (Charlie Bravo)
