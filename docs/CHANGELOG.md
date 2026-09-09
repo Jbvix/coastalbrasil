@@ -11,6 +11,89 @@ executável.
 
 ```
 
+## v2.3.3 (09/09/2026) — O BOTÃO QUE NÃO PODIA ESTAR NA BARRA
+
+Autor: Jossian Brito (Charlie Bravo)
+
+Achado de bordo, numa derrota real a caminho de Natal: o HUD exibia **XTE de
+0,01 NM** e "no rumo" — o navio em cima da linha — e ao mesmo tempo
+**"Perda p/ desvio: +628.616 L"**, com 28.369 L consumidos e 47.622 L no tanque.
+
+A conta denunciou a causa sem precisar saber o consumo do rebocador, porque as
+duas parcelas usam a mesma taxa:
+
+```
+consumido = H × C                 (horas × consumo horário)
+perda     = extraNM × C / S       (milhas extras × consumo por milha)
+perda / consumido = extraNM / (S × H) = 628.616 / 28.369 = 22,2
+```
+
+Como `S × H` é o avanço real, o `navDistTraveled` havia acumulado **cerca de 23×
+a distância realmente percorrida**. Não era erro de combustível: era distância
+fantasma.
+
+### 1 · A simulação não tinha guarda contra a navegação real
+
+`toggleSimulation()` descartava o último fixo (`navLastFix = null`) e voltava a
+perna ativa para a primeira — **sem desligar o GPS**. `navWatchId` só é limpo em
+`stopNavigation()`, e `onPositionUpdate` não checava nada. Dois emissores
+gravando no mesmo estado, alternando-se a cada tique. E como a distância é somada
+entre fixos **consecutivos**, cada alternância somava o salto inteiro entre a
+posição verdadeira e a fabricada — centenas de milhas por vez.
+
+Pior: o bloco que transmite ao espelho fica **dentro** do `processFix`, sem
+guarda, e o payload não carregava marca nenhuma. Quem acompanhava em terra
+recebia posições fabricadas **como se fossem reais**.
+
+Corrigido em três frentes:
+
+- `onPositionUpdate` ignora o fixo real enquanto a simulação está ativa;
+- navegando de verdade, o 🧪 exige **confirmação que nomeia as consequências** —
+  o GPS deixa de ser usado, os contadores zeram, e quantas pessoas em terra
+  passarão a ver simulação;
+- a telemetria carrega `sim: true` e o observador ganha **faixa listrada fixa no
+  topo**: *"🧪 SIMULAÇÃO — esta NÃO é a posição real da embarcação"*. Um espelho
+  que não distingue simulação de realidade não é espelho.
+
+### 2 · Distância percorrida agora rejeita salto impossível
+
+O critério é a **velocidade implícita do trecho**, não a distância: passo grande
+com muito tempo entre fixos é navegação; passo grande em um segundo é salto. O
+limite é 3× a velocidade de projeto, com piso de 30 nós. Saltos descartados são
+contados e aparecem ao lado da perda — se o número cresce, a posição está
+instável, e o comandante merece saber por quê.
+
+Entrou também o **🔄 zerar a singradura**: limpa distância, consumo e desvio sem
+encerrar a navegação — antes, corrigir um contador corrompido exigia parar tudo,
+o que derruba o espelho, apaga o rastro e reancora a perna ativa.
+
+### 3 · Ergonomia de passadiço
+
+- **Alvo de toque de 44 px** (era ~24 px). Mão molhada, navio jogando, às vezes
+  luva — e o vizinho do 🎯, o botão mais usado, era justamente o 🧪.
+- **Estado por cor, não por transparência.** O 🎯 sinalizava "não estou seguindo"
+  com `opacity: 0.4`; sob sol, num emoji, isso some.
+- **🔊 e 🎯 gravados no aparelho.** Eram variáveis de sessão.
+
+**Achado no caminho:** o teste em navegador mostrou que, após recarregar, a
+preferência era **lida** (alertas silenciados) mas o botão **não era repintado**,
+exibindo 🔊 com o som desligado. Causa: `initMap()` depende do Leaflet vindo de
+CDN e, falhando, matava o resto da inicialização. A bordo, sem sinal, isso
+acontece de verdade — e um comandante que confia no ícone e navega achando que
+será avisado de um farol é exatamente o que a persistência devia evitar.
+`pintarBotoesNav()` passou a vir **antes** de `initMap()`, e a prova 17.10 falha
+se a ordem inverter.
+
+### Provas
+
+Suíte 17 nova, **Painel de navegação: aplicabilidade a bordo**, 11 provas.
+Total: **134 provas, 130 passam, 0 falham, 4 avisos.**
+
+A prova 16.9 reprovou sozinha quando a vitrine ficou anunciando 123 provas — o
+guarda funcionando.
+
+---
+
 ## v2.3.2 (08/09/2026 - 03:05) — QUATRO ACHADOS DE BORDO NO PAINEL 3D
 
 Autor: Jossian Brito (Charlie Bravo)
