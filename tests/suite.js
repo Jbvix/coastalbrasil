@@ -1228,6 +1228,146 @@ t(S16, '16.9', 'O número de provas anunciado na vitrine é o real', () => {
   return { detail: reais + ' provas, anunciadas corretamente' };
 });
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SUÍTE 17 · Painel de navegação: aplicabilidade a bordo        (v2.3.3)
+   Achado de bordo: um HUD com XTE de 0,01 NM e "no rumo" exibindo 628.616 L de
+   "perda por desvio" — 23x a distância realmente percorrida. A causa não era o
+   cálculo do combustível: era o botão de SIMULAÇÃO ao lado do botão mais usado
+   do painel, sem guarda contra estar navegando de verdade.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const S17 = '17 · Painel de navegação';
+const fs17 = require('fs');
+const APP17 = fs17.readFileSync(ROOT + '/app.html', 'utf8');
+const CSS17 = fs17.readFileSync(ROOT + '/assets/css/app.css', 'utf8');
+
+t(S17, '17.1', 'Fixo real do GPS é ignorado durante a simulação', () => {
+  /* Sem esta guarda, o watchPosition e o simulador gravam no MESMO estado e se
+     alternam. Como navDistTraveled soma a distância entre fixos consecutivos,
+     cada alternância soma o salto inteiro entre a posição real e a fabricada. */
+  const i = APP17.indexOf('function onPositionUpdate');
+  ok(i > 0, 'onPositionUpdate não existe');
+  const corpo = APP17.slice(i, i + 1400);
+  const guarda = corpo.indexOf('if (navSimActive) return;');
+  const chamada = corpo.indexOf('processFix(');
+  ok(guarda > 0, 'onPositionUpdate aceita fixo real durante a simulação');
+  ok(guarda < chamada, 'a guarda tem de vir ANTES de processFix, não depois');
+});
+
+t(S17, '17.2', 'Simular durante navegação real exige confirmação', () => {
+  const i = APP17.indexOf('function toggleSimulation');
+  const corpo = APP17.slice(i, i + 2200);
+  ok(/if \(navActive\)/.test(corpo), 'o botão não distingue navegação real de planejamento');
+  ok(/confirm\(/.test(corpo), 'não há confirmação antes de descartar o GPS real');
+  // O aviso tem de nomear as consequências, não só perguntar "tem certeza?".
+  ok(/GPS/.test(corpo), 'o aviso não diz que o GPS deixa de ser usado');
+  ok(/terra|acompanhando/i.test(corpo), 'o aviso não diz que quem acompanha em terra é afetado');
+});
+
+t(S17, '17.3', 'A simulação zera os contadores em vez de misturar milhas', () => {
+  const i = APP17.indexOf('function toggleSimulation');
+  const corpo = APP17.slice(i, i + 2600);
+  ok(/navDistTraveled = 0/.test(corpo), 'milhas reais e simuladas se somariam no mesmo balanço');
+  ok(/navAccumFuel = 0/.test(corpo), 'o consumo real e o simulado se somariam');
+});
+
+t(S17, '17.4', 'A telemetria declara quando é simulação', () => {
+  /* Um espelho que não distingue simulação de realidade não é espelho: é fonte
+     de informação falsa para quem confia nela em terra. */
+  const i = APP17.indexOf('function broadcastTelemetry');
+  const corpo = APP17.slice(i, i + 1800);
+  ok(/sim:\s*!!navSimActive/.test(corpo), 'o payload não carrega marca de simulação');
+  ok(/p\.sim/.test(APP17), 'o observador não lê a marca de simulação');
+});
+
+t(S17, '17.5', 'O observador vê faixa de SIMULAÇÃO, e ela salta aos olhos', () => {
+  ok(/id="mirrorSimBanner"/.test(APP17), 'não há faixa de simulação no painel do observador');
+  ok(/N[ÃA]O é a posição real/i.test(APP17), 'a faixa não diz que a posição não é real');
+  ok(/\.mirror-sim-banner/.test(CSS17), 'a faixa não tem estilo próprio');
+  ok(/\.mirror-sim-banner\.active/.test(CSS17), 'a faixa não tem estado visível/oculto');
+  // Aparece ANTES de posição, rumo e ETA na leitura: posição fixa no topo.
+  const bloco = CSS17.slice(CSS17.indexOf('.mirror-sim-banner'), CSS17.indexOf('.mirror-sim-banner') + 700);
+  ok(/position:\s*fixed/.test(bloco) && /top:\s*0/.test(bloco), 'a faixa não fica fixa no topo');
+});
+
+t(S17, '17.6', 'Distância percorrida rejeita salto fisicamente impossível', () => {
+  /* O critério tem de ser a VELOCIDADE implícita do trecho, não a distância:
+     um passo grande com muito tempo entre fixos é navegação; um passo grande em
+     um segundo é salto de GPS ou troca de fonte de posição. */
+  const i = APP17.indexOf('function processFix');
+  const corpo = APP17.slice(i, i + 3000);
+  ok(/plausivel/.test(corpo), 'não há filtro de salto na acumulação de distância');
+  ok(/segNM \/ dtH/.test(corpo), 'o filtro não usa a velocidade implícita do trecho');
+  ok(/navDistTraveled \+= segNM/.test(corpo) && /&& plausivel/.test(corpo),
+     'a distância ainda é somada sem passar pelo filtro');
+  ok(/navSaltos\+\+/.test(corpo), 'saltos descartados não são contabilizados');
+});
+
+t(S17, '17.7', 'Há como zerar a singradura sem encerrar a navegação', () => {
+  ok(/function zerarSingradura/.test(APP17), 'não existe forma de zerar os contadores');
+  const i = APP17.indexOf('function zerarSingradura');
+  const corpo = APP17.slice(i, i + 1400);
+  ok(/confirm\(/.test(corpo), 'zerar contadores não pede confirmação');
+  ['navDistTraveled = 0', 'navAccumFuel = 0', 'navSaltos = 0'].forEach(c =>
+    ok(corpo.includes(c), `zerarSingradura não limpa ${c}`));
+  ok(/id="navResetBtn"/.test(APP17), 'o botão de zerar não está na barra');
+});
+
+t(S17, '17.8', 'Alvo de toque de passadiço: 44 px', () => {
+  /* Mão molhada, navio jogando e às vezes luva. 24 px erra — e o vizinho do 🎯,
+     o botão mais usado, era o 🧪 da simulação. */
+  const i = CSS17.indexOf('.nav-icon-btn {');
+  const bloco = CSS17.slice(i, i + 700);
+  const mw = /min-width:\s*(\d+)px/.exec(bloco);
+  const mh = /min-height:\s*(\d+)px/.exec(bloco);
+  ok(mw && +mw[1] >= 44, `alvo de toque com ${mw ? mw[1] : '?'} px de largura (mínimo 44)`);
+  ok(mh && +mh[1] >= 44, `alvo de toque com ${mh ? mh[1] : '?'} px de altura (mínimo 44)`);
+});
+
+t(S17, '17.9', 'Estado dos botões por cor, não por transparência', () => {
+  /* Sob sol no passadiço, a diferença entre opacity 1,0 e 0,4 num emoji some —
+     e o comandante não descobre que o mapa parou de acompanhar o barco. */
+  ok(/\.nav-icon-btn\.off/.test(CSS17), 'não há estado "desligado" com marca própria');
+  const bloco = CSS17.slice(CSS17.indexOf('.nav-icon-btn.off'), CSS17.indexOf('.nav-icon-btn.off') + 400);
+  ok(/box-shadow|background/.test(bloco), 'o estado desligado não muda cor nem moldura');
+  ok(!/b\.style\.opacity = navFollow/.test(APP17), 'o 🎯 ainda sinaliza estado por opacidade');
+  ok(/function pintarBotoesNav/.test(APP17), 'não há rotina única que reflete o estado dos botões');
+});
+
+t(S17, '17.10', 'Som e seguimento sobrevivem ao recarregar', () => {
+  /* Estado de segurança não pode ser esquecido a cada recarga: um comandante que
+     recarrega e ACHA que o alerta sonoro está ligado é pior que um silencioso. */
+  ok(/NAV_PREFS_CHAVE = '[^']+'/.test(APP17), 'não há chave de armazenamento das preferências');
+  ok(/localStorage\.setItem\(NAV_PREFS_CHAVE/.test(APP17), 'as preferências não são gravadas');
+  ok(/localStorage\.getItem\(NAV_PREFS_CHAVE\)/.test(APP17), 'as preferências não são lidas na volta');
+  ok(/try \{[\s\S]{0,200}NAV_PREFS_CHAVE/.test(APP17),
+     'o acesso ao armazenamento precisa tolerar aparelho que o bloqueia');
+
+  /* E o estado tem de ser PINTADO mesmo quando o mapa não carrega. O Leaflet vem
+     de CDN; a bordo, sem sinal, initMap() falha e uma exceção ali matava o resto
+     do bloco de inicialização. O sintoma era o pior possível: preferências lidas
+     (alertas silenciados) e botão mostrando 🔊 — comandante confiando num ícone
+     que mente sobre o alerta de farol. */
+  const bloco = APP17.slice(APP17.indexOf("addEventListener('DOMContentLoaded'"), APP17.indexOf("addEventListener('DOMContentLoaded'") + 1600);
+  const iPinta = bloco.indexOf('pintarBotoesNav()');
+  const iMapa = bloco.indexOf('initMap()');
+  ok(iPinta > 0 && iMapa > 0, 'inicialização não chama pintarBotoesNav ou initMap');
+  ok(iPinta < iMapa,
+     'pintarBotoesNav() vem DEPOIS de initMap(): se o mapa falhar, o botão de som mente');
+});
+
+t(S17, '17.11', 'Todo botão da barra tem rótulo e ação declarados', () => {
+  const barra = APP17.slice(APP17.indexOf('id="navShareBtn"') - 400, APP17.indexOf('id="navCollapseBtn"') + 200);
+  const botoes = barra.match(/<button[^>]*class="nav-icon-btn"[^>]*>/g) || [];
+  ok(botoes.length >= 7, `a barra tem ${botoes.length} botões — esperados ao menos 7`);
+  const semTitulo = botoes.filter(b => !/title="/.test(b));
+  ok(semTitulo.length === 0, `${semTitulo.length} botão(ões) sem title — ninguém adivinha o ícone`);
+  // Todo botão com ação precisa impedir que o toque recolha o painel inteiro.
+  const comAcao = botoes.filter(b => /onclick=/.test(b));
+  const semStop = comAcao.filter(b => !/event\.stopPropagation\(\)/.test(b));
+  ok(semStop.length === 0, `${semStop.length} botão(ões) recolheriam o painel ao serem tocados`);
+  return { detail: `${botoes.length} botões, ${comAcao.length} com ação` };
+});
+
 /* ═══ RELATÓRIO ═══ */
 const byStatus = s => results.filter(r=>r.status===s).length;
 const ICON = { PASS:'\x1b[32m✔\x1b[0m', FAIL:'\x1b[31m✘\x1b[0m', WARN:'\x1b[33m▲\x1b[0m' };

@@ -5,7 +5,7 @@
   COASTAL NAVIGATOR BRASIL — Sistema de Planejamento de Viagem Costeira
 ════════════════════════════════════════════════════════════════════════════════
 
-  Versão: 2.3.2
+  Versão: 2.3.3
   Autor: Jossian Brito (Charlie Bravo)
   LinkedIn: https://www.linkedin.com/in/jossianbrito/
   X: https://x.com/jossiancosta  ·  Medium: https://medium.com/@jossiancosta
@@ -43,7 +43,7 @@
   <meta name="keywords"
     content="navegação costeira, planejamento de viagem, faróis, Brasil, OpenSeaMap, GPX, rebocadores">
 
-  <title>Coastal Navigator Brasil v2.3.2 - Planejamento de Viagem</title>
+  <title>Coastal Navigator Brasil v2.3.3 - Planejamento de Viagem</title>
 
   <!-- Leaflet CSS -->
   <!-- Subresource Integrity: o navegador recusa o arquivo se o conteúdo servido
@@ -74,7 +74,7 @@
     <header class="app-header">
       <div class="header-content">
         <div class="logo">
-          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.3.2</span></h1>
+          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.3.3</span></h1>
         </div>
 
         <div class="controls">
@@ -188,6 +188,7 @@
           <button class="nav-icon-btn" title="Som dos alertas" onclick="event.stopPropagation(); toggleNavMute()" id="navMuteBtn">🔊</button>
           <button class="nav-icon-btn" title="Centralizar no barco" onclick="event.stopPropagation(); toggleNavFollow()" id="navFollowBtn">🎯</button>
           <button class="nav-icon-btn" title="Simular percurso" onclick="event.stopPropagation(); toggleSimulation()" id="navSimBtn">🧪</button>
+          <button class="nav-icon-btn" title="Zerar contadores da singradura (distância, consumo e desvio)" onclick="event.stopPropagation(); zerarSingradura()" id="navResetBtn">🔄</button>
           <button class="nav-icon-btn" title="Informações dos waypoints" onclick="event.stopPropagation(); openWaypointsInfo()" id="navInfoBtn">ℹ️</button>
           <button class="nav-icon-btn" title="Atitude 3D do rebocador (sensores)" onclick="event.stopPropagation(); openShip3D()" id="navShip3dBtn">🚢</button>
           <button class="nav-icon-btn" title="Recolher" id="navCollapseBtn">▾</button>
@@ -269,6 +270,10 @@
       👁️ <strong>MODO ESPELHO</strong> — acompanhando a embarcação ao vivo
       <span id="mirrorBannerToken"></span>
       <span id="mirrorBannerStatus" class="mirror-conn">conectando…</span>
+    </div>
+    <!-- Faixa de SIMULAÇÃO: só aparece quando a embarcação declara sim:true -->
+    <div id="mirrorSimBanner" class="mirror-sim-banner">
+      🧪 <strong>SIMULAÇÃO</strong> — esta NÃO é a posição real da embarcação
     </div>
 
     <!-- Modal de compartilhamento (gera o link com token) -->
@@ -1827,8 +1832,25 @@
     let navLegAncorada = false;     // a perna já foi ancorada no 1º fixo?
     let navAccumFuel = 0;           // litros consumidos navegando
     let navDistTraveled = 0;        // distância real percorrida (NM)
-    let navMuted = false;
-    let navFollow = true;           // mapa segue o barco
+    let navSaltos = 0;              // fixos descartados por salto implausível
+    /*
+    Preferências do painel gravadas no aparelho. Antes eram variáveis de sessão:
+    silenciar os alertas e recarregar a página trazia o som de volta sem avisar —
+    e o inverso é pior, um comandante que recarrega e acha que o alerta sonoro
+    está ligado quando não está. Estado de segurança não pode ser esquecido a
+    cada recarga.
+    */
+    const NAV_PREFS_CHAVE = 'cnb_nav_prefs';
+    function lerNavPrefs() {
+      try { return JSON.parse(localStorage.getItem(NAV_PREFS_CHAVE) || '{}') || {}; }
+      catch (e) { return {}; }
+    }
+    function gravarNavPrefs() {
+      try { localStorage.setItem(NAV_PREFS_CHAVE, JSON.stringify({ mudo: navMuted, seguir: navFollow })); }
+      catch (e) { /* aparelho sem armazenamento: segue sem persistir */ }
+    }
+    let navMuted = lerNavPrefs().mudo === true;
+    let navFollow = lerNavPrefs().seguir !== false;   // padrão: segue o barco
     let navMarker = null;           // marcador da embarcação
     let navAccCircle = null;        // círculo de precisão do GPS
     let navHudCollapsed = false;
@@ -1877,6 +1899,7 @@
       navAccumFuel = elapsedFuel(tripData, Date.now());
       if (tripData) tripData.fuelAlreadyUsed = navAccumFuel;
       navDistTraveled = 0;
+      navSaltos = 0;
       navLastFix = null;
       // A perna ativa é ancorada no primeiro fixo de GPS (ver processFix):
       // quem começa a navegar no meio da viagem não deve partir da perna 1.
@@ -1937,6 +1960,17 @@
 
     /* Callback de posição do GPS real. */
     function onPositionUpdate(position) {
+      /*
+      GUARDA DE SIMULAÇÃO — sem ela, dois emissores gravam no MESMO estado.
+      O watchPosition continua vivo durante a simulação (só é encerrado em
+      stopNavigation), e o simulador chama processFix por conta própria. Os dois
+      se alternavam a cada tique, e como navDistTraveled soma a distância entre
+      fixos CONSECUTIVOS, cada alternância somava o salto inteiro entre a posição
+      verdadeira e a fabricada — centenas de milhas por vez. Foi assim que um HUD
+      a bordo, com XTE de 0,01 NM e "no rumo", exibiu 628.616 L de "perda por
+      desvio": 23x a distância realmente percorrida, toda ela salto.
+      */
+      if (navSimActive) return;
       const c = position.coords;
       processFix(c.latitude, c.longitude, c.accuracy,
         c.speed, c.heading, position.timestamp || Date.now());
@@ -1956,7 +1990,29 @@
       if (navLastFix) {
         const dtH = Math.max((t - navLastFix.t) / 3600000, 0); // horas
         const segNM = calculateDistance(navLastFix.lat, navLastFix.lng, lat, lng);
-        if (segNM > 0.0005) navDistTraveled += segNM;
+
+        /*
+        FILTRO DE SALTO — a distância percorrida só aceita trecho fisicamente
+        navegável.
+
+        navDistTraveled soma o trecho entre fixos CONSECUTIVOS, e por isso
+        engolia qualquer salto de posição como se fosse milha navegada: troca de
+        fonte de posição, reaquisição de GPS depois de uma sombra, ou o primeiro
+        fixo após a tela voltar do bolso. E como a "perda por desvio" é
+        (navDistTraveled - progresso na rota) x litros/milha, o erro reaparecia
+        ampliado no combustível: a bordo, um HUD com XTE de 0,01 NM exibiu
+        628.616 L de perda — 23x a distância realmente percorrida.
+
+        O critério é a velocidade implícita do trecho, não a distância: um passo
+        grande com muito tempo entre fixos é navegação normal; um passo grande em
+        um segundo é salto. O limite é 3x a velocidade de projeto, com piso de
+        30 nós para não reprovar um rebocador leve em corrente favorável. Sem
+        tempo confiável entre fixos (dtH = 0), aceita-se no máximo 1 NM.
+        */
+        const vMax = Math.max((tripData ? tripData.speedKnots : 12) * 3, 30);
+        const plausivel = dtH > 0 ? (segNM / dtH) <= vMax : segNM <= 1.0;
+        if (segNM > 0.0005 && plausivel) navDistTraveled += segNM;
+        else if (segNM > 0.0005) navSaltos++;   // contabiliza p/ mostrar no HUD
         // Fallback de velocidade: exige Δt mínimo (~0.5s) p/ não estourar com jitter
         if (sog === null && dtH > 0.00014) sog = segNM / dtH;
         // Fallback de rumo: calcula por diferença sempre que há seguimento (>0.8 kt),
@@ -2026,7 +2082,11 @@
           const devFuel = extraNM * fuelPerNM;
 
           document.getElementById('navFuelUsed').textContent = navAccumFuel.toFixed(0) + ' L';
-          document.getElementById('navFuelDev').textContent = '+' + devFuel.toFixed(0) + ' L';
+          // Saltos descartados aparecem ao lado da perda: se o número cresce,
+          // a posição está instável, e o comandante merece saber por que a
+          // distância percorrida não bate com o que ele sente no passadiço.
+          document.getElementById('navFuelDev').textContent =
+            '+' + devFuel.toFixed(0) + ' L' + (navSaltos ? ` · ${navSaltos} salto(s) de GPS descartado(s)` : '');
           const leftEl = document.getElementById('navFuelLeft');
           leftEl.textContent = left.toFixed(0) + ' L';
 
@@ -2316,14 +2376,59 @@
     // ─── UI auxiliares do HUD ───
     function toggleNavMute() {
       navMuted = !navMuted;
-      document.getElementById('navMuteBtn').textContent = navMuted ? '🔇' : '🔊';
+      gravarNavPrefs();
+      pintarBotoesNav();
       if (!navMuted) navAlert('Som ativado.', null);
+    }
+
+    /*
+    Zera os contadores da singradura SEM encerrar a navegação.
+
+    Distância percorrida, combustível queimado e perda por desvio se acumulam
+    desde que a navegação começou. Se um deles se corrompeu — GPS que saltou
+    antes do filtro existir, ou uma simulação rodada por engano — a única saída
+    era parar e recomeçar a navegação, o que derruba o espelho, apaga o rastro e
+    reancora a perna ativa. Aqui se limpa só o que está errado: a posição, a
+    perna ativa e o compartilhamento seguem intactos.
+    */
+    function zerarSingradura() {
+      const perdidas = navDistTraveled.toFixed(1);
+      if (!confirm(`Zerar os contadores da singradura?\n\n`
+        + `• Distância percorrida: ${perdidas} NM\n`
+        + `• Combustível queimado: ${navAccumFuel.toFixed(0)} L\n`
+        + `• Perda por desvio: volta a zero\n\n`
+        + `A navegação, a rota e o compartilhamento continuam.`)) return;
+      navDistTraveled = 0;
+      navAccumFuel = 0;
+      navSaltos = 0;
+      const dev = document.getElementById('navFuelDev');
+      if (dev) dev.textContent = '+0 L';
+      const usado = document.getElementById('navFuelUsed');
+      if (usado) usado.textContent = '0 L';
+      navAlert('Contadores da singradura zerados.', null);
     }
 
     function toggleNavFollow() {
       navFollow = !navFollow;
-      const b = document.getElementById('navFollowBtn');
-      b.style.opacity = navFollow ? '1' : '0.4';
+      gravarNavPrefs();
+      pintarBotoesNav();
+    }
+
+    /* Reflete o estado dos botões alternáveis: ícone, moldura e rótulo. */
+    function pintarBotoesNav() {
+      const mudo = document.getElementById('navMuteBtn');
+      if (mudo) {
+        mudo.textContent = navMuted ? '🔇' : '🔊';
+        mudo.classList.toggle('off', navMuted);
+        mudo.title = navMuted ? 'Alertas SILENCIADOS — tocar para ligar o som'
+                              : 'Alertas com som — tocar para silenciar';
+      }
+      const seguir = document.getElementById('navFollowBtn');
+      if (seguir) {
+        seguir.classList.toggle('off', !navFollow);
+        seguir.title = navFollow ? 'Mapa acompanhando o barco — tocar para soltar'
+                                 : 'Mapa SOLTO — tocar para voltar a acompanhar';
+      }
     }
 
     function toggleNavHudCollapse() {
@@ -2458,7 +2563,32 @@
         alert('⚠️ A simulação precisa de uma rota com pelo menos 2 waypoints.');
         return;
       }
+      /*
+      CONSENTIMENTO INFORMADO. O 🧪 fica ao lado do 🎯, que é o botão mais usado
+      do painel; um toque errado com a mão molhada trocava a posição real por uma
+      fabricada — e, havendo espelho ativo, mandava essa ficção para terra sem
+      qualquer marca. Navegando de verdade, o comandante tem de dizer sim, e o
+      aviso precisa nomear as duas consequências: o GPS para de ser ouvido, e
+      quem acompanha vê simulação.
+      */
+      if (navActive) {
+        const emTerra = mirrorShares.length;
+        const aviso = '⚠️ SIMULAÇÃO DURANTE NAVEGAÇÃO REAL\n\n'
+          + '• A posição do GPS deixa de ser usada enquanto durar.\n'
+          + '• A distância percorrida e o consumo do trecho serão zerados.\n'
+          + (emTerra
+              ? `• ${emTerra} pessoa(s) acompanhando em terra passarão a ver a\n`
+                + '  SIMULAÇÃO, sinalizada como tal no painel delas.\n'
+              : '')
+          + '\nConfirma iniciar a simulação?';
+        if (!confirm(aviso)) return;
+      }
       navSimActive = true;
+      // Zera os contadores da singradura: misturar milhas reais com simuladas
+      // corromperia consumo e perda por desvio no mesmo balanço.
+      navDistTraveled = 0;
+      navAccumFuel = 0;
+      navLegAncorada = false;
       navSimDist = 0;
       navLastFix = null;
       navActiveLeg = 0;
@@ -2595,7 +2725,13 @@
         // Sempre envia o rumo (COG) para o observador orientar a embarcação no curso
         // e exibir a Proa; jogo/caturro vão junto quando os sensores estão ativos.
         att: shipAttitude || { roll: 0, pitch: 0, heading: Math.round(((cog || 0) % 360 + 360) % 360) },
-        vessel: tripData ? tripData.vesselName : null
+        vessel: tripData ? tripData.vesselName : null,
+        // Marca de procedência: sem ela, o observador em terra não tem COMO
+        // distinguir uma derrota simulada de uma real. Um espelho que não faz
+        // essa distinção não é espelho — é fonte de informação falsa para quem
+        // confia nele. Segue sempre, inclusive false, para o observador poder
+        // apagar a faixa quando a simulação termina.
+        sim: !!navSimActive
       };
       mirrorShares.forEach(s => {
         if (!s.channel) return;
@@ -2856,6 +2992,12 @@
       mirrorRetry = 0;
       setMirrorConn('ao vivo', 'ok');
       setMirrorHint('🟢 Recebendo telemetria da embarcação.');
+      // Procedência antes de qualquer outra coisa: se a derrota é simulada, quem
+      // olha precisa saber ANTES de ler posição, rumo ou ETA.
+      const simBanner = document.getElementById('mirrorSimBanner');
+      if (simBanner) simBanner.classList.toggle('active', !!p.sim);
+      if (p.sim) setMirrorHint('🧪 A embarcação está transmitindo uma SIMULAÇÃO — não é a posição real.');
+
       mirrorWaypoints = p.wps || [];   // habilita o botão INFO do observador
       mirrorAttitude = p.att || null;  // alimenta o painel 3D do observador
       mirrorPos = { lat: p.lat, lng: p.lng };  // posição p/ o modo Earth do observador
@@ -2921,8 +3063,19 @@
     // ═══════════════════════════════════════════════════════════════════════
 
     document.addEventListener('DOMContentLoaded', function () {
+      /*
+      ORDEM DELIBERADA. pintarBotoesNav() vem PRIMEIRO porque é o único destes
+      que não depende de nada externo — é DOM puro. initMap() depende do Leaflet,
+      que vem de CDN; a bordo, com sinal ruim ou sem sinal, ele falha, e uma
+      exceção ali matava o resto deste bloco. O sintoma era o pior possível: as
+      preferências gravadas eram LIDAS (alertas silenciados) mas o botão nunca
+      era repintado, mostrando 🔊 com o som desligado. Um comandante que confia
+      no ícone e navega achando que será avisado de um farol é exatamente o que
+      a persistência foi feita para evitar.
+      */
+      pintarBotoesNav();   // reflete as preferências gravadas no aparelho
       initMap();
-      startClock();   // relógio de data/hora (embarcação e observador)
+      startClock();        // relógio de data/hora (embarcação e observador)
 
       // Modo espelho (observador em terra via ?watch=TOKEN): pula o tour/onboarding
       if (initMirrorViewer()) {
@@ -2935,7 +3088,7 @@
       updateShareButtons();
 
       console.log('═══════════════════════════════════════════════════════════════');
-      console.log('  Coastal Navigator Brasil v2.3.2 - Inicializado ⚓');
+      console.log('  Coastal Navigator Brasil v2.3.3 - Inicializado ⚓');
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('Autor: Jossian Brito (Charlie Bravo)');
       console.log('58 Faróis curados carregados 💡 (52 DHN + 6 Validados)');

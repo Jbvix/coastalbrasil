@@ -199,6 +199,49 @@ proa mergulhava quando deveria subir. Não era o sensor nem o seu celular — er
 o modelo, desenhado com a proa para o lado oposto ao que o painel supunha. Está
 corrigido. Se você tinha aprendido a "ler ao contrário", pode desaprender.
 
+## 8.0 A barra de botões da navegação
+
+| Ícone | O que faz |
+|---|---|
+| 📤 | **Compartilhar** — gera o link do espelho para quem ficou em terra |
+| 🔊 / 🔇 | **Som dos alertas.** Silenciado, o botão fica cinza e emoldurado — não use a transparência para julgar, use a moldura |
+| 🎯 | **Mapa acompanha o barco.** Cinza e emoldurado = o mapa está solto |
+| 🧪 | **Simular percurso** — ver o aviso abaixo |
+| 🔄 | **Zerar a singradura** — distância, consumo e perda por desvio voltam a zero, sem encerrar a navegação |
+| ℹ️ | **Informações dos waypoints** |
+| 🚢 | **Atitude 3D** do rebocador |
+
+O 🔊 e o 🎯 **ficam gravados no aparelho**: a escolha sobrevive a recarregar a
+página. É deliberado — um alerta silenciado que volta sozinho ao ligar o som, ou
+pior, um ícone dizendo que o som está ligado quando não está, é o tipo de engano
+que faz perder um farol.
+
+### ⚠️ Sobre o 🧪 Simular percurso
+
+**Navegando de verdade, a simulação descarta o GPS.** Enquanto ela roda, a
+posição exibida é fabricada a partir da sua rota — não é onde o navio está.
+
+Por isso, com a navegação ativa, o botão **pede confirmação** e diz exatamente o
+que vai acontecer: o GPS deixa de ser usado, os contadores da singradura zeram,
+e — se houver alguém acompanhando pelo link — **quantas pessoas passarão a ver a
+simulação**.
+
+Quem está em terra **não é enganado**: o painel do observador exibe uma faixa
+listrada no alto da tela, *"🧪 SIMULAÇÃO — esta NÃO é a posição real da
+embarcação"*, antes de qualquer posição, rumo ou ETA.
+
+### Se a "perda por desvio" parecer absurda
+
+Esse número é `(distância percorrida − avanço na rota) × litros por milha`. Um
+salto de GPS — reaquisição depois de uma sombra, troca de fonte de posição —
+entrava na distância percorrida como se fosse milha navegada, e reaparecia
+ampliado no combustível.
+
+Desde a v2.3.3 saltos fisicamente impossíveis são **descartados** e contados: ao
+lado da perda aparece *"N salto(s) de GPS descartado(s)"*. Se esse número cresce,
+a posição está instável. E se algum contador já estiver corrompido, o **🔄** os
+zera sem derrubar a navegação nem o compartilhamento.
+
 ### 8.2 Nivelar a referência
 
 O celular quase nunca está perfeitamente aprumado no console. Com o navio
