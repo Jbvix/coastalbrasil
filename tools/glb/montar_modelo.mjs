@@ -54,6 +54,20 @@ const doc = await io.read(ENTRADA);
 const root = doc.getRoot();
 const webpExt = doc.createExtension(EXTTextureWebP).setRequired(true);
 
+/*
+  glTF guarda baseColorFactor em espaço LINEAR, não em sRGB. Passar o hex direto
+  produz uma cor visivelmente mais clara e lavada do que a escolhida — o amarelo
+  SAAM sairia creme. A conversão é a curva padrão do sRGB.
+*/
+function hexParaLinear(hex) {
+  const h = hex.replace('#', '');
+  const canal = (i) => {
+    const c = parseInt(h.substr(i * 2, 2), 16) / 255;
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  return [canal(0), canal(1), canal(2), 1];
+}
+
 const cache = new Map();
 function tex(file, name) {
   if (cache.has(file)) return cache.get(file);
@@ -82,7 +96,10 @@ for (const mat of root.listMaterials()) {
   const emi = tex(`${id}_emissive.webp`, `${id}_emissive`);
   if (emi) mat.setEmissiveTexture(emi).setEmissiveFactor([1, 1, 1]);
 
-  if (id === '1005' && !bc) mat.setBaseColorFactor([0.62, 0.63, 0.65, 1]); // guincho: cinza-aço
+  // Guincho: não tem mapa de cor no material de origem, só metalicidade. A cor
+  // vem de um fator, e a libré escolhe qual — cinza-aço no casco vermelho,
+  // amarelo na libré SAAM. COR_GUINCHO recebe hex (ex.: F5BE1E).
+  if (id === '1005' && !bc) mat.setBaseColorFactor(hexParaLinear(process.env.COR_GUINCHO || '9EA1A6'));
   if (id === '1006') { // vidros da ponte
     mat.setBaseColorFactor([0.09, 0.13, 0.16, 0.42]).setAlphaMode('BLEND')
        .setMetallicFactor(0).setRoughnessFactor(0.06).setDoubleSided(false);

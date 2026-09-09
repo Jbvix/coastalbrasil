@@ -293,6 +293,22 @@ const SHIP_MODELS = [
     credito: 'Modelo ASD 2810 — texturas PBR 4K remontadas, identidade “AGUIA/BRASIL” e conversão FBX→glTF por Jossian Brito'
   },
   {
+    /*
+    Mesmo casco do ASD 2810, outra libré: azul e amarelo, no padrão da frota
+    SAAM. Entra como terceiro casco em vez de substituir o vermelho — um
+    simulador que mostra duas librés reais de rebocador brasileiro vale mais
+    que um que mostra uma. Geometria idêntica, então proa, calado e âncora
+    repetem os valores do irmão vermelho.
+    */
+    id: 'asd2810saam',
+    nome: 'ASD 2810 “Aguia” — libré SAAM',
+    classe: 'ASD — Azimuth Stern Drive',
+    arquivo: 'assets/models/tug-asd2810-saam.glb',
+    loa: 28.6, boca: 10.2, calado: 4.80,
+    proaEixo: '-Z', headingOffset: 0, headingOffsetEarth: 90,
+    credito: 'Modelo ASD 2810 — libré azul e amarelo, texturas PBR remontadas e conversão FBX→glTF por Jossian Brito'
+  },
+  {
     id: 'rastar3200',
     nome: 'Rastar 3200',
     classe: 'Rebocador portuário convencional',
