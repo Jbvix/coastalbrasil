@@ -5,7 +5,7 @@
   COASTAL NAVIGATOR BRASIL — Sistema de Planejamento de Viagem Costeira
 ════════════════════════════════════════════════════════════════════════════════
 
-  Versão: 2.4.2
+  Versão: 2.5.0
   Autor: Jossian Brito (Charlie Bravo)
   LinkedIn: https://www.linkedin.com/in/jossianbrito/
   X: https://x.com/jossiancosta  ·  Medium: https://medium.com/@jossiancosta
@@ -17,6 +17,7 @@
   ONDE ESTÁ CADA COISA
     assets/css/app.css        estilos
     assets/js/lighthouses.js  base de 98 faróis (Lista de Faróis DH2 40ª ed.)
+    assets/js/coastline.js    linha de costa do Brasil (Natural Earth 10 m)
     assets/js/nautical.js     algoritmos náuticos (distância, rumo, alcance, XTE)
     assets/js/report.js       gerador do relatório de derrota
     assets/js/mirror.js       espelhamento da navegação (transmissão + observador)
@@ -43,7 +44,7 @@
   <meta name="keywords"
     content="navegação costeira, planejamento de viagem, faróis, Brasil, OpenSeaMap, GPX, rebocadores">
 
-  <title>Coastal Navigator Brasil v2.4.2 - Planejamento de Viagem</title>
+  <title>Coastal Navigator Brasil v2.5.0 - Planejamento de Viagem</title>
 
   <!-- Leaflet CSS -->
   <!-- Subresource Integrity: o navegador recusa o arquivo se o conteúdo servido
@@ -74,7 +75,7 @@
     <header class="app-header">
       <div class="header-content">
         <div class="logo">
-          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.4.2</span></h1>
+          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.5.0</span></h1>
         </div>
 
         <div class="controls">
@@ -480,6 +481,7 @@
   <!-- Base de dados e algoritmos, extraídos do app.html na v2.2.0.
        Ordem obrigatória: nautical.js usa `lighthouses`. -->
   <script src="assets/js/lighthouses.js"></script>
+  <script src="assets/js/coastline.js"></script>
   <script src="assets/js/nautical.js"></script>
   <script src="assets/js/report.js"></script>
   <script src="assets/js/mirror.js"></script>
@@ -3088,7 +3090,7 @@
       updateShareButtons();
 
       console.log('═══════════════════════════════════════════════════════════════');
-      console.log('  Coastal Navigator Brasil v2.4.2 - Inicializado ⚓');
+      console.log('  Coastal Navigator Brasil v2.5.0 - Inicializado ⚓');
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('Autor: Jossian Brito (Charlie Bravo)');
       console.log('58 Faróis curados carregados 💡 (52 DHN + 6 Validados)');

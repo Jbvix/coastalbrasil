@@ -583,38 +583,102 @@ t(S9, '9.11', 'Nome de arquivo baixado é saneado', () => {
 
 /* ── SUÍTE 10 — DISTÂNCIA DA COSTA ──────────────────────────────────────── */
 const S10 = '10 · Distância da costa';
-t(S10, '10.1', 'Sobre um farol costeiro ⇒ ≈ 0 NM', () => {
-  const d = distanceFromCoast(-3.7263, -38.4717); eq(d, 0, 0.5); return { detail: d.toFixed(2)+' NM' };
-});
-t(S10, '10.2', '10 NM ao largo do Mucuripe ⇒ ≈ 10 NM', () => {
-  const p = offsetLatLng(-3.7263, -38.4717, 0, 10); // 10 NM ao norte (mar aberto)
-  const d = distanceFromCoast(p.lat, p.lng); eq(d, 10, 2); return { detail: d.toFixed(2)+' NM' };
-});
-t(S10, '10.3', 'Ilhas afastadas ficam FORA da poligonal costeira', () => {
-  // Elas continuam na base de faróis (servem de referência de avistamento);
-  // o que não podem é entrar na linha que representa o litoral.
-  const linha = A.getCoastline();
-  const ilhas = ['alcatrazes','laje-de-santos','queimada-grande','arvoredo',
-                 'fernando-de-noronha','rocas','sao-pedro-e-sao-paulo','martin-vaz',
-                 'trindade','abrolhos'];
-  const dentro = ilhas.filter(id => {
-    const lh = lighthouses.find(l => l.id === id);
-    return lh && linha.some(p => p.lat === lh.lat && p.lng === lh.lng);
-  });
-  ok(dentro.length === 0,
-     'ilha na poligonal costeira: ' + dentro.join(', ') +
-     ' — a linha salta para o mar e subestima a distância da costa');
-  return { detail: `${linha.length} de ${lighthouses.length} faróis compõem a linha de costa` };
-});
-t(S10, '10.4', 'Erro da poligonal declarado e dentro do esperado (≤ 25%)', () => {
-  const p = offsetLatLng(-3.7263, -38.4717, 0, 10);
-  const d = distanceFromCoast(p.lat, p.lng);
-  const erro = Math.abs(d - 10) / 10 * 100;
-  ok(erro <= 25, `erro de ${erro.toFixed(0)}% a 10 NM da costa`);
-  return { warn: `aproximação por 88 pontos: ${d.toFixed(2)} NM medidos para 10 NM reais ` +
-                 `(${erro.toFixed(0)}% a menos). Serve para ordem de grandeza, não para aproximação` };
+/*
+Até a v2.4.2 a "linha de costa" era a LISTA DE FARÓIS ordenada por latitude: 88
+pontos ligados em sequência. Aferida contra a costa em resolução plena, errava
+13,4 NM em média e 105 NM no pior caso só no litoral continental — uma reta
+entre dois faróis corta baías inteiras. Estas provas medem a linha de verdade.
+*/
+const COSTA = A.COSTA_BRASIL;
+const VERT = COSTA.reduce((n, t) => n + t.length, 0);
+
+t(S10, '10.1', 'A linha de costa tem resolução de carta, não de esboço', () => {
+  ok(Array.isArray(COSTA) && COSTA.length > 1, 'COSTA_BRASIL ausente ou vazia');
+  ok(VERT > 3000, `${VERT} vértices — poucos para representar o litoral brasileiro`);
+  // Do Oiapoque ao Chuí: se faltar ponta, algum trecho do litoral ficou de fora.
+  const lats = COSTA.flat().map(p => p[0]);
+  ok(Math.max(...lats) > 4, `litoral começa em ${Math.max(...lats).toFixed(1)}° — falta o Amapá`);
+  ok(Math.min(...lats) < -33, `litoral termina em ${Math.min(...lats).toFixed(1)}° — falta o Rio Grande do Sul`);
+  return { detail: `${COSTA.length} traços · ${VERT.toLocaleString('pt-BR')} vértices · ` +
+                   `${Math.max(...lats).toFixed(1)}° a ${Math.min(...lats).toFixed(1)}°` };
 });
 
+t(S10, '10.2', 'Todo farol cai sobre a linha de costa', () => {
+  /*
+  A aferição mais forte que existe com os dados do próprio repositório: um farol
+  está em terra, então a distância dele à linha de costa tem de ser ~0. É esta
+  prova que denuncia trecho de litoral faltando — foi ela que mostrou que o
+  Natural Earth não traz Rocas (81 NM), Abrolhos (30) nem Alcatrazes (18).
+  */
+  const ds = lighthouses.map(l => ({ nome: l.name, d: distanceFromCoast(l.lat, l.lng) }))
+                        .sort((a, b) => b.d - a.d);
+  const v = ds.map(x => x.d).sort((a, b) => a - b);
+  const mediana = v[v.length >> 1], pior = v[v.length - 1];
+  ok(pior < 3, `farol a ${pior.toFixed(1)} NM da costa: ${ds[0].nome} — falta litoral ali`);
+  ok(mediana < 0.5, `mediana de ${mediana.toFixed(2)} NM — a linha não acompanha o litoral`);
+  ok(v.filter(x => x < 1).length >= v.length * 0.85,
+     `só ${v.filter(x => x < 1).length} de ${v.length} faróis a menos de 1 NM da costa`);
+  return { detail: `mediana ${mediana.toFixed(2)} NM · pior ${pior.toFixed(2)} NM (${ds[0].nome})` };
+});
+
+t(S10, '10.3', 'Ilhas são traços PRÓPRIOS, não emendadas ao continente', () => {
+  /*
+  A implementação anterior excluía as ilhas de propósito: um farol de ilha
+  inserido numa poligonal ordenada por latitude fazia a linha SALTAR para o mar
+  entre dois pontos do continente, e a distância saía menor que a real.
+
+  Com geometria de verdade o problema desaparece — cada ilha é um traço fechado
+  próprio. E entram por segurança: passando 3 NM ao largo de Abrolhos, dizer ao
+  comandante que a terra mais próxima está a 180 NM é pior que não dizer nada.
+  */
+  const noronha = lighthouses.find(l => l.id === 'fernando-de-noronha');
+  const dN = distanceFromCoast(noronha.lat, noronha.lng);
+  ok(dN < 3, `Fernando de Noronha a ${dN.toFixed(1)} NM da costa — a ilha não está na linha`);
+  // 5 NM ao largo de Noronha: a terra mais próxima é a PRÓPRIA ilha, não o
+  // continente a 190 NM. Se esta prova falhar, o número mente sobre onde a
+  // terra está — que é o defeito mais perigoso possível neste campo.
+  const p = offsetLatLng(noronha.lat, noronha.lng, 45, 5);
+  const d5 = distanceFromCoast(p.lat, p.lng);
+  ok(d5 < 12, `a 5 NM de Noronha o app diz ${d5.toFixed(0)} NM — está medindo até o continente`);
+  return { detail: `sobre Noronha ${dN.toFixed(2)} NM · 5 NM ao largo ${d5.toFixed(1)} NM` };
+});
+
+t(S10, '10.4', 'Afastar-se da costa aumenta a distância, sem degrau', () => {
+  // Ao largo de Santa Marta o litoral corre reto: bom trecho para conferir
+  // monotonicidade sem baía nenhuma atrapalhando.
+  const base = { lat: -28.6053, lng: -48.8156 };
+  let ant = -1;
+  const lidas = [];
+  for (const nm of [2, 5, 10, 20, 40]) {
+    const p = offsetLatLng(base.lat, base.lng, 90, nm);   // rumo leste, mar aberto
+    const d = distanceFromCoast(p.lat, p.lng);
+    lidas.push(`${nm}→${d.toFixed(1)}`);
+    ok(d > ant, `a ${nm} NM ao largo leu ${d.toFixed(1)} NM, menos que no ponto anterior`);
+    ok(Math.abs(d - nm) < nm * 0.5 + 2,
+       `a ${nm} NM ao largo leu ${d.toFixed(1)} NM — desvio grande demais para litoral reto`);
+    ant = d;
+  }
+  return { detail: lidas.join(' · ') + ' NM' };
+});
+
+t(S10, '10.5', 'A consulta é rápida o bastante para o HUD', () => {
+  // 6.218 vértices por chamada seriam caros sem a poda por caixa envolvente.
+  // O popup da embarcação chama isto a cada atualização de posição.
+  const t0 = Date.now();
+  for (let i = 0; i < 300; i++) distanceFromCoast(-5 - (i % 25), -35 - (i % 10));
+  const ms = (Date.now() - t0) / 300;
+  ok(ms < 3, `${ms.toFixed(2)} ms por consulta — lento para o painel de navegação`);
+  return { detail: ms.toFixed(2) + ' ms por consulta' };
+});
+
+t(S10, '10.6', 'A linha de costa é gerada, não editada à mão', () => {
+  const fs10 = require('fs');
+  const js = fs10.readFileSync(ROOT + '/assets/js/coastline.js', 'utf8');
+  ok(/N[ÃA]O EDITE/i.test(js), 'o arquivo não avisa que é gerado');
+  ok(/Natural Earth/i.test(js), 'o arquivo não declara a fonte');
+  ok(fs10.existsSync(ROOT + '/tools/costa/gerar_costa.mjs'),
+     'o gerador não está no repositório — a base vira dado órfão');
+});
 
 /* ── SUÍTE 11 — CRUZAMENTO COM A BASE OSM DO PRÓPRIO REPOSITÓRIO ────────── */
 const S11 = '11 · Cruzamento OSM';

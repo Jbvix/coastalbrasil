@@ -266,31 +266,75 @@ function elapsedFuel(td, nowMs) {
   return Math.min(horas * td.fuelConsumption, td.fuelInitial);
 }
 
+/*
+LINHA DE COSTA — o que mudou na v2.5.0 e por quê.
+
+Até a v2.4.2 esta função devolvia a LISTA DE FARÓIS ordenada por latitude: 88
+pontos ligados em sequência, do Oiapoque ao Chuí. Aferida contra a costa em
+resolução plena, errava **13,4 NM em média e 105 NM no pior caso** só no litoral
+continental. Uma reta entre dois faróis corta baías inteiras — e o número que o
+comandante lia no HUD não tinha relação com onde a terra estava.
+
+Agora vem de `assets/js/coastline.js`: Natural Earth 10 m recortado para o
+Brasil, 44 traços e 6.054 vértices, com erro máximo aferido de **0,1 NM**.
+
+TRAÇOS SEPARADOS, E ISSO IMPORTA. Cada traço é um litoral distinto — o
+continente e cada ilha oceânica. Ligar um ao outro faria a reta cruzar mar
+aberto e a distância sair MENOR que a real, que foi exatamente o defeito
+anterior. Por isso o laço nunca junta o fim de um traço ao início do seguinte.
+*/
 function getCoastline() {
   if (!_coastline) {
-    _coastline = lighthouses
-      .filter(lh => !FORA_DA_LINHA_DE_COSTA.includes(lh.id))
-      .map(lh => ({ lat: lh.lat, lng: lh.lng }))
-      .sort((a, b) => a.lat - b.lat);
+    const bruto = (typeof COSTA_BRASIL !== 'undefined' && Array.isArray(COSTA_BRASIL))
+      ? COSTA_BRASIL
+      // Recuo se o módulo de costa não carregar: os faróis dão ordem de
+      // grandeza, com o erro conhecido acima. Melhor do que não responder.
+      : [lighthouses.map(lh => [lh.lat, lh.lng]).sort((a, b) => a[0] - b[0])];
+    // Caixa envolvente por traço, calculada uma vez: é o que permite descartar
+    // 43 dos 44 traços sem testar um único segmento.
+    _coastline = bruto.map(t => {
+      let laMin = 90, laMax = -90, lnMin = 180, lnMax = -180;
+      for (const [la, ln] of t) {
+        if (la < laMin) laMin = la; if (la > laMax) laMax = la;
+        if (ln < lnMin) lnMin = ln; if (ln > lnMax) lnMax = ln;
+      }
+      return { pts: t, laMin, laMax, lnMin, lnMax };
+    });
   }
   return _coastline;
 }
 
+/*
+Distância em milhas náuticas até a terra mais próxima — continente OU ilha.
+
+A poda por caixa envolvente não é otimização prematura: são 6.054 vértices, e
+esta função é chamada a cada atualização do popup da embarcação. Testar a caixa
+de cada traço antes dos seus segmentos derruba o custo para uma fração, porque
+quase todo traço está longe demais para conter o mínimo.
+*/
 function distanceFromCoast(lat, lng) {
-  const pts = getCoastline();
+  const tracos = getCoastline();
   const cosL = Math.cos(lat * Math.PI / 180);
-  const xy = (la, ln) => ({ x: (ln - lng) * 60 * cosL, y: (la - lat) * 60 }); // NM rel. ao ponto
-  const segDist = (a, b) => {
-    const dx = b.x - a.x, dy = b.y - a.y;
-    const len2 = dx * dx + dy * dy;
-    let t = len2 ? -(a.x * dx + a.y * dy) / len2 : 0;
-    t = Math.max(0, Math.min(1, t));
-    const px = a.x + t * dx, py = a.y + t * dy;
-    return Math.sqrt(px * px + py * py);
-  };
   let min = Infinity;
-  for (let i = 1; i < pts.length; i++) {
-    min = Math.min(min, segDist(xy(pts[i - 1].lat, pts[i - 1].lng), xy(pts[i].lat, pts[i].lng)));
+
+  for (const t of tracos) {
+    // Distância mínima possível até a caixa do traço: se já for pior que o
+    // melhor encontrado, nenhum segmento dele pode melhorar.
+    const dLa = Math.max(t.laMin - lat, 0, lat - t.laMax) * 60;
+    const dLn = Math.max(t.lnMin - lng, 0, lng - t.lnMax) * 60 * cosL;
+    if (Math.sqrt(dLa * dLa + dLn * dLn) >= min) continue;
+
+    const p = t.pts;
+    for (let i = 1; i < p.length; i++) {
+      const ax = (p[i - 1][1] - lng) * 60 * cosL, ay = (p[i - 1][0] - lat) * 60;
+      const bx = (p[i][1] - lng) * 60 * cosL, by = (p[i][0] - lat) * 60;
+      const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+      let s = len2 ? -(ax * dx + ay * dy) / len2 : 0;
+      s = s < 0 ? 0 : s > 1 ? 1 : s;
+      const px = ax + s * dx, py = ay + s * dy;
+      const d = Math.sqrt(px * px + py * py);
+      if (d < min) min = d;
+    }
   }
   return min;
 }
