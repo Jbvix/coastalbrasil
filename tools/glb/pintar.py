@@ -136,7 +136,7 @@ def escrever(im, cx, texto, caminho_fonte, cor):
     return tam
 
 
-def apagar_chapado(im, cx, folga=6, raio=14):
+def apagar_chapado(im, cx, folga=6, raio=14, filtro=None):
     """
     Preenche a caixa com a cor CHAPADA do fundo, amostrada num anel em volta
     da letra — mas contando só os pixels que NÃO são a letra.
@@ -149,12 +149,28 @@ def apagar_chapado(im, cx, folga=6, raio=14):
     """
     px = im.load()
     l, t, r, b = cx
-    amostras = []
-    for y in range(max(t - raio, 0), min(b + raio, im.height)):
-        for x in range(max(l - raio, 0), min(r + raio, im.width)):
-            dentro = l - folga <= x < r + folga and t - folga <= y < b + folga
-            if not dentro and not claro(px[x, y]):
-                amostras.append(px[x, y])
+
+    # Amostra PRIMEIRO dentro da caixa, entre as letras: ali o que não é letra é
+    # o próprio painel. Amostrar só o anel de fora falha quando o painel é pouco
+    # maior que a marca — o anel cai na estrutura vizinha e traz a cor errada.
+    # Aconteceu: a marca da chaminé foi preenchida de AMARELO da superestrutura
+    # em vez do azul do painel.
+    # `filtro` restringe a amostra à cor que se sabe ser o fundo. Necessário
+    # quando o painel é MENOR que a caixa: sem ele, a mediana pega a estrutura
+    # em volta. Aconteceu na marca da chaminé — o painel azul cabia dentro da
+    # caixa e a mediana devolveu o AMARELO da superestrutura vizinha.
+    def serve(c):
+        return not claro(c) and (filtro is None or filtro(c))
+
+    amostras = [px[x, y]
+                for y in range(t, b) for x in range(l, r)
+                if serve(px[x, y])]
+    if len(amostras) < 200:            # marca muito cheia: recorre ao anel externo
+        for y in range(max(t - raio, 0), min(b + raio, im.height)):
+            for x in range(max(l - raio, 0), min(r + raio, im.width)):
+                dentro = l - folga <= x < r + folga and t - folga <= y < b + folga
+                if not dentro and serve(px[x, y]):
+                    amostras.append(px[x, y])
     if not amostras:
         return
     cor = tuple(sorted(a[k] for a in amostras)[len(amostras) // 2] for k in range(3))

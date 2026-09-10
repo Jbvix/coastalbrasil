@@ -301,12 +301,12 @@ const SHIP_MODELS = [
     repetem os valores do irmão vermelho.
     */
     id: 'asd2810saam',
-    nome: 'ASD 2810 “Aguia” — libré SAAM',
+    nome: 'ASD 2810 “SAAM Aguia”',
     classe: 'ASD — Azimuth Stern Drive',
     arquivo: 'assets/models/tug-asd2810-saam.glb',
     loa: 28.6, boca: 10.2, calado: 4.80,
     proaEixo: '-Z', headingOffset: 0, headingOffsetEarth: 90,
-    credito: 'Modelo ASD 2810 — libré azul e amarelo, texturas PBR remontadas e conversão FBX→glTF por Jossian Brito'
+    credito: 'Modelo ASD 2810 — libré azul e amarelo, identidade “SAAM AGUIA / RIO DE JANEIRO” e texturas PBR remontadas por Jossian Brito'
   },
   {
     id: 'rastar3200',
