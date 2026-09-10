@@ -702,7 +702,7 @@
       bottom: 56px;
       left: 12px;
       z-index: 1500;
-      width: 290px;
+      width: 344px;                        /* 6 botões de 44 px por linha */
       max-width: calc(100vw - 24px);
       background: rgba(10, 25, 41, 0.94);
       border: 2px solid var(--success-green);
@@ -722,6 +722,15 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      /*
+      QUEBRA DE LINHA OBRIGATÓRIA. A fileira de botões precisa de 366 px
+      (8 x 44 px + vãos) e o painel tem 290. Sem permitir quebra, o excedente é
+      SIMPLESMENTE CORTADO: a bordo sumiram o 🚢, o ℹ️ e até o ▾ de recolher, sem
+      nenhum sinal de que existiam. Um botão que não cabe tem de descer de
+      linha, nunca desaparecer.
+      */
+      flex-wrap: wrap;
+      row-gap: 4px;
       background: linear-gradient(135deg, #00695C, #004D40);
       padding: 8px 10px;
       cursor: pointer;
@@ -746,9 +755,21 @@
       animation: navBtnPulse 1.6s infinite;
     }
 
+    /*
+    A fileira de ferramentas ocupa a linha inteira, abaixo do título.
+
+    Hierarquia deliberada: em cima o cromo do painel (o rótulo NAVEGANDO e o ▾
+    de recolher), embaixo as ferramentas. Misturar os dois numa linha só fazia o
+    ▾ — que fecha o painel — brigar por espaço com os botões de bordo, e foi o
+    que empurrou o 🚢 para fora da tela.
+    */
     .nav-hud-actions {
       display: flex;
       gap: 2px;
+      row-gap: 2px;
+      flex: 1 1 100%;           /* linha própria */
+      flex-wrap: wrap;          /* o que não couber desce, nunca some */
+      justify-content: space-between;
     }
 
     /*

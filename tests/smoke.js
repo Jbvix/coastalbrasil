@@ -272,6 +272,44 @@ const srv = http.createServer((req, res) => {
   await espelho.screenshot({ path: path.join(__dirname, 'smoke-espelho.png') });
   await espelho.close();
 
+  /* ── A BARRA DE BOTÕES CABE NA TELA? ──────────────────────────────────────
+     Esta verificação é de LAYOUT e por isso vive aqui, não no banco de provas:
+     nenhuma asserção sobre o código-fonte pegaria o defeito que a motivou.
+
+     Na v2.3.3 os botões passaram a 44 px de alvo de toque (correto) e entrou
+     mais um. A fileira passou a precisar de 366 px num painel de 290, e o
+     excedente foi SIMPLESMENTE CORTADO: a bordo sumiram o 🚢, o ℹ️ e até o ▾ de
+     recolher, sem nenhum sinal de que existiam. O CSS estava "válido", as 134
+     provas passavam, e o botão não estava lá.
+
+     Aqui se abre o painel em larguras reais de telefone e tablete e se confere
+     que TODO botão está dentro dos limites do painel. */
+  for (const [nomeTela, larg, alt] of [['telefone 375', 375, 667], ['tablete 768', 768, 1024]]) {
+    const tela = await browser.newPage({ viewport: { width: larg, height: alt }, isMobile: true, hasTouch: true });
+    await tela.goto('http://localhost:8099/app.html', { waitUntil: 'domcontentloaded' });
+    await tela.waitForTimeout(600);
+    const fora = await tela.evaluate(() => {
+      const hud = document.getElementById('navHud');
+      hud.classList.add('active');
+      const cx = hud.getBoundingClientRect();
+      return [...hud.querySelectorAll('.nav-hud-header .nav-icon-btn')]
+        .filter(e => { const b = e.getBoundingClientRect();
+          return b.width < 1 || b.height < 1 || b.right > cx.right + 0.5 || b.left < cx.left - 0.5; })
+        .map(e => e.id || e.textContent.trim());
+    });
+    ok(`Botões da barra cabem no painel (${nomeTela})`, fora.length === 0,
+       fora.length ? 'cortados: ' + fora.join(', ') : 'todos dentro');
+    // O alvo de toque tem de continuar em 44 px: encolher para caber seria
+    // trocar um defeito por outro.
+    const pequenos = await tela.evaluate(() =>
+      [...document.querySelectorAll('#navHud .nav-hud-header .nav-icon-btn')]
+        .filter(e => { const b = e.getBoundingClientRect(); return b.width < 44 || b.height < 44; })
+        .map(e => e.id));
+    ok(`Alvo de toque mantém 44 px (${nomeTela})`, pequenos.length === 0,
+       pequenos.length ? 'menores: ' + pequenos.join(', ') : 'todos ≥ 44 px');
+    await tela.close();
+  }
+
   await page.screenshot({ path: path.join(__dirname, 'smoke.png'), fullPage: false });
   await browser.close(); srv.close();
 
