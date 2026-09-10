@@ -1356,9 +1356,15 @@ t(S17, '17.10', 'Som e seguimento sobrevivem ao recarregar', () => {
 });
 
 t(S17, '17.11', 'Todo botão da barra tem rótulo e ação declarados', () => {
-  const barra = APP17.slice(APP17.indexOf('id="navShareBtn"') - 400, APP17.indexOf('id="navCollapseBtn"') + 200);
+  // Fatia o CABEÇALHO inteiro, não o trecho entre dois ids: o ▾ de recolher
+  // mudou de lugar (saiu da fileira de ferramentas para junto do título) e um
+  // recorte por id quebra ao primeiro rearranjo de marcação.
+  const ini = APP17.indexOf('class="nav-hud-header"');
+  const fim = APP17.indexOf('class="nav-hud-body"');
+  ok(ini > 0 && fim > ini, 'cabeçalho da barra de navegação não encontrado');
+  const barra = APP17.slice(ini, fim);
   const botoes = barra.match(/<button[^>]*class="nav-icon-btn"[^>]*>/g) || [];
-  ok(botoes.length >= 7, `a barra tem ${botoes.length} botões — esperados ao menos 7`);
+  ok(botoes.length >= 8, `o cabeçalho tem ${botoes.length} botões — esperados ao menos 8`);
   const semTitulo = botoes.filter(b => !/title="/.test(b));
   ok(semTitulo.length === 0, `${semTitulo.length} botão(ões) sem title — ninguém adivinha o ícone`);
   // Todo botão com ação precisa impedir que o toque recolha o painel inteiro.

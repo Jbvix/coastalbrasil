@@ -5,7 +5,7 @@
   COASTAL NAVIGATOR BRASIL — Sistema de Planejamento de Viagem Costeira
 ════════════════════════════════════════════════════════════════════════════════
 
-  Versão: 2.4.1
+  Versão: 2.4.2
   Autor: Jossian Brito (Charlie Bravo)
   LinkedIn: https://www.linkedin.com/in/jossianbrito/
   X: https://x.com/jossiancosta  ·  Medium: https://medium.com/@jossiancosta
@@ -43,7 +43,7 @@
   <meta name="keywords"
     content="navegação costeira, planejamento de viagem, faróis, Brasil, OpenSeaMap, GPX, rebocadores">
 
-  <title>Coastal Navigator Brasil v2.4.1 - Planejamento de Viagem</title>
+  <title>Coastal Navigator Brasil v2.4.2 - Planejamento de Viagem</title>
 
   <!-- Leaflet CSS -->
   <!-- Subresource Integrity: o navegador recusa o arquivo se o conteúdo servido
@@ -74,7 +74,7 @@
     <header class="app-header">
       <div class="header-content">
         <div class="logo">
-          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.4.1</span></h1>
+          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.4.2</span></h1>
         </div>
 
         <div class="controls">
@@ -183,6 +183,7 @@
     <div id="navHud" class="nav-hud">
       <div class="nav-hud-header" onclick="toggleNavHudCollapse()">
         <span class="nav-hud-title"><span class="nav-pulse"></span> NAVEGANDO</span>
+        <button class="nav-icon-btn" title="Recolher" id="navCollapseBtn">▾</button>
         <div class="nav-hud-actions">
           <button class="nav-icon-btn" title="Compartilhar (espelhar p/ quem está em terra)" onclick="event.stopPropagation(); toggleShare()" id="navShareBtn">📤</button>
           <button class="nav-icon-btn" title="Som dos alertas" onclick="event.stopPropagation(); toggleNavMute()" id="navMuteBtn">🔊</button>
@@ -191,7 +192,6 @@
           <button class="nav-icon-btn" title="Zerar contadores da singradura (distância, consumo e desvio)" onclick="event.stopPropagation(); zerarSingradura()" id="navResetBtn">🔄</button>
           <button class="nav-icon-btn" title="Informações dos waypoints" onclick="event.stopPropagation(); openWaypointsInfo()" id="navInfoBtn">ℹ️</button>
           <button class="nav-icon-btn" title="Atitude 3D do rebocador (sensores)" onclick="event.stopPropagation(); openShip3D()" id="navShip3dBtn">🚢</button>
-          <button class="nav-icon-btn" title="Recolher" id="navCollapseBtn">▾</button>
         </div>
       </div>
       <div class="nav-hud-body" id="navHudBody">
@@ -3088,7 +3088,7 @@
       updateShareButtons();
 
       console.log('═══════════════════════════════════════════════════════════════');
-      console.log('  Coastal Navigator Brasil v2.4.1 - Inicializado ⚓');
+      console.log('  Coastal Navigator Brasil v2.4.2 - Inicializado ⚓');
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('Autor: Jossian Brito (Charlie Bravo)');
       console.log('58 Faróis curados carregados 💡 (52 DHN + 6 Validados)');

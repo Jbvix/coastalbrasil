@@ -11,6 +11,58 @@ executável.
 
 ```
 
+## v2.4.2 (10/09/2026) — O BOTÃO 🚢 SUMIU DA BARRA
+
+Autor: Jossian Brito (Charlie Bravo)
+
+Relato de bordo, com foto: *"o ícone do barco não apareceu"*.
+
+**Era efeito colateral da própria v2.3.3.** Ali os botões passaram a ter alvo de
+toque de 44 px — correto, e a pedido — e entrou mais um (o 🔄). A fileira passou
+a precisar de **366 px** (8 × 44 px + vãos) num painel de **290 px**, e o
+`min-width: 44px` impede de encolher. O excedente foi **simplesmente cortado**.
+
+Medido em quatro telas, antes do conserto:
+
+| Tela | Painel | Botões cortados |
+|---|---|---|
+| iPhone SE 375 | 351 px | 🔄 ℹ️ 🚢 ▾ |
+| iPhone 14 390 | 366 px | ℹ️ 🚢 ▾ |
+| Android 412 | 388 px | ℹ️ 🚢 ▾ |
+| **iPad 768** | 290 px | 🧪 🔄 ℹ️ 🚢 ▾ |
+
+Em **todas**. E não só o 🚢: sumia até o **▾ de recolher o painel**, sem nenhum
+sinal de que existia.
+
+### Correção
+
+- **A fileira quebra linha** (`flex-wrap: wrap`). Botão que não cabe **desce**,
+  nunca desaparece. É a única solução que se adapta a qualquer largura sem
+  esconder função.
+- **O ▾ subiu para junto do título.** É cromo do painel, não ferramenta;
+  misturado com os botões de bordo, brigava por espaço com eles.
+- **Painel de 290 → 344 px**, o suficiente para os sete botões numa linha só na
+  maioria dos aparelhos.
+- **O alvo de 44 px fica.** Encolher para caber seria trocar um defeito por
+  outro — e o motivo do 44 px (mão molhada, navio jogando, luva) não mudou.
+
+### A prova certa é de LAYOUT, e por isso vive na fumaça
+
+Nenhuma asserção sobre o código-fonte pegaria isto: o CSS estava válido, as 134
+provas passavam, e o botão não estava na tela. Entraram **4 passos** em
+`npm run smoke`, que abre o app em larguras reais de telefone e tablete e confere
+que todo botão do cabeçalho está dentro dos limites do painel — **e** que o alvo
+de toque continua em 44 px, para o conserto de um não virar o defeito do outro.
+
+**Validado contra a versão quebrada:** os passos reprovam e nomeiam exatamente
+`navResetBtn, navInfoBtn, navShip3dBtn, navCollapseBtn`. Desta vez a prova foi
+conferida contra o defeito real antes de entrar — ao contrário da que foi
+escrita e descartada na v2.4.1.
+
+**134 provas + 32 passos de fumaça, 0 falhas.**
+
+---
+
 ## v2.4.1 (10/09/2026) — IDENTIDADE SAAM, E O CONSERTO DE UM DEFEITO QUE PUBLIQUEI
 
 Autor: Jossian Brito (Charlie Bravo)
