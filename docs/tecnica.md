@@ -549,6 +549,13 @@ e põe o eixo de jogo e caturro **na linha d'água**, que é onde um navio balan
 Medir "do fundo" tomando a ponta do skeg pela quilha inflou o calado em ~1,7 m e
 deixou o rebocador afundado na vista de Atitude.
 
+> **Conferido no aparelho — 10/09/2026 (Charlie Bravo).** Toda esta correção foi
+> feita medindo geometria, de um ambiente que **não alcança** o Cesium ion nem os
+> ladrilhos do Google: nunca se viu a tela. Confirmado de bordo: **o ASD 2810 não
+> afunda mais no zoom out** e a **iluminação dos cascos no modo Earth está
+> correta**. É a diferença entre cálculo verificado e resultado observado — e as
+> duas coisas são necessárias.
+
 ### 7.7 Texto de casco vive em dois mapas
 
 Trocar o nome pintado no costado não é trocar a textura de cor. A tinta das

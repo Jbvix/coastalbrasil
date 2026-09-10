@@ -145,9 +145,14 @@ async function ensureCesium() {
   FAROL DE CÂMERA. O Cesium ilumina pela posição REAL do Sol na hora do
   relógio da cena: abrir o modo Earth às 23h no litoral brasileiro põe o
   rebocador do lado escuro da Terra, e ele aparece chapado, sem relevo —
-  o relato de bordo, "parecem sem iluminação". Um farol presoà câmera
+  o relato de bordo, "parecem sem iluminação". Um farol preso à câmera
   ilumina sempre o que se olha, a qualquer hora. Não falseia navegação: o
   painel é de atitude, não de azimute solar.
+
+  CONFERIDO NO APARELHO em 10/09/2026 (Charlie Bravo): a iluminação dos cascos
+  no modo Earth está correta. O registro importa porque isto foi escrito de um
+  ambiente que NÃO alcança o Cesium ion — aqui se programou às cegas e a prova
+  veio da ponte, não da bancada.
   */
   try {
     const farol = new Cesium.DirectionalLight({
@@ -545,6 +550,10 @@ async function carregarShipModel(m) {
   meio-navio (tools/glb/reancorar.mjs). Âncora na geometria vale para todo
   motor e toda escala; um offset no código teria de perseguir a escala do
   Cesium a cada quadro. Recentrar aqui traria o defeito de volta.
+
+  CONFERIDO NO APARELHO em 10/09/2026 (Charlie Bravo): o ASD 2810 NÃO AFUNDA
+  MAIS no zoom out. A correção foi medida na geometria, sem nunca se ver a
+  tela — ficou três versões em aberto até a confirmação de bordo.
   */
   s3dWater.position.y = 0;                    // a superfície é a própria origem
 

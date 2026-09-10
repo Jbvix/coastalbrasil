@@ -81,6 +81,11 @@ pior que teste nenhum; este ficou verde depois de provar que fica vermelho.
 ladrilhos do Google. Como o farol de luz apagada, aqui só se garante o cálculo
 — quem confere a luz é quem está na ponte.
 
+**Fechados neste mesmo dia, esses sim confirmados no aparelho** (Charlie Bravo,
+10/09/2026): a **iluminação dos cascos** no modo Earth e a **âncora da linha
+d'água** — o ASD 2810 **não afunda mais** no zoom out. Estavam abertos desde a
+v2.3.2 por exatamente esta razão: foram corrigidos aqui e conferidos lá.
+
 ### E uma correção de honestidade no caminho
 
 Ao acrescentar o 💡 ao cabeçalho do painel 3D, apliquei a lição da v2.4.2
@@ -521,12 +526,21 @@ sem notar isso foi o que deixou o rebocador afundado. Agora **4,80 m**, escolhid
 sobre uma escada de renderizações: é onde a cinta de defensa fica inteira acima
 d'água, que é a posição em que ela empurra.
 
+> **CONFIRMADO A BORDO — 10/09/2026 (Charlie Bravo).** Esta correção foi feita
+> num ambiente que **não alcança** o Cesium ion nem os ladrilhos do Google:
+> mediu-se a geometria, não se viu a tela. Ficou em aberto por três versões até
+> a confirmação no aparelho — **o ASD 2810 não afunda mais no zoom out**.
+
 ### 2 · Os dois rebocadores sem iluminação no modo Earth
 
 O Cesium ilumina pela posição **real do Sol** na hora do relógio da cena. Abrir o
 modo Earth de madrugada no litoral brasileiro põe o rebocador do lado escuro da
 Terra: aparece chapado, sem relevo. Entrou um **farol de câmera** (headlight),
 que ilumina sempre o que se está olhando, a qualquer hora, sem falsear o terreno.
+
+> **CONFIRMADO A BORDO — 10/09/2026 (Charlie Bravo).** Pela mesma razão do item
+> anterior, o headlight não pôde ser visto de onde foi escrito. **A iluminação
+> dos cascos no modo Earth está correta.**
 
 ### 3 · Identidade brasileira
 
