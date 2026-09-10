@@ -13,7 +13,8 @@ const ROOT = path.join(__dirname, '..');
  * app.html com os arquivos extraídos e recorta as funções dali, por contagem
  * de chaves — não há reimplementação em lugar nenhum.
  */
-const MODULOS = ['assets/js/lighthouses.js', 'assets/js/nautical.js',
+const MODULOS = ['assets/js/lighthouses.js', 'assets/js/coastline.js',
+                 'assets/js/nautical.js',
                  'assets/js/report.js', 'assets/js/mirror.js',
                  'assets/js/ship3d.js'];
 const SRC = [path.join(ROOT, 'app.html'), ...MODULOS.map(m => path.join(ROOT, m))]
@@ -61,9 +62,13 @@ const sandboxSrc = extractLighthouses() + '\n' +
   'const ARRIVAL_RADIUS_NM = 0.3;\n' +
   'const DEFAULT_EYE_HEIGHT_M = 5;\n' +
   extractConst('FORA_DA_LINHA_DE_COSTA') + '\n' +
+  // A linha de costa é grande (6.054 vértices) mas precisa estar na caixa de
+  // areia: sem ela, distanceFromCoast cai no recuo pelos faróis e as provas
+  // medem o código antigo achando que medem o novo.
+  extractConst('COSTA_BRASIL') + '\n' +
   'const RESYNC_NM = ' + (SRC.match(/const RESYNC_NM = (\\d+)/) || [,'10'])[1] + ';\n' +
   FNS.map(extractFn).join('\n\n') + '\n' +
-  'module.exports = { lighthouses, DEFAULT_EYE_HEIGHT_M, RESYNC_NM,\n'
+  'module.exports = { lighthouses, COSTA_BRASIL, DEFAULT_EYE_HEIGHT_M, RESYNC_NM,\n'
   + '  setTrip: t => { tripData = t; },\n'
   + '  setRota: (r, leg) => { waypoints = r; navActiveLeg = leg || 0; },\n'
   + '  getLeg: () => navActiveLeg, '

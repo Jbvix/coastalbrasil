@@ -11,6 +11,93 @@ executável.
 
 ```
 
+## v2.5.0 (10/09/2026) — A LINHA DE COSTA ERA A LISTA DE FARÓIS
+
+Autor: Jossian Brito (Charlie Bravo)
+
+O HUD mostra **"Dist. da costa: ~X NM"** no popup da embarcação. Ao abrir o
+código para atacar o aviso 10.4, a "linha de costa" acabou sendo isto:
+
+```js
+_coastline = lighthouses.filter(...).map(lh => ({lat, lng})).sort((a,b) => a.lat - b.lat);
+```
+
+A **lista de faróis ordenada por latitude**. Oitenta e oito pontos ligados em
+sequência, do Oiapoque ao Chuí. Uma reta entre dois faróis corta baías inteiras.
+
+### Quanto errava, medido de verdade
+
+O aviso antigo dizia "14% a menos" — mas essa conta comparava com um palpite:
+*"10 NM ao norte do farol devem ser 10 NM da costa"*, o que só vale se o litoral
+ali for uma reta leste-oeste. Aferindo contra a costa em **resolução plena**, em
+1.440 pontos ao largo:
+
+| Aproximação | Erro médio | P90 | Pior |
+|---|---|---|---|
+| **faróis (88 pontos)** — só continente | **13,4 NM** | 80,2 NM | **105,6 NM** |
+| **faróis (88 pontos)** — com ilhas | **48,3 NM** | 128,5 NM | **273,4 NM** |
+| costa 0,1 NM | 0,01 NM | 0,03 NM | 0,1 NM |
+
+O número que o comandante lia não tinha relação com onde a terra estava.
+
+### O que entrou
+
+`assets/js/coastline.js` — Natural Earth 10 m recortado para o Brasil,
+**71 traços e 6.218 vértices**, 105 KB crus e **28 KB comprimidos**. Gerado por
+`tools/costa/gerar_costa.mjs`.
+
+A tolerância de **0,1 NM** não é arbitrária: é a resolução com que o número
+aparece na tela. Simplificar mais introduziria erro na casa exibida; menos
+gastaria banda de bordo sem nada a mostrar.
+
+### Duas fontes, e uma terceira que veio do próprio repositório
+
+`ne_10m_coastline` traz o continente e as ilhas grandes. Não traz as ilhas
+pequenas — e no Brasil são justamente as que têm farol. `ne_10m_minor_islands`
+cobriu parte. O que restou foi resolvido com o dado que já estava aqui:
+
+> **Um farol marca terra.** Onde a fonte cartográfica não tem litoral perto de um
+> farol, o gerador emite um anel de 0,2 NM na posição dele.
+
+São **23 ilhotas** assim — Rocas, Abrolhos, Alcatrazes, Laje de Santos, Queimada
+Grande, Trindade, Martin Vaz, São Pedro e São Paulo, entre outras. Está escrito
+no gerador o que isso é e o que não é: a afirmação *"existe terra aqui"*, que a
+DHN garante; **não** o contorno levantado da ilha.
+
+### Ilhas agora CONTAM na distância
+
+A implementação anterior as excluía de propósito, porque um farol de ilha numa
+poligonal ordenada por latitude fazia a linha saltar para o mar. Com geometria de
+verdade cada ilha é um traço próprio e o problema desaparece.
+
+E a mudança é de segurança: passando 3 NM ao largo de Abrolhos, dizer que a terra
+mais próxima está a 180 NM é pior do que não dizer nada. Medido: a 5 NM de
+Fernando de Noronha o app dizia **190 NM**; agora diz **3,3 NM**.
+
+### Desempenho
+
+6.218 vértices por consulta seriam caros — o popup chama isto a cada atualização
+de posição. `distanceFromCoast` ganhou **poda por caixa envolvente**: testa a
+caixa de cada traço antes dos seus segmentos e descarta quase todos sem tocar num
+segmento. Medido: **0,05 ms por consulta**.
+
+### Provas
+
+Suíte 10 reescrita, de 4 para 6 provas, medindo o que importa:
+
+- **10.2** — todo farol tem de cair sobre a linha de costa. É a aferição mais
+  forte possível com os dados do repositório, e foi ela que denunciou Rocas a
+  81 NM, Abrolhos a 30 e Alcatrazes a 18. Hoje: **mediana 0,18 NM, pior 1,55 NM**.
+- **10.3** — a 5 NM de Noronha a terra mais próxima tem de ser a ilha, não o
+  continente. Se falhar, o número mente sobre onde a terra está.
+- **10.4** — afastar-se aumenta a distância, sem degrau.
+- **10.5** — a consulta é rápida o bastante para o HUD.
+
+**136 provas, 132 passam, 0 falham, 3 avisos** (era 4: o aviso da poligonal
+deixou de existir).
+
+---
+
 ## v2.4.2 (10/09/2026) — O BOTÃO 🚢 SUMIU DA BARRA
 
 Autor: Jossian Brito (Charlie Bravo)
