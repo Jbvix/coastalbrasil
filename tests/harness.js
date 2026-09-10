@@ -52,7 +52,11 @@ function extractLighthouses() {
 const FNS = ['calculateDistance','calculateBearing','eyeHeight','calculateVisibility','effectiveRange',
              'findNearestLighthouse','crossTrackError','elapsedFuel','fmtDuration','fmtCoord',
              'offsetLatLng','getCoastline','distanceFromCoast','escapeXml','escapeHtml',
-             'safeFileName','distanceToLeg','nearestLegIndex','advanceActiveLeg'];
+             'safeFileName','distanceToLeg','nearestLegIndex','advanceActiveLeg',
+             // Faróis no globo (v2.6.0): a descrição do que se desenha é pura de
+             // propósito — esta bancada não alcança o Cesium ion, então o que
+             // decide altura do foco, alcance, cor e rótulo é provado FORA dele.
+             'corDaLuz','farolEarthSpec'];
 
 const sandboxSrc = extractLighthouses() + '\n' +
   'let _coastline = null;\n' +

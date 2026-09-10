@@ -1438,6 +1438,194 @@ t(S17, '17.11', 'Todo botão da barra tem rótulo e ação declarados', () => {
   return { detail: `${botoes.length} botões, ${comAcao.length} com ação` };
 });
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SUÍTE 18 · Faróis no globo 3D                                   (v2.6.0)
+
+   O modo Earth mostrava o rebocador e a rota sobre o terreno do Google, e mais
+   nada. Ora — a Lista de Faróis DH2 é o coração deste programa: 98 luzes com
+   posição, altitude do foco, característica e alcance. Deixá-las de fora do
+   globo era mostrar o mar sem os olhos que o vigiam.
+
+   POR QUE ESTA SUÍTE EXISTE COM ESTA FORMA. Esta bancada NÃO alcança o Cesium
+   ion nem os ladrilhos do Google — não há como renderizar e conferir com os
+   olhos. A resposta não foi "então não se testa": foi separar a DESCRIÇÃO do
+   farol (altura, alcance, cor, rótulo — aritmética pura) do DESENHO (chamadas
+   ao Cesium). A descrição é provada aqui, número a número; ao Cesium sobra
+   transcrever. É a mesma disciplina de bordo: o cálculo de estabilidade se
+   confere na mesa antes de se confiar no navio.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const S18 = '18 · Faróis no globo 3D';
+const { corDaLuz, farolEarthSpec } = A;
+const fs18 = require('fs');
+const APP18 = fs18.readFileSync(ROOT + '/app.html', 'utf8');
+const CSS18 = fs18.readFileSync(ROOT + '/assets/css/app.css', 'utf8');
+const S3D18 = fs18.readFileSync(ROOT + '/assets/js/ship3d.js', 'utf8');
+
+t(S18, '18.1', 'A cor no globo é a cor da LUZ, lida da característica', () => {
+  /* Na ponte, a cor não é enfeite: é o primeiro dado que identifica a luz.
+     A letra vem isolada na característica — "Fl W 10s", "Oc(2) R 6s". */
+  ok(corDaLuz('Fl R 5s').nome === 'vermelha', 'R não virou vermelha');
+  ok(corDaLuz('Oc(2) G 6s').nome === 'verde', 'G não virou verde');
+  ok(corDaLuz('Fl Y 4s').nome === 'amarela', 'Y não virou amarela');
+  ok(corDaLuz('Fl W 10s').nome === 'branca', 'W não virou branca');
+  ok(corDaLuz('Fl(3)R 15s').nome === 'vermelha', 'sem espaço após o parêntese a cor se perde');
+  // O que NÃO pode acontecer: pegar a letra de dentro de outra palavra.
+  ok(corDaLuz('LFl W 30s').nome === 'branca', 'a G de "Fl" ou letra interna virou cor');
+  ok(corDaLuz('').nome === 'branca', 'sem característica o padrão tem de ser branca');
+  ok(corDaLuz(null).nome === 'branca', 'característica nula quebrou a leitura');
+  const cores = {};
+  lighthouses.forEach(l => { const n = corDaLuz(l.character).nome; cores[n] = (cores[n] || 0) + 1; });
+  return { detail: Object.entries(cores).map(([k, v]) => `${v} ${k}(s)`).join(', ') };
+});
+
+t(S18, '18.2', 'A coluna sobe até a ALTITUDE DO FOCO, não até o topo da torre', () => {
+  /* Distinção que a Lista de Faróis faz e o desenho tem de respeitar: quem
+     manda no alcance geográfico é a altura da LUZ acima do nível do mar.
+     Desenhar a torre inteira mentiria sobre o alcance. */
+  let piores = [];
+  for (const lh of lighthouses) {
+    const f = farolEarthSpec(lh);
+    if (f.focoM !== Math.max(1, Number(lh.altitude) || 1)) piores.push(lh.id);
+    if (!isFinite(f.focoM) || f.focoM <= 0) piores.push(lh.id + '(inválido)');
+  }
+  ok(piores.length === 0, `${piores.length} farol(óis) com foco errado: ${piores.slice(0, 3)}`);
+  const alt = lighthouses.map(l => farolEarthSpec(l).focoM);
+  return { detail: `foco entre ${Math.min(...alt)} m e ${Math.max(...alt)} m` };
+});
+
+t(S18, '18.3', 'O círculo nunca promete mais do que o horizonte permite', () => {
+  /* alcanceM = MENOR(alcance luminoso, alcance geográfico) x 1852.
+     Um farol de 46 NM luminosos visto de um bote não se enxerga a 46 NM: a
+     curvatura da Terra o esconde antes. Desenhar 46 NM seria convidar a
+     confiar numa luz que não vai aparecer. */
+  const mentirosos = lighthouses.filter(lh => {
+    const f = farolEarthSpec(lh);
+    const geo = calculateVisibility(lh.altitude);
+    return f.alcanceNM > geo + 1e-9;
+  });
+  ok(mentirosos.length === 0, `${mentirosos.length} círculo(s) além do horizonte`);
+  // E a conversão para metros é a milha náutica exata, não 1800 nem 2000.
+  const f0 = farolEarthSpec(lighthouses[0]);
+  eq(f0.alcanceM, f0.alcanceNM * 1852, 1e-6, 'milha náutica errada no raio');
+  return { detail: `${lighthouses.length} círculos dentro do horizonte` };
+});
+
+t(S18, '18.4', 'O círculo é do OBSERVADOR: sobe a ponte, cresce o alcance', () => {
+  /* Esta é a parte que um mapa estático não faz. O alcance geográfico depende
+     de DUAS alturas — a do foco e a do olho: d = 2,08 · (√h₁ + √h₂). O mesmo
+     farol alcança mais visto do passadiço de um AHTS que da capa de um bote.
+     Prova: com o olho a 1 m, dezenas de luzes passam a ser limitadas pelo
+     horizonte; com o olho na altura normal, voltam a valer o alcance luminoso. */
+  setTrip({ eyeHeight: 1 });
+  const baixo = lighthouses.map(l => farolEarthSpec(l).alcanceNM);
+  setTrip({ eyeHeight: 30 });
+  const alto = lighthouses.map(l => farolEarthSpec(l).alcanceNM);
+  setTrip(null);
+  const cresceram = baixo.filter((v, i) => alto[i] > v + 1e-9).length;
+  ok(cresceram > 0, 'a altura do olho não muda nada — o círculo não é do observador');
+  const encolheu = baixo.filter((v, i) => alto[i] < v - 1e-9).length;
+  ok(encolheu === 0, `${encolheu} farol(óis) ENCOLHERAM ao subir o olho — sinal trocado`);
+  return { detail: `${cresceram} de ${lighthouses.length} faróis alcançam mais do passadiço alto` };
+});
+
+t(S18, '18.5', 'Todo farol vira uma descrição completa e desenhável', () => {
+  const ruins = [];
+  for (const lh of lighthouses) {
+    const f = farolEarthSpec(lh);
+    if (!isFinite(f.lat) || !isFinite(f.lng)) ruins.push(f.id + ':coord');
+    if (f.lat < -35.5 || f.lat > 6.5 || f.lng < -56 || f.lng > -28) ruins.push(f.id + ':fora do Brasil');
+    if (!isFinite(f.alcanceM) || f.alcanceM <= 0) ruins.push(f.id + ':alcance');
+    if (!/^#[0-9A-Fa-f]{6}$/.test(f.cor)) ruins.push(f.id + ':cor');
+    // O rótulo tem de dizer o que a carta diria: nome, característica, alcance.
+    if (!f.rotulo.includes(lh.name)) ruins.push(f.id + ':rótulo sem nome');
+    if (!/NM/.test(f.rotulo)) ruins.push(f.id + ':rótulo sem alcance');
+  }
+  ok(ruins.length === 0, `${ruins.length} descrição(ões) inválida(s): ${ruins.slice(0, 3)}`);
+  return { detail: `${lighthouses.length} faróis descritos sem falha` };
+});
+
+t(S18, '18.6', 'O globo não vira sopa de rótulos: há corte por distância', () => {
+  /* 98 nomes e 98 círculos desenhados o tempo todo deixariam o globo ilegível
+     no zoom out — exatamente quando o navegador quer ver a costa inteira.
+     Rótulo só de perto, círculo de média distância, coluna sempre. */
+  const i = S3D18.indexOf('function updateCesiumLighthouses');
+  ok(i > 0, 'updateCesiumLighthouses não existe');
+  const corpo = S3D18.slice(i, S3D18.indexOf('function toggleCesiumLighthouses'));
+  const cortes = (corpo.match(/DistanceDisplayCondition/g) || []).length;
+  ok(cortes >= 2, `apenas ${cortes} corte(s) por distância — rótulo e círculo precisam de um cada`);
+  ok(/label:/.test(corpo) && /ellipse:/.test(corpo) && /cylinder:/.test(corpo),
+     'faltou um dos três elementos: coluna, luz/rótulo, círculo de alcance');
+  return { detail: `${cortes} cortes por distância` };
+});
+
+t(S18, '18.7', 'Redesenhar não acumula entidades no globo', () => {
+  /* Ligar e desligar os faróis dez vezes não pode deixar 2.940 entidades
+     empilhadas. O mesmo motivo do dispose() dos cascos: o WebGL não tem
+     faxineiro. Quem cria, remove. */
+  const i = S3D18.indexOf('function updateCesiumLighthouses');
+  const corpo = S3D18.slice(i, S3D18.indexOf('function toggleCesiumLighthouses'));
+  const remove = corpo.indexOf('entities.remove');
+  const add = corpo.indexOf('entities.add');
+  ok(remove > 0, 'nada é removido antes de redesenhar — vazamento de entidades');
+  ok(remove < add, 'a remoção tem de vir ANTES da criação, não depois');
+  ok(/cesiumFarolEntities = \[\]/.test(corpo), 'a lista de entidades não é zerada');
+  // E o desligado sai cedo, sem desenhar nada.
+  ok(/if \(!cesiumFaroisVisiveis\) return;/.test(corpo), 'desligado ainda desenharia');
+});
+
+t(S18, '18.8', 'A escolha de ver ou não os faróis sobrevive ao recarregar', () => {
+  /* Quem desliga é porque quer o globo limpo. Voltar tudo aceso a cada abertura
+     é obrigar o comandante a repetir a mesma decisão toda vez. */
+  ok(/localStorage\.setItem\('cnb_farois_earth'/.test(S3D18), 'a escolha não é gravada');
+  ok(/localStorage\.getItem\('cnb_farois_earth'/.test(S3D18), 'a escolha não é lida na abertura');
+  const iE = S3D18.indexOf('async function ensureCesium');
+  const corpoE = S3D18.slice(iE, iE + 4000);
+  const leitura = corpoE.indexOf("getItem('cnb_farois_earth'");
+  const desenho = corpoE.indexOf('updateCesiumLighthouses()');
+  ok(leitura > 0 && desenho > leitura, 'a preferência é lida DEPOIS de desenhar — abre errado');
+});
+
+t(S18, '18.9', 'O botão 💡 existe, é alcançável pelo dedo e está ligado à ação', () => {
+  const i = APP18.indexOf('id="ship3dModal"');
+  const fim = APP18.indexOf('class="ship3d-view"');
+  ok(i > 0 && fim > i, 'painel 3D não encontrado');
+  const cab = APP18.slice(i, fim);
+  const btn = /<button[^>]*id="s3dFaroisBtn"[^>]*>/.exec(cab);
+  ok(btn, 'o botão dos faróis não existe no cabeçalho do painel 3D');
+  ok(/class="nav-icon-btn"/.test(btn[0]), 'o botão não usa o alvo de 44 px do passadiço');
+  ok(/title="/.test(btn[0]), 'botão sem title — ninguém adivinha um 💡');
+  ok(/onclick="toggleCesiumLighthouses\(\)"/.test(btn[0]), 'o botão não chama a ação');
+  // Em Atitude não há globo: um botão inerte na tela confunde mais que ajuda.
+  ok(/\.ship3d-overlay:not\(\.earth\) #s3dFaroisBtn\s*\{\s*display:\s*none/.test(CSS18),
+     'o 💡 continua visível na vista de Atitude, onde não faz nada');
+});
+
+t(S18, '18.10', 'A fileira do cabeçalho 3D quebra linha em vez de espremer', () => {
+  /* HONESTIDADE SOBRE O QUE ESTA PROVA GARANTE. A lição veio da v2.4.2, onde
+     um botão a mais numa fileira rígida CORTOU o 🚢. Aqui o defeito não é o
+     mesmo, e foi medido: este cabeçalho ocupa a largura inteira da tela e tem
+     itens que encolhem (título e seletor), então o excesso vira APERTO, não
+     recorte — a 320 px o seletor de casco caía de 108 px para 94 px com a
+     fileira rígida, e "ASD 2810 “SAAM Aguia”" não cabe em 94 px.
+
+     Portanto: esta prova não impede um corte (não havia corte a impedir); ela
+     mantém a fileira capaz de quebrar linha, que é o que devolveu os 108 px e
+     o que segura o PRÓXIMO botão. A medida real está na prova de fumaça, em
+     navegador de verdade, a 320/375/768 px. */
+  const i = CSS18.indexOf('.ship3d-header {');
+  ok(i > 0, '.ship3d-header não encontrado');
+  const bloco = CSS18.slice(i, CSS18.indexOf('}', i));
+  ok(/flex-wrap:\s*wrap/.test(bloco), '.ship3d-header não quebra linha — o seletor volta a ser espremido');
+  const j = CSS18.indexOf('.ship3d-actions {');
+  const blocoA = CSS18.slice(j, CSS18.indexOf('}', j));
+  ok(/flex-wrap:\s*wrap/.test(blocoA), '.ship3d-actions não quebra linha');
+  // O título encolhe com base pequena para não empurrar a fileira para baixo.
+  const k = CSS18.indexOf('.ship3d-title {');
+  const blocoT = CSS18.slice(k, CSS18.indexOf('}', k));
+  ok(/flex:\s*1\s+1\s+\d+px/.test(blocoT), 'o título não tem base de encolhimento');
+  ok(/text-overflow:\s*ellipsis/.test(blocoT), 'nome comprido de embarcação não vira reticências');
+});
+
 /* ═══ RELATÓRIO ═══ */
 const byStatus = s => results.filter(r=>r.status===s).length;
 const ICON = { PASS:'\x1b[32m✔\x1b[0m', FAIL:'\x1b[31m✘\x1b[0m', WARN:'\x1b[33m▲\x1b[0m' };

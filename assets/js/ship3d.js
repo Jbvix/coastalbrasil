@@ -2,7 +2,16 @@
 ════════════════════════════════════════════════════════════════════════════════
   PAINEL DE ATITUDE 3D — Coastal Navigator Brasil
 ════════════════════════════════════════════════════════════════════════════════
-  Versão: 1.0.0  ·  Autor: Jossian Brito (Charlie Bravo)  ·  2026-09-08
+  Versão: 1.1.0  ·  Autor: Jossian Brito (Charlie Bravo)  ·  2026-09-10 18:40 UTC
+
+  MODIFICAÇÕES DESTA VERSÃO (1.1.0 — app v2.6.0)
+    + corDaLuz()                lê a cor da LUZ da característica ("Fl R 5s")
+    + farolEarthSpec()          descrição pura e testável de um farol no globo:
+                                foco, alcance efetivo, cor e rótulo
+    + updateCesiumLighthouses() desenha os 98 faróis — coluna até a altitude do
+                                foco, luz no topo, círculo do alcance no mar
+    + toggleCesiumLighthouses() botão 💡, com a escolha gravada no aparelho
+    ~ ensureCesium()            restaura a preferência e desenha os faróis
 
   Extraído de app.html na v2.3.2, quando o arquivo bateu no teto de 3.500 linhas
   que a prova 12.1 guarda. Mesmo caminho já percorrido por nautical.js, report.js
@@ -12,6 +21,7 @@
     · SHIP_MODELS       registro da frota 3D (arquivo, proa, calado, crédito)
     · vista de Atitude  three.js — jogo, caturro e proa dos sensores de bordo
     · modo Earth        Cesium — o mesmo casco navegando a rota sobre o globo
+    · faróis no globo   a Lista DH2 em 3D: foco, cor da luz e alcance efetivo
 
   DEPENDE DE (globais declaradas em app.html, resolvidas só em tempo de chamada):
     watchMode · navLastFix · shipAttitude · mirrorAttitude · mirrorPos
@@ -172,7 +182,11 @@ async function ensureCesium() {
   });
   cesiumViewer.trackedEntity = cesiumShip;
   cesiumRouteN = -1; updateCesiumRoute();   // desenha os segmentos de waypoint
-  setShip3DStatus('🌍 Modo Earth ativo — rebocador navegando.');
+  try { cesiumFaroisVisiveis = localStorage.getItem('cnb_farois_earth') !== '0'; } catch (e) { }
+  updateCesiumLighthouses();                // e os faróis da Lista DH2
+  const b = document.getElementById('s3dFaroisBtn');
+  if (b) b.classList.toggle('off', !cesiumFaroisVisiveis);
+  setShip3DStatus(`🌍 Modo Earth ativo — rebocador navegando entre ${lighthouses.length} faróis.`);
 }
 
 function shipEarthState() {
@@ -207,6 +221,135 @@ function getRouteForCesium() {
   if (watchMode) return (mirrorWaypoints || []).map(w => ({ name: w.n, lat: w.lat, lng: w.lng }));
   return waypoints.map(w => ({ name: w.name, lat: w.lat, lng: w.lng }));
 }
+/*
+════════════════════════════════════════════════════════════════════════════════
+  FARÓIS NO GLOBO — o que se desenha e por quê                        (v2.6.0)
+════════════════════════════════════════════════════════════════════════════════
+  Um farol num globo 3D não é enfeite. O que interessa a quem navega são três
+  coisas, e cada uma vira um elemento:
+
+    1. ONDE ESTÁ            um ponto na posição exata da DHN;
+    2. QUÃO ALTO É O FOCO   uma coluna do terreno até a ALTITUDE DO FOCO — que é
+                            a altura da LUZ, não a da torre, e é ela que manda no
+                            alcance geográfico pela fórmula 2,08·(√h₁ + √h₂);
+    3. ATÉ ONDE SE VÊ       um círculo no mar com o raio do alcance efetivo, que
+                            é o MENOR entre o luminoso e o geográfico. Um farol
+                            de 39 NM de alcance luminoso mas 22 de geográfico
+                            some no horizonte antes de a luz enfraquecer.
+
+  A COR É A COR DA LUZ. Vem da característica ("Fl W 10s" -> branco, "Fl R 5s"
+  -> vermelho). Não é decoração: é o que o vigia vê na ponte.
+
+  CLUTTER. São 98 faróis. Rótulo e círculo de alcance em todos, o tempo todo,
+  tornariam o globo ilegível — por isso ambos usam distância de exibição: o
+  rótulo aparece de perto, o círculo de média distância, e a coluna sempre.
+*/
+
+/* Cor da luz a partir da característica da Lista de Faróis. */
+function corDaLuz(caracteristica) {
+  const c = String(caracteristica || '');
+  // A letra da cor vem isolada entre espaços: "Fl W 10s", "Oc(2) R 6s".
+  if (/\bR\b/.test(c)) return { css: '#FF5252', nome: 'vermelha' };
+  if (/\bG\b/.test(c)) return { css: '#4CAF50', nome: 'verde' };
+  if (/\bY\b/.test(c)) return { css: '#FFD54F', nome: 'amarela' };
+  return { css: '#FFFDE7', nome: 'branca' };   // W, ou não declarada
+}
+
+/*
+Descrição pura de como um farol aparece no globo. Separada de propósito: o
+navegador desta bancada não alcança o Cesium ion, então a lógica que decide
+altura, alcance, cor e rótulo é testada fora dele, e o que sobra para o Cesium
+é só transcrever números.
+*/
+function farolEarthSpec(lh) {
+  const alcanceNM = effectiveRange(lh);
+  const cor = corDaLuz(lh.character);
+  return {
+    id: lh.id,
+    nome: lh.name,
+    lat: lh.lat,
+    lng: lh.lng,
+    // Altitude do foco em metros: é a altura da LUZ acima do nível do mar.
+    focoM: Math.max(1, Number(lh.altitude) || 1),
+    alcanceNM,
+    alcanceM: alcanceNM * 1852,
+    cor: cor.css,
+    corNome: cor.nome,
+    // O rótulo diz o que a carta diria: nome, característica e alcance efetivo.
+    rotulo: `${lh.name}\n${lh.character || '—'} · ${alcanceNM.toFixed(0)} NM`
+  };
+}
+
+let cesiumFarolEntities = [];
+let cesiumFaroisVisiveis = true;
+
+/* Desenha (ou remove) os faróis no globo. */
+function updateCesiumLighthouses() {
+  if (!cesiumViewer) return;
+  const Cesium = window.Cesium;
+  cesiumFarolEntities.forEach(e => cesiumViewer.entities.remove(e));
+  cesiumFarolEntities = [];
+  if (!cesiumFaroisVisiveis) return;
+
+  for (const lh of lighthouses) {
+    const f = farolEarthSpec(lh);
+    const cor = Cesium.Color.fromCssColorString(f.cor);
+
+    // Coluna do terreno até o foco: mostra a altura que gera o alcance.
+    cesiumFarolEntities.push(cesiumViewer.entities.add({
+      position: Cesium.Cartesian3.fromDegrees(f.lng, f.lat, f.focoM / 2),
+      cylinder: {
+        length: f.focoM, topRadius: 6, bottomRadius: 14,
+        material: cor.withAlpha(0.55),
+        outline: true, outlineColor: Cesium.Color.BLACK.withAlpha(0.4)
+      }
+    }));
+
+    // A luz, no topo da coluna.
+    cesiumFarolEntities.push(cesiumViewer.entities.add({
+      position: Cesium.Cartesian3.fromDegrees(f.lng, f.lat, f.focoM),
+      point: { pixelSize: 10, color: cor, outlineColor: Cesium.Color.BLACK.withAlpha(0.6), outlineWidth: 2,
+               disableDepthTestDistance: Number.POSITIVE_INFINITY },
+      label: {
+        text: f.rotulo, font: '11px sans-serif', fillColor: Cesium.Color.WHITE,
+        showBackground: true, backgroundColor: Cesium.Color.fromCssColorString('rgba(10,25,41,0.78)'),
+        pixelOffset: new Cesium.Cartesian2(0, -20), scale: 0.92,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        // Rótulo só de perto: 98 nomes ao mesmo tempo tornam o globo ilegível.
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 150000)
+      }
+    }));
+
+    // Círculo de alcance efetivo, rente ao mar.
+    cesiumFarolEntities.push(cesiumViewer.entities.add({
+      position: Cesium.Cartesian3.fromDegrees(f.lng, f.lat, 0),
+      ellipse: {
+        semiMajorAxis: f.alcanceM, semiMinorAxis: f.alcanceM,
+        material: cor.withAlpha(0.06),
+        outline: true, outlineColor: cor.withAlpha(0.45), outlineWidth: 1,
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 600000)
+      }
+    }));
+  }
+}
+
+/* Liga e desliga os faróis do globo, guardando a escolha no aparelho. */
+function toggleCesiumLighthouses() {
+  cesiumFaroisVisiveis = !cesiumFaroisVisiveis;
+  try { localStorage.setItem('cnb_farois_earth', cesiumFaroisVisiveis ? '1' : '0'); } catch (e) { }
+  const b = document.getElementById('s3dFaroisBtn');
+  if (b) {
+    b.classList.toggle('off', !cesiumFaroisVisiveis);
+    b.title = cesiumFaroisVisiveis ? 'Faróis no globo — tocar para ocultar'
+                                   : 'Faróis OCULTOS no globo — tocar para mostrar';
+  }
+  updateCesiumLighthouses();
+  setShip3DStatus(cesiumFaroisVisiveis
+    ? `🌍 ${lighthouses.length} faróis no globo — coluna na altitude do foco, círculo no alcance efetivo.`
+    : '🌍 Faróis ocultos.');
+}
+
 function updateCesiumRoute() {
   if (!cesiumViewer) return;
   const Cesium = window.Cesium;

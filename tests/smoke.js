@@ -284,7 +284,7 @@ const srv = http.createServer((req, res) => {
 
      Aqui se abre o painel em larguras reais de telefone e tablete e se confere
      que TODO botão está dentro dos limites do painel. */
-  for (const [nomeTela, larg, alt] of [['telefone 375', 375, 667], ['tablete 768', 768, 1024]]) {
+  for (const [nomeTela, larg, alt] of [['telefone 320', 320, 568], ['telefone 375', 375, 667], ['tablete 768', 768, 1024]]) {
     const tela = await browser.newPage({ viewport: { width: larg, height: alt }, isMobile: true, hasTouch: true });
     await tela.goto('http://localhost:8099/app.html', { waitUntil: 'domcontentloaded' });
     await tela.waitForTimeout(600);
@@ -307,6 +307,74 @@ const srv = http.createServer((req, res) => {
         .map(e => e.id));
     ok(`Alvo de toque mantém 44 px (${nomeTela})`, pequenos.length === 0,
        pequenos.length ? 'menores: ' + pequenos.join(', ') : 'todos ≥ 44 px');
+
+    /* O MESMO EXAME NO CABEÇALHO DO PAINEL 3D.                        (v2.6.0)
+       Ele acaba de receber o 💡 dos faróis e já carregava título, o par
+       Atitude/Earth, o seletor de casco, o 🎚️ e o ✕. A conta a 375 px é a
+       mesma que cortou o 🚢 na v2.3.3 — e o botão que sumiria aqui seria o ✕,
+       deixando o comandante preso na tela cheia sem saída visível. Abre-se o
+       painel no modo Earth (onde o 💡 existe) e confere-se cada filho. */
+    const fora3d = await tela.evaluate(() => {
+      const ov = document.getElementById('ship3dModal');
+      ov.classList.add('active', 'earth');
+      // Com o seletor VAZIO mede-se outra tela: ele nasce sem opções e só é
+      // preenchido ao abrir o painel. Medir vazio foi por pouco o erro desta
+      // própria verificação — o seletor aparecia com 34 px e nada acusava.
+      popularSeletorModelo();
+      document.getElementById('ship3dVessel').textContent = 'REBOCADOR CHARLIE BRAVO';
+      const cab = ov.querySelector('.ship3d-header');
+      const cx = cab.getBoundingClientRect();
+      // Elemento ESCONDIDO de propósito (display:none) não é botão cortado: o
+      // 🎚️ some no globo, o 💡 some na Atitude, ambos por regra explícita.
+      // Cortado é o que continua desenhado e cai FORA da caixa — foi assim que
+      // o 🚢 sumiu na v2.3.3, com tamanho normal e posição além da borda.
+      return [...cab.querySelectorAll('button, select')]
+        .filter(e => e.offsetParent !== null)
+        .filter(e => { const b = e.getBoundingClientRect();
+          return b.right > cx.right + 0.5 || b.left < cx.left - 0.5 ||
+                 b.bottom > cx.bottom + 0.5 || b.top < cx.top - 0.5; })
+        .map(e => e.id || e.textContent.trim());
+    });
+    ok(`Cabeçalho 3D cabe na tela (${nomeTela})`, fora3d.length === 0,
+       fora3d.length ? 'cortados: ' + fora3d.join(', ') : 'todos dentro');
+    const peq3d = await tela.evaluate(() =>
+      [...document.querySelectorAll('#ship3dModal .ship3d-header .nav-icon-btn')]
+        .filter(e => e.offsetParent !== null)
+        .filter(e => { const b = e.getBoundingClientRect(); return b.width < 44 || b.height < 44; })
+        .map(e => e.id));
+    ok(`Botões do painel 3D com 44 px (${nomeTela})`, peq3d.length === 0,
+       peq3d.length ? 'menores: ' + peq3d.join(', ') : 'todos ≥ 44 px');
+    /* O SELETOR DE CASCO NÃO PODE SER ESPREMIDO ATÉ SUMIR O NOME.
+       Aqui nada é CORTADO — este cabeçalho ocupa a largura toda da tela e tem
+       itens que encolhem (título, seletor), então o excesso vira aperto, não
+       recorte. Mas apertado também engana: "ASD 2810 “SAAM Aguia”" tem 21
+       caracteres a 0,72 rem e some dentro de um seletor estreito. Medido: com
+       a fileira rígida o seletor cai a 94 px a 320 px de tela; com quebra de
+       linha ele mantém os 108 px de projeto. O piso é esse. */
+    const selW = await tela.evaluate(() => {
+      const ov = document.getElementById('ship3dModal');
+      ov.classList.add('active', 'earth');
+      const w = document.getElementById('ship3dModelSel').getBoundingClientRect().width;
+      ov.classList.remove('active', 'earth');
+      return Math.round(w);
+    });
+    ok(`Seletor de casco legível (${nomeTela})`, selW >= 100, selW + ' px');
+
+    // E o 💡 só existe onde há globo: em Atitude tem de sumir de fato.
+    const lampada = await tela.evaluate(() => {
+      const ov = document.getElementById('ship3dModal');
+      ov.classList.add('active');            // o painel precisa estar aberto
+      ov.classList.remove('earth');
+      const b = document.getElementById('s3dFaroisBtn').getBoundingClientRect();
+      const visivel = b.width > 0 && b.height > 0;
+      ov.classList.add('earth');
+      const b2 = document.getElementById('s3dFaroisBtn').getBoundingClientRect();
+      ov.classList.remove('active', 'earth');
+      return { atitude: visivel, earth: b2.width > 0 && b2.height > 0 };
+    });
+    ok(`💡 aparece no globo e some em Atitude (${nomeTela})`,
+       lampada.earth && !lampada.atitude,
+       `earth=${lampada.earth} atitude=${lampada.atitude}`);
     await tela.close();
   }
 

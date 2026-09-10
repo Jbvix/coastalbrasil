@@ -193,6 +193,41 @@ fixo não faz — empurrar de través sem guinar.
 casco que você deixou é o que aparece — inclusive no modo 🌍 **Earth**, onde o
 mesmo rebocador navega sobre o globo pela sua rota.
 
+### 8.2 Os faróis no globo (modo 🌍 Earth)
+
+No modo **Earth** o rebocador navega a sua rota sobre o terreno real — e, a
+partir da **v2.6.0**, os **98 faróis da Lista DH2** estão lá com ele. Cada farol
+é desenhado com três elementos, e cada um responde a uma pergunta de bordo:
+
+| O que você vê | O que significa |
+|---|---|
+| **Coluna colorida** | Sobe do chão até a **altitude do foco** — a altura da **luz**, não a da torre. É essa altura que manda no alcance geográfico |
+| **Luz no topo** | Na **cor da característica**: branca, vermelha, verde ou amarela. É o que o vigia enxerga da ponte. De perto aparece a etiqueta com nome, característica e alcance |
+| **Círculo no mar** | O **alcance efetivo** — o **menor** entre o luminoso e o geográfico |
+
+**Por que o menor dos dois.** Um farol de 46 NM de alcance luminoso não se
+enxerga a 46 NM de um bote: a curvatura da Terra o esconde primeiro. Desenhar o
+alcance luminoso seria convidar o navegante a esperar uma luz que não vai
+aparecer.
+
+> **💡 O CÍRCULO É SEU, NÃO DO FAROL.**
+> O alcance geográfico depende de **duas** alturas — a do foco e a do **seu
+> olho**: `d = 2,08 · (√h₁ + √h₂)`. Aumente a *altura do olho* na configuração
+> da viagem e os círculos crescem. Com o olho a 1 m, **81 dos 98 faróis** passam
+> a ser limitados pela curvatura da Terra e não pela potência da lâmpada; do
+> passadiço de um AHTS, quase nenhum. É a tabela de avistamento desenhada
+> no globo, e ela se move com você.
+
+**O botão 💡** no cabeçalho do painel liga e desliga os faróis, e a escolha fica
+gravada no aparelho. Ele **só aparece no modo Earth** — na vista de Atitude não
+há globo onde desenhá-los, e botão que não faz nada na tela em que está confunde
+mais do que ajuda.
+
+**Contra a sopa de etiquetas.** 98 nomes e 98 círculos desenhados o tempo todo
+tornariam o globo ilegível justamente no zoom out, que é quando se quer ver a
+costa inteira. Por isso: o **nome** aparece só de perto, o **círculo** até média
+distância, e a **coluna** fica sempre.
+
 ### 8.1.1 Se você usou o Rastar antes da v2.3.0
 
 Até a v2.2.2 o Rastar 3200 aparecia **de ré** e com o **caturro invertido**: a

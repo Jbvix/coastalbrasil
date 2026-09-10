@@ -11,6 +11,103 @@ executável.
 
 ```
 
+## v2.6.0 (10/09/2026) — OS FARÓIS SUBIRAM NO GLOBO
+
+Autor: Jossian Brito (Charlie Bravo)
+
+O modo 🌍 **Earth** mostrava o rebocador e a rota sobre o terreno do Google, e
+nada mais. Ora: a **Lista de Faróis DH2 (40ª ed.)** é o coração deste programa
+— 98 luzes com posição, altitude do foco, característica e alcance. Deixá-las
+de fora do globo era mostrar o mar sem os olhos que o vigiam.
+
+### O que se desenha, e por que exatamente isso
+
+Um farol num globo 3D não é enfeite. Quem navega faz três perguntas, e cada
+uma virou um elemento:
+
+| Elemento | Pergunta que responde |
+|---|---|
+| **Coluna** do chão até a altitude do foco | *Quão alto é?* — e é a altura da **luz**, não da torre |
+| **Ponto** no topo, na cor da característica | *Onde está e de que cor é?* |
+| **Círculo** no mar, raio = alcance efetivo | *Até onde eu a vejo?* |
+
+**A cor vem da característica, não do capricho.** `Fl R 5s` → vermelha,
+`Oc(2) G 6s` → verde, `Fl W 10s` → branca. É o primeiro dado que identifica
+uma luz na ponte. Na base atual: 97 brancas e 1 vermelha.
+
+**O círculo é do OBSERVADOR, não do farol.** Este é o ponto que um mapa
+estático não faz. O alcance efetivo é o **menor** entre o luminoso e o
+geográfico, e o geográfico depende de **duas** alturas:
+
+```
+d = 2,08 · (√h₁ + √h₂)     h₁ = altitude do foco   h₂ = altura do olho
+```
+
+Com a altura de olho padrão, todos os 98 faróis são limitados pelo alcance
+**luminoso** — a Lista brasileira é conservadora. Com o olho a **1 m** (um
+bote), **81 dos 98** passam a ser limitados pela **curvatura da Terra**. Suba
+para o passadiço e os círculos crescem. É a tabela de avistamento desenhada no
+globo, e ela se move com quem olha.
+
+### Contra a sopa de etiquetas
+
+98 nomes e 98 círculos desenhados o tempo todo tornariam o globo ilegível
+justamente no zoom out — que é quando se quer ver a costa inteira. Nome só de
+perto (150 km), círculo até média distância (600 km), coluna sempre.
+
+### O botão 💡
+
+Liga e desliga os faróis; a escolha fica gravada no aparelho
+(`cnb_farois_earth`). **Só aparece no modo Earth**, pela mesma regra que já
+escondia o 🎚️ no globo: botão que não faz nada na tela em que está confunde
+mais do que ajuda.
+
+### Como isto foi provado sem poder ver
+
+Esta bancada **não alcança** o Cesium ion nem os ladrilhos do Google — não há
+como renderizar e conferir com os olhos. A resposta não foi "então não se
+testa": foi **separar a descrição do desenho**. `farolEarthSpec()` é aritmética
+pura — altura, alcance, cor, rótulo — e é provada número a número fora do
+Cesium; ao Cesium sobra transcrever.
+
+A **suíte 18** (10 provas) foi validada por mutação: dez defeitos deliberados
+foram introduzidos um a um e **os dez foram apanhados** — alcance ignorando o
+horizonte, coluna com altura fixa, entidades vazando a cada redesenho, rótulo
+sem corte de distância, cor perdida, botão ausente, 💡 visível na Atitude,
+preferência lida depois do desenho. Um teste verde que não pega o defeito é
+pior que teste nenhum; este ficou verde depois de provar que fica vermelho.
+
+**O que continua sem verificação visual:** o desenho em si, no Cesium, com os
+ladrilhos do Google. Como o farol de luz apagada, aqui só se garante o cálculo
+— quem confere a luz é quem está na ponte.
+
+### E uma correção de honestidade no caminho
+
+Ao acrescentar o 💡 ao cabeçalho do painel 3D, apliquei a lição da v2.4.2
+(fileira rígida corta botão) e **fui medir antes de escrever que tinha
+consertado um corte**. Não havia corte: ao contrário do painel de navegação —
+largura fixa de 344 px e botões com `min-width: 44px` —, o cabeçalho do 3D
+ocupa a tela inteira e tem itens que encolhem. O excesso virava **aperto**, não
+recorte: a 320 px o seletor de casco caía de 108 px para **94 px**, e
+`ASD 2810 “SAAM Aguia”` não cabe em 94 px.
+
+Com `flex-wrap: wrap` o seletor volta aos 108 px e o cabeçalho até **encurta**
+(97 px contra 112 px de altura), porque o título deixa de disputar a linha. A
+prova de fumaça ganhou a largura de **320 px** e passou a medir o seletor com o
+conteúdo **real** — medir com o seletor vazio (34 px, sem opções) quase fez
+esta própria verificação passar sem enxergar nada.
+
+### Números
+
+| | v2.5.0 | v2.6.0 |
+|---|---|---|
+| Provas do banco | 136 | **146** |
+| Passos da prova de fumaça | 38 | **46** |
+| Larguras de tela medidas | 375, 768 | **320, 375, 768** |
+| Faróis no globo 3D | 0 | **98** |
+
+---
+
 ## v2.5.0 (10/09/2026) — A LINHA DE COSTA ERA A LISTA DE FARÓIS
 
 Autor: Jossian Brito (Charlie Bravo)

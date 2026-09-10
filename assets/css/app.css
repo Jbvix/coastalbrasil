@@ -1082,8 +1082,27 @@
       flex-direction: column;
     }
     .ship3d-overlay.active { display: flex; }
+    /*
+    A LIÇÃO DA v2.4.2, APLICADA AQUI — MAS COM O DEFEITO CERTO.        (v2.6.0)
+    No painel de navegação um botão a mais numa fileira rígida CORTOU o 🚢: lá
+    o painel tem largura fixa (344 px) e os botões têm `min-width: 44px`, então
+    o excedente some pela borda.
+
+    Aqui é diferente, e foi medido em navegador antes de escrever esta regra:
+    este cabeçalho ocupa a largura inteira da tela e tem itens que encolhem
+    (título e seletor). Nada era cortado — o excesso virava APERTO. Com o 💡
+    somado e a fileira rígida, a 320 px o seletor de casco caía de 108 px para
+    94 px, e "ASD 2810 “SAAM Aguia”" não cabe em 94 px.
+
+    Com a quebra de linha o seletor volta aos 108 px de projeto e o cabeçalho
+    até encurta (97 px de altura contra 112 px), porque o título deixa de
+    disputar a linha. E é isso que segura o PRÓXIMO botão, que virá.
+    Os 44 px de alvo continuam intactos: dedo molhado na ponte não acerta menos.
+    */
     .ship3d-header {
       display: flex;
+      flex-wrap: wrap;
+      row-gap: 6px;
       justify-content: space-between;
       align-items: center;
       padding: 10px 14px;
@@ -1091,8 +1110,13 @@
       color: #E3F2FD;
       font-family: var(--font-body);
     }
-    .ship3d-title { font-weight: 700; letter-spacing: 0.5px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .ship3d-actions { display: flex; gap: 4px; }
+    /* Base de 120 px (e não o tamanho do texto): assim um nome comprido vira
+       reticências na PRÓPRIA linha em vez de empurrar o resto para baixo. */
+    .ship3d-title { font-weight: 700; letter-spacing: 0.5px; flex: 1 1 120px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ship3d-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+    /* O 💡 comanda os faróis do GLOBO. Na vista de Atitude não há globo, e um
+       botão que não faz nada na tela em que está confunde mais que ajuda. */
+    .ship3d-overlay:not(.earth) #s3dFaroisBtn { display: none; }
     .ship3d-modes { display: flex; gap: 0; border: 1px solid var(--navigation-blue); border-radius: 6px; overflow: hidden; margin: 0 8px; }
     .ship3d-mode {
       background: transparent; color: #90CAF9; border: none; padding: 5px 10px;

@@ -5,7 +5,7 @@
   COASTAL NAVIGATOR BRASIL — Sistema de Planejamento de Viagem Costeira
 ════════════════════════════════════════════════════════════════════════════════
 
-  Versão: 2.5.0
+  Versão: 2.6.0
   Autor: Jossian Brito (Charlie Bravo)
   LinkedIn: https://www.linkedin.com/in/jossianbrito/
   X: https://x.com/jossiancosta  ·  Medium: https://medium.com/@jossiancosta
@@ -44,7 +44,7 @@
   <meta name="keywords"
     content="navegação costeira, planejamento de viagem, faróis, Brasil, OpenSeaMap, GPX, rebocadores">
 
-  <title>Coastal Navigator Brasil v2.5.0 - Planejamento de Viagem</title>
+  <title>Coastal Navigator Brasil v2.6.0 - Planejamento de Viagem</title>
 
   <!-- Leaflet CSS -->
   <!-- Subresource Integrity: o navegador recusa o arquivo se o conteúdo servido
@@ -75,7 +75,7 @@
     <header class="app-header">
       <div class="header-content">
         <div class="logo">
-          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.5.0</span></h1>
+          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.6.0</span></h1>
         </div>
 
         <div class="controls">
@@ -239,6 +239,10 @@
         <select id="ship3dModelSel" class="ship3d-select" title="Trocar o casco exibido"
                 onchange="trocarShipModel(this.value)"></select>
         <div class="ship3d-actions">
+          <!-- Só faz sentido no globo: em Atitude o CSS o esconde (regra
+               `.ship3d-overlay:not(.earth) #s3dFaroisBtn`), porque um botão que
+               não faz nada na tela em que está é pior que botão nenhum. -->
+          <button class="nav-icon-btn" title="Faróis no globo — tocar para ocultar" onclick="toggleCesiumLighthouses()" id="s3dFaroisBtn">💡</button>
           <button class="nav-icon-btn" title="Nivelar (zerar referência atual)" onclick="calibrateShip3D()" id="ship3dCalBtn">🎚️</button>
           <button class="nav-icon-btn" title="Fechar" onclick="closeShip3D()">✕</button>
         </div>
@@ -3090,7 +3094,7 @@
       updateShareButtons();
 
       console.log('═══════════════════════════════════════════════════════════════');
-      console.log('  Coastal Navigator Brasil v2.5.0 - Inicializado ⚓');
+      console.log('  Coastal Navigator Brasil v2.6.0 - Inicializado ⚓');
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('Autor: Jossian Brito (Charlie Bravo)');
       console.log('58 Faróis curados carregados 💡 (52 DHN + 6 Validados)');
