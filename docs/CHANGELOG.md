@@ -11,6 +11,86 @@ executável.
 
 ```
 
+## v2.4.1 (10/09/2026) — IDENTIDADE SAAM, E O CONSERTO DE UM DEFEITO QUE PUBLIQUEI
+
+Autor: Jossian Brito (Charlie Bravo)
+
+### Primeiro, o defeito
+
+**A libré SAAM da v2.4.0 saiu com a pintura errada.** O preto não ficou abaixo
+da cinta de defensa: ficou numa faixa no meio do costado, e a obra viva ficou
+**azul** — o inverso do pretendido. Junto, a máscara cobriu parte do **nome do
+navio**, deixando o "BRASIL" da popa metade apagado.
+
+Passou por uma falha de **processo**, não de ferramenta: as renderizações de
+conferência foram feitas **sem plano d'água**. O que se via era o casco inteiro,
+incluindo a parte que na prática fica submersa — e ali o erro não incomodava.
+
+### A separação obra viva / obra morta foi RETIRADA
+
+Duas técnicas foram tentadas para derivar a divisão da geometria, e as duas
+falharam neste modelo:
+
+1. **Máscara por triângulo** (marcar o que estivesse inteiro abaixo do corte). O
+   triângulo que ATRAVESSA o corte não entra em lugar nenhum, e a divisão sai na
+   borda da malha em vez da altura pedida.
+2. **Assadura da altura por texel**, com interpolação baricêntrica — mais correta
+   em princípio, mas deixou **31,9% dos texels sem cobertura**, em manchas
+   espalhadas pelo costado visível. A rasterização em UV não fecha neste desenho,
+   que usa coordenadas de 0,005 a 1,990.
+
+Em vez de arriscar uma terceira tentativa, a divisão saiu: o casco fica **azul
+até a linha d'água**, com a cinta de defensa preta fazendo a quebra visual.
+`tools/glb/mascara_uv.mjs` foi **removida do repositório** — ferramenta que
+produziu defeito visível não fica por aí convidando a repetir.
+
+### Etapa 2 — identidade
+
+- `AGUIA` → **`SAAM AGUIA`** (5 ocorrências no costado)
+- `BRASIL` → **`RIO DE JANEIRO`** (3 ocorrências)
+- `B` da chaminé → **marca da casa** (2 ocorrências)
+
+Duas decisões de sinalização naval:
+
+- **As caixas voltaram a ser as originais do "SD REBEL".** "SAAM AGUIA" tem o
+  dobro da largura de "AGUIA"; mantida a caixa atual, a fonte encolheria para
+  caber e o nome sairia miúdo. As caixas do texto original são área de costado
+  limpa, já medida, e comportam o nome novo na altura de letra certa.
+- **O porto herda a largura do nome.** "RIO DE JANEIRO" tem 14 caracteres contra
+  6 de "BRASIL"; alargá-lo na proporção invadiria chapa que não é dele. Na
+  prática de bordo o porto vai em corpo menor, dentro da largura do nome.
+
+E a lição da v2.3.2 valeu de novo: o texto vive em **dois mapas**, cor e
+rugosidade, e os dois foram trocados.
+
+**Sobre a marca da chaminé:** é um desenho próprio — duas cunhas ascendentes,
+esteira estilizada — e **não** a reprodução do símbolo registrado da SAAM. O
+aplicativo é público, e carimbar a marca de uma empresa real num modelo
+distribuído é decisão que não cabe tomar de passagem.
+
+### Um erro de amostragem, achado e corrigido no caminho
+
+O preenchimento do painel da chaminé trouxe **amarelo** em vez de azul: o painel
+é MENOR que a caixa da marca, e a mediana pegou a superestrutura em volta.
+`apagar_chapado()` ganhou um filtro de cor de fundo.
+
+### Sobre a prova que não entrou
+
+Foi escrita uma prova comparando o tamanho da textura comprimida entre cascos
+irmãos, para pegar "repintura que apaga o nome". **Não detectava o defeito**: o
+arquivo com o nome apagado ficou em **1,05×** o de referência, dentro de qualquer
+limiar razoável. Conferir texto dentro de uma textura WebP exigiria um
+decodificador que as provas não têm.
+
+A prova foi **retirada** — verde que não testa nada é pior que nenhuma — e a
+conferência virou passo escrito em `tools/glb/README.md`: renderizar **com a água
+em y=0**, comparar o nome antes e depois nos dois bordos e na popa, e, havendo
+máscara, renderizá-la de volta no modelo com cores de diagnóstico.
+
+**134 provas, 130 passam, 0 falham, 4 avisos.**
+
+---
+
 ## v2.4.0 (09/09/2026) — TERCEIRO CASCO: LIBRÉ SAAM AZUL E AMARELO
 
 Autor: Jossian Brito (Charlie Bravo)

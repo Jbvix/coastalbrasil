@@ -153,22 +153,28 @@ python3 repintar_libre.py          # textures-br/ -> textures-saam/
   multiplica-se a cor-alvo pela luminância relativa. Mesmo princípio de pintar
   sobre primer.
 
-### Separar obra viva de obra morta
+### Obra viva em cor separada: TENTADO E RETIRADO
 
-A textura é um plano e não sabe o que fica submerso — **só a geometria sabe**:
+Houve uma ferramenta (`mascara_uv.mjs`) que tentava pintar o costado de preto
+abaixo da cinta, derivando a divisão da geometria. **Foi retirada na v2.4.1
+porque não funciona neste modelo**, e o resultado chegou a ser publicado com
+defeito visível: preto numa faixa no meio do costado e obra viva azul — o
+inverso do pretendido, com o nome do navio parcialmente coberto.
 
-```bash
-node mascara_uv.mjs casco.glb mascara.raw 0.70 2048
-```
+Duas técnicas foram tentadas e as duas falharam:
 
-Percorre cada triângulo da malha do casco, lê a altura dos vértices e marca a
-área correspondente em UV. Duas armadilhas:
+1. **Máscara por triângulo** (marcar o triângulo inteiro abaixo do corte). O
+   triângulo que ATRAVESSA o corte não entra em lugar nenhum, e a divisão sai na
+   borda da malha em vez da altura pedida.
+2. **Assadura da altura por texel**, com interpolação baricêntrica. Mais
+   correta em princípio, mas deixou **31,9% dos texels sem cobertura**, em
+   manchas espalhadas pelo costado visível — a rasterização em UV não fecha
+   neste desenho, que usa coordenadas de 0,005 a 1,990 (duas repetições).
 
-1. **UV fora de `[0,1]`.** Neste modelo 100% dos vértices vêm deslocados por um
-   inteiro; sem envolver as coordenadas a máscara sai com 0,0% de cobertura.
-2. **Ilhas compartilhadas.** Se obra viva e obra morta dividirem pixels, máscara
-   nenhuma resolve. Confira ANTES: no ASD 2810 são 295 células só abaixo, 2.465
-   só acima e **zero compartilhadas**.
+Fica o registro para quem tentar de novo: **renderize a máscara de volta no
+modelo e olhe** antes de confiar nela. Um diagnóstico que pinta abaixo-do-corte
+de vermelho, acima de verde e sem-dados de magenta resolve em uma imagem o que
+horas de raciocínio sobre UV não resolvem.
 
 ### A altura do corte se mede
 
@@ -187,3 +193,31 @@ COR_GUINCHO=F5BE1E node montar_modelo.mjs cru.glb tex1k/ saida.glb
 
 O glTF guarda `baseColorFactor` em espaço **linear**. `montar_modelo.mjs`
 converte de sRGB; passar o hex direto faz a cor sair lavada.
+
+
+## Conferência obrigatória antes de publicar um casco
+
+O defeito da v2.4.0 passou por uma falha de **processo**, não de ferramenta: as
+renderizações de conferência foram feitas **sem plano d'água**, e ninguém
+comparou o nome do navio antes e depois da repintura. O que se via era o casco
+inteiro, incluindo a parte que na prática fica submersa — e ali o erro não
+incomodava.
+
+Antes de mandar um casco para o repositório:
+
+1. **Renderize com a água em `y = 0`.** É onde o aplicativo a coloca, e é o
+   único enquadramento que mostra o que o usuário vai ver. Sem o plano d'água, a
+   conferência mente por omissão.
+2. **Compare o nome antes e depois**, lado a lado, nos dois bordos e na popa. A
+   sinalização é a primeira coisa que uma repintura mal feita come.
+3. **Se usou máscara derivada da geometria, renderize a máscara de volta no
+   modelo** com cores de diagnóstico (abaixo do corte em vermelho, acima em
+   verde, sem-dados em magenta). Uma imagem resolve o que horas de raciocínio
+   sobre coordenadas UV não resolvem.
+
+Não há prova automatizada para isto. Foi tentada uma, comparando o tamanho da
+textura comprimida entre cascos irmãos — e **não detectava o defeito**: o
+arquivo com o nome apagado ficou em 1,05× o de referência, dentro de qualquer
+limiar razoável. Conferir texto dentro de uma textura WebP exigiria um
+decodificador que as provas não têm. Fica a conferência visual, escrita aqui
+para não se perder.
