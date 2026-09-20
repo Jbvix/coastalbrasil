@@ -2626,6 +2626,239 @@ t(S21, '21.15', 'O proxy arredonda à grade e serve todo mundo com uma busca', (
   ok(/allSettled/.test(PROXY21), 'uma fonte que falhe derrubaria a outra');
 });
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SUÍTE 22 · Referências de terra (Sprint 3)                      (v2.10.0)
+
+   "Estou em 23°05'S 041°53'W" não diz nada a ninguém. "Estou 12 milhas a
+   leste de Cabo Frio" diz tudo. É esse o trabalho deste módulo.
+
+   E é também onde mora a tentação que produziu o pior defeito deste projeto:
+   na v2.4 a "linha de costa" era a lista de faróis ordenada por latitude —
+   conveniente, plausível, errada em 48 NM na média. O defeito não foi de
+   código, foi de PROCEDÊNCIA: aceitou-se um dado por estar à mão e deu-se a
+   ele um nome que prometia mais do que ele era.
+
+   A prova 22.9 existe para impedir a reincidência: porto não é abrigo.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const S22 = '22 · Referências de terra';
+const { referenciaMaisProxima, referenciasDoPonto, fraseDeReferencia,
+        REFERENCIAS_TERRA, REF_MESMO_LUGAR_NM, REF_ALCANCE_MAX_NM } = A;
+const fs22 = require('fs');
+const REF22 = fs22.readFileSync(ROOT + '/assets/js/referencias.js', 'utf8');
+const GER22 = fs22.readFileSync(ROOT + '/tools/terra/gerar_referencias.mjs', 'utf8');
+const APP22 = semComentarios(fs22.readFileSync(ROOT + '/app.html', 'utf8'));
+
+t(S22, '22.1', 'A base existe, é do Brasil e tem forma válida', () => {
+  ok(REFERENCIAS_TERRA && Array.isArray(REFERENCIAS_TERRA.cidades), 'base ausente ou malformada');
+  const { cidades, portos } = REFERENCIAS_TERRA;
+  ok(cidades.length >= 60, `só ${cidades.length} cidades — a costa brasileira tem mais que isso`);
+  ok(portos.length >= 18, `só ${portos.length} portos`);
+  const ruins = [];
+  for (const [la, ln, nome, uf] of cidades) {
+    if (!isFinite(la) || !isFinite(ln)) ruins.push(nome + ':coord');
+    if (la < -35.5 || la > 6.5 || ln < -56 || ln > -28) ruins.push(nome + ':fora da caixa');
+    if (!nome || typeof nome !== 'string') ruins.push('sem nome');
+    if (typeof uf !== 'string') ruins.push(nome + ':uf');
+  }
+  ok(ruins.length === 0, `${ruins.length} registro(s) inválido(s): ${ruins.slice(0, 3)}`);
+  return { detail: `${cidades.length} cidades, ${portos.length} portos` };
+});
+
+t(S22, '22.2', 'Só cidades LITORÂNEAS — o interior não orienta ninguém no mar', () => {
+  /* Uma cidade a 200 milhas do litoral não orienta quem está navegando. O
+     gerador corta em 25 NM da linha de costa da v2.5.0 — e é a própria linha
+     de costa, medida de verdade, que faz esse corte. */
+  let pior = null, piorD = -1;
+  for (const [la, ln, nome] of REFERENCIAS_TERRA.cidades) {
+    const d = distanceFromCoast(la, ln);
+    if (d > piorD) { piorD = d; pior = nome; }
+  }
+  ok(piorD <= 30, `"${pior}" está a ${piorD.toFixed(1)} NM da costa — é cidade de interior`);
+  return { detail: `a mais interiorana é ${pior}, a ${piorD.toFixed(1)} NM da costa` };
+});
+
+t(S22, '22.3', 'Marcação, não só distância — é o que orienta de verdade', () => {
+  /* "Cabo Frio a 12 milhas" deixa o navegante girando a cabeça. "12 milhas a
+     leste de Cabo Frio" o orienta. E a marcação é DO PONTO PARA a referência:
+     é para onde olhar, não de onde se veio. */
+  const r = referenciasDoPonto(-23.05, -41.90);
+  ok(r.cidade, 'não achou cidade ao largo de Cabo Frio');
+  ok(/Cabo Frio/.test(r.cidade.nome), `achou "${r.cidade.nome}"`);
+  ok(isFinite(r.cidade.brg) && r.cidade.brg >= 0 && r.cidade.brg < 360, 'marcação inválida');
+  // Estando a SUDESTE da cidade, olha-se para NOROESTE para vê-la.
+  ok(/noroeste|oeste|norte/.test(r.cidade.rumo),
+     `de sudeste de Cabo Frio a marcação devia apontar ao quadrante NW, deu "${r.cidade.rumo}"`);
+  eq(r.cidade.distNM, calculateDistance(-23.05, -41.90, r.cidade.lat, r.cidade.lng), 1e-9,
+     'a distância devolvida não é a distância calculada');
+});
+
+t(S22, '22.4', 'Além de 120 milhas, silêncio — nome de terra implica relevância', () => {
+  /* A primeira versão respondia "Campos a 399 milhas" no meio do Atlântico.
+     Tecnicamente correto e pior que o silêncio: um nome de terra numa frase
+     IMPLICA relevância, e quem ouve passa a procurar referência que não há. */
+  const longe = referenciasDoPonto(-25.0, -35.0);
+  ok(!longe.cidade && !longe.porto, 'nomeou referência a centenas de milhas da costa');
+  ok(fraseDeReferencia(longe) === '', 'produziu frase onde devia calar');
+  // E perto continua respondendo.
+  ok(referenciasDoPonto(-23.05, -41.90).cidade, 'calou onde devia falar');
+  ok(REF_ALCANCE_MAX_NM >= 60 && REF_ALCANCE_MAX_NM <= 200, 'o corte saiu da faixa defensável');
+});
+
+t(S22, '22.5', 'Cidade e porto no mesmo lugar são ditos UMA vez', () => {
+  /* Na costa brasileira a cidade quase sempre cresceu em volta do porto.
+     "Santos, e também Santos" é a Iara conversando sozinha. */
+  const santos = referenciasDoPonto(-24.05, -46.30);
+  const f = fraseDeReferencia(santos);
+  ok((f.match(/Santos/g) || []).length === 1, 'repetiu o nome: ' + f);
+  // Já onde são lugares diferentes, os dois aparecem — a cidade situa, o porto
+  // informa o que existe por perto.
+  const cf = fraseDeReferencia(referenciasDoPonto(-23.05, -41.90));
+  ok(/Cabo Frio/.test(cf) && /porto/.test(cf), 'perdeu o porto quando ele é outro lugar: ' + cf);
+  ok(REF_MESMO_LUGAR_NM > 0 && REF_MESMO_LUGAR_NM <= 5, 'o limiar de "mesmo lugar" saiu da faixa');
+});
+
+t(S22, '22.6', 'Toda a costa continental acha referência — e as ilhas não', () => {
+  /* A prova que a v2.5.0 ensinou a escrever: não basta funcionar em Cabo Frio.
+
+     A PRIMEIRA VERSÃO DESTA PROVA ESTAVA ERRADA e acusou um buraco falso.
+     Ela sintetizava pontos ao largo varrendo longitude de 0,25 em 0,25 grau —
+     que a 20°S são ~14 NM por passo. A faixa procurada (8 a 14 NM da costa)
+     cabe DENTRO de um passo, então a varredura pulava a costa continental e
+     ia parar em TRINDADE, a 600 milhas, onde de fato não há cidade nenhuma.
+     Prova de resolução grossa não encontra defeito: inventa um.
+
+     Agora varre-se a costa pelos 98 faróis da DHN, que já estão exatamente
+     onde interessa e cobrem o litoral inteiro. E o resultado se valida
+     sozinho: os ÚNICOS faróis sem referência de terra têm de ser as cinco
+     ilhas oceânicas — porque lá realmente não há cidade, e dizer que há seria
+     o defeito. Se um farol de costa continental aparecer nessa lista, a prova
+     o nomeia. */
+  const ILHAS_OCEANICAS = ['Fernando de Noronha', 'Rocas', 'São Pedro e São Paulo',
+                           'Martin Vaz', 'Trindade'];
+  const sem = [], longe = [];
+  let pior = 0, piorEm = null;
+  for (const lh of lighthouses) {
+    const r = referenciasDoPonto(lh.lat, lh.lng);
+    const d = Math.min(r.cidade ? r.cidade.distNM : Infinity,
+                       r.porto ? r.porto.distNM : Infinity);
+    if (!isFinite(d)) { sem.push(lh.name); continue; }
+    if (d > pior) { pior = d; piorEm = lh.name; }
+    if (d > 90) longe.push(`${lh.name} (${d.toFixed(0)} NM)`);
+  }
+  const inesperados = sem.filter(n => !ILHAS_OCEANICAS.some(i => n.includes(i)));
+  ok(inesperados.length === 0,
+     `${inesperados.length} farol(óis) de costa sem referência de terra: ${inesperados.slice(0, 4)}`);
+  ok(sem.length === ILHAS_OCEANICAS.length,
+     `${sem.length} sem referência, esperados ${ILHAS_OCEANICAS.length} (só as ilhas oceânicas)`);
+  /* 90 NM é o teto do continente. O trecho Pará–Maranhão é genuinamente
+     despovoado e chega a 74 NM — isso é a costa, não a base. */
+  ok(longe.length === 0, `referência longe demais: ${longe.slice(0, 3)}`);
+  const ds = lighthouses.map(lh => {
+    const r = referenciasDoPonto(lh.lat, lh.lng);
+    return Math.min(r.cidade ? r.cidade.distNM : Infinity, r.porto ? r.porto.distNM : Infinity);
+  }).filter(isFinite).sort((a, b) => a - b);
+  return { detail: `mediana ${ds[Math.floor(ds.length / 2)].toFixed(1)} NM · pior ${pior.toFixed(0)} NM (${piorEm}) · ${sem.length} ilhas oceânicas sem referência` };
+});
+
+t(S22, '22.7', 'O arquivo é GERADO, não editado à mão', () => {
+  /* Mesma disciplina de coastline.js. Edição manual em arquivo gerado se
+     perde na próxima geração — e ninguém descobre até o dado sumir. */
+  ok(/GERADO por tools\/terra\/gerar_referencias\.mjs/.test(REF22), 'não declara a procedência');
+  ok(/NÃO EDITAR À MÃO/.test(REF22), 'não avisa que é gerado');
+  ok(/Natural Earth/.test(REF22), 'não declara a fonte');
+  ok(fs22.existsSync(ROOT + '/tools/terra/gerar_referencias.mjs'), 'o gerador não existe');
+});
+
+t(S22, '22.8', 'A LACUNA é declarada, não disfarçada', () => {
+  /* A Natural Earth traz 20 portos brasileiros e FALTAM Suape, Itaqui,
+     Sepetiba, São Sebastião, Angra, Itajaí e outros — conferido um a um, e
+     nenhum deles aparece como cidade na NE nem como farol na LF-40ED.
+     ANTAQ inacessível, IBGE sem coordenadas.
+
+     Declarar a falta é o que separa uma base honesta de uma que mente por
+     omissão: quem lê o arquivo sabe exatamente onde ele é cego. */
+  for (const termo of ['Suape', 'Itaqui', 'São Sebastião', 'Itajaí']) {
+    ok(REF22.includes(termo), `o arquivo não declara que falta ${termo}`);
+  }
+  ok(/FALTAM|faltam/i.test(REF22), 'não há seção declarando a lacuna');
+  // E a emenda tem de ser trivial, com procedência obrigatória.
+  ok(/PORTOS_EXTRA/.test(GER22), 'não há lugar previsto para emendar a lista');
+  ok(/procedência/i.test(GER22), 'a emenda não exige declarar de onde veio a coordenada');
+  ok(/não invento|NÃO SE INVENTA/i.test(GER22), 'o gerador não registra a regra de não inventar coordenada');
+});
+
+t(S22, '22.9', 'PORTO NÃO É ABRIGO — a ressalva que impede a reincidência', () => {
+  /* A v2.4 chamou uma lista de faróis de "linha de costa". A tentação aqui é
+     chamar o porto mais próximo de ABRIGO. Escolher fundeadouro exige carta,
+     tenedouro, proteção de QUAL quadrante, profundidade e acesso noturno —
+     nada disso está em nenhuma base pública ao alcance. Um aplicativo que
+     sussurra "abrigo a 12 milhas" com vento de 40 nós está mandando o navio
+     para um lugar que ele não conhece. */
+  ok(/NÃO É INDICAÇÃO DE ABRIGO/i.test(REF22), 'o arquivo gerado não traz a ressalva');
+  ok(/carta náutica|tenedouro/i.test(REF22), 'a ressalva não explica o que falta para ser abrigo');
+  const naut = fs22.readFileSync(ROOT + '/assets/js/nautical.js', 'utf8');
+  ok(/NÃO SIGNIFICA ABRIGO|não é abrigo/i.test(naut), 'o código de consulta não repete a ressalva');
+  // E a palavra "abrigo" NÃO pode aparecer como rótulo no que o usuário lê.
+  const frase = fraseDeReferencia(referenciasDoPonto(-23.05, -41.90));
+  ok(!/abrigo|refúgio|seguro/i.test(frase), 'a frase ao usuário promete abrigo: ' + frase);
+  const rel = fs22.readFileSync(ROOT + '/assets/js/relatorio_voz.js', 'utf8');
+  ok(!/abrigo/i.test(rel), 'o relatório falado usa a palavra "abrigo"');
+});
+
+t(S22, '22.10', 'A referência chega ao painel de waypoints e ao espelho', () => {
+  /* O pedido de bordo foi literal: "relacionar cada waypoint a uma cidade ou
+     porto mais próximo, além do farol". Módulo que ninguém liga é código
+     morto com boa consciência. */
+  ok(/ref: fraseDeReferencia\(referenciasDoPonto\(w\.lat, w\.lng\)\)/.test(APP22),
+     'o painel de waypoints não calcula a referência');
+  ok(/rf: fraseDeReferencia/.test(APP22), 'a referência não segue para o observador em terra');
+  ok(/ref: w\.rf/.test(APP22), 'o espelho recebe mas não usa a referência');
+  // Texto vindo do canal escapado — mesma regra do cartão de farol.
+  const i = APP22.indexOf('const ref = w.ref');
+  ok(i > 0, 'a linha da referência não é montada');
+  ok(/escapeHtml\(w\.ref\)/.test(APP22.slice(i, i + 200)), 'a referência entra sem escape — injeção');
+  ok(/<script src="assets\/js\/referencias\.js">/.test(
+       fs22.readFileSync(ROOT + '/app.html', 'utf8')), 'a base não é carregada');
+});
+
+t(S22, '22.11', 'A Iara diz a referência na chegada, e cala quando é redundante', () => {
+  /* Um waypoint costuma ter nome de rota ("WP 3") que não diz onde é — é na
+     CHEGADA que interessa saber a que altura da costa se está. Mas na costa
+     brasileira o waypoint quase sempre TEM o nome da cidade, e aí dizer
+     "próximo waypoint Macaé… agora a referência é Macaé" é conversar sozinha. */
+  const wp = montarRelatorioWaypoint({ wpAlcancado: 'Búzios',
+    referencia: 'Cabo Frio a 12,3 milhas para noroeste',
+    proxWp: { nome: 'Macaé', distNM: 28, brg: 35 } });
+  ok(wp.partes.includes('referencia'), 'a chegada não menciona a referência de terra');
+  ok(/Cabo Frio/.test(wp.texto), wp.texto);
+  // Marco de singradura: só quando MUDA, e só quando não é redundante.
+  const base = { quando: new Date(2026, 8, 20, 17, 0), lat: -22.3, lng: -41.7, cog: 35, sog: 9, sequencia: 3 };
+  const redundante = montarRelatorioHora(Object.assign({}, base,
+    { proxWp: { nome: 'Macaé', distNM: 8, brg: 35 }, referencia: 'Macaé, 6,2 milhas a noroeste', referenciaMudou: true }));
+  ok(!redundante.partes.includes('referencia-mudou'), 'repetiu o nome do waypoint como referência');
+  const util = montarRelatorioHora(Object.assign({}, base,
+    { proxWp: { nome: 'WP 4', distNM: 18, brg: 35 }, referencia: 'Macaé, 6,2 milhas a noroeste', referenciaMudou: true }));
+  ok(util.partes.includes('referencia-mudou'), 'engoliu o marco de singradura quando ele era útil');
+  // E não repete de hora em hora: só no instante da mudança.
+  const parada = montarRelatorioHora(Object.assign({}, base,
+    { proxWp: { nome: 'WP 4', distNM: 18, brg: 35 }, referencia: 'Macaé, 6,2 milhas a noroeste' }));
+  ok(!parada.partes.includes('referencia-mudou'), 'anuncia a referência toda hora — vira ruído');
+});
+
+t(S22, '22.12', 'Zero à direita some da fala: "28 milhas", não "28,0"', () => {
+  /* "vinte e oito vírgula zero" faz o ouvido tropeçar numa sílaba que não
+     carrega informação. Na tela o zero alinha colunas; no ouvido, não serve
+     para nada. */
+  ok(falarNum(28) === '28', falarNum(28));
+  ok(falarNum(9) === '9', falarNum(9));
+  ok(falarNum(9.5) === '9,5', falarNum(9.5));
+  ok(falarNum(0.42, 2) === '0,42', 'as casas pedidas foram cortadas: ' + falarNum(0.42, 2));
+  ok(falarNum(1.0, 2) === '1', falarNum(1.0, 2));
+  const r = montarRelatorioHora({ quando: new Date(2026, 8, 20, 17, 0), cog: 35, sog: 9, sequencia: 2,
+                                  proxWp: { nome: 'WP', distNM: 28, brg: 35 } });
+  ok(!/,0\b/.test(r.texto), 'sobrou zero à direita no relatório: ' + r.texto);
+});
+
 /* ═══ RELATÓRIO ═══ */
 const byStatus = s => results.filter(r=>r.status===s).length;
 const ICON = { PASS:'\x1b[32m✔\x1b[0m', FAIL:'\x1b[31m✘\x1b[0m', WARN:'\x1b[33m▲\x1b[0m' };

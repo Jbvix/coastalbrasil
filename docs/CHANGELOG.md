@@ -11,6 +11,138 @@ executável.
 
 ```
 
+## v2.10.0 (20/09/2026) — CADA WAYPOINT GANHA UM NOME · SPRINT 3
+
+Autor: Jossian Brito (Charlie Bravo)
+
+*"Estou em 23°05'S 041°53'W"* não diz nada a ninguém. *"Estou 12 milhas a
+leste de Cabo Frio"* diz tudo — e é assim que se conversa no rádio, se anota no
+diário e se explica a posição a quem está em terra.
+
+### Três referências de naturezas diferentes
+
+| | Responde |
+|---|---|
+| **cidade** | onde estou — para me situar e me comunicar |
+| **porto** | o que existe por perto |
+| **farol** | o que eu vejo à noite *(já entregue desde a v1)* |
+
+Com **marcação, não só distância**: "Cabo Frio a 12 milhas" deixa o navegante
+girando a cabeça; "12 milhas a leste de Cabo Frio" o orienta. A marcação é do
+ponto **para** a referência — é para onde olhar.
+
+Aparecem no painel ℹ️ de cada waypoint, no relatório de chegada e, **quando a
+cidade mais próxima muda**, como marco de singradura — que é o equivalente
+falado de passar o través de um ponto notável: *"passamos Cabo Frio às 14,
+Macaé às 17"*.
+
+### ⚠️ A tentação que quase repetiu o pior defeito deste projeto
+
+Na v2.4 a "linha de costa" era a lista de faróis ordenada por latitude:
+conveniente, plausível, **errada em 48 NM na média**. O defeito não foi de
+código — foi de **procedência**: aceitou-se um dado por estar à mão e deu-se a
+ele um nome que prometia mais do que ele era.
+
+A tentação aqui era a mesma, e tinha até o nome pronto no meu próprio plano:
+chamar o porto mais próximo de **abrigo**.
+
+**Não se faz isso.** Escolher fundeadouro exige carta náutica, tenedouro,
+proteção de *qual* quadrante, profundidade e acesso noturno. Nada disso está em
+nenhuma base pública ao alcance do gerador. Um aplicativo que sussurra *"abrigo
+a 12 milhas"* com vento de 40 nós está mandando o navio para um lugar que ele
+não conhece.
+
+A entrega é **referência de orientação**, e o arquivo gerado, o código de
+consulta, o manual e a prova 22.9 dizem isso.
+
+### A lacuna, declarada em vez de disfarçada
+
+Fontes verificadas em 20/09:
+
+| Fonte | Resultado |
+|---|---|
+| ANTAQ (lista oficial) | inacessível desta bancada (HTTP 000) |
+| dados.gov.br | exige credencial (401) |
+| IBGE localidades | responde, **sem coordenadas** |
+| Natural Earth 10 m | público, com coordenadas ✅ |
+
+A Natural Earth traz **20 portos brasileiros**. Faltam, conferidos um a um:
+Suape, Itaqui, Sepetiba/Itaguaí, São Sebastião, Angra dos Reis, Tubarão, Areia
+Branca, Imbituba, Antonina, Itajaí, Cabedelo, São Luís e Barra do Riacho.
+**Nenhum deles aparece como cidade na Natural Earth, nem como farol na LF-40ED
+da DHN** — também conferido um a um.
+
+**Coordenada de porto não se inventa.** A saída honesta tem duas partes: gerar
+o que existe com procedência declarada, e deixar a emenda trivial —
+`PORTOS_EXTRA` no gerador, com a **procedência obrigatória na quarta coluna**.
+Sem ela, daqui a um ano ninguém saberá se aquele número veio de uma carta, de
+um GPS de bordo ou de um palpite; foi exatamente esse esquecimento que produziu
+a linha de costa errada da v2.4.
+
+### Números da base
+
+98 cidades litorâneas (só Brasil, só a menos de 25 NM da linha de costa da
+v2.5.0 — que é reaproveitada pelo gerador para fazer esse corte) e 24 portos,
+em 7,2 KB. Os 250 municípios de interior e os 40 pontos de países vizinhos
+dentro da caixa foram descartados, e o gerador imprime essas contagens.
+
+### Além de 120 milhas, silêncio
+
+A primeira versão respondia *"Campos a 399 milhas"* no meio do Atlântico.
+Tecnicamente correto e **pior que o silêncio**: um nome de terra numa frase
+implica relevância, e quem ouve passa a procurar referência que não existe.
+
+O corte não é alcance visual — o horizonte de um passadiço de 10 m são 7 milhas.
+É alcance de **orientação**: "80 milhas a leste de Vitória" ainda situa alguém
+num rádio. Acima disso, a posição se diz em latitude e longitude, como sempre.
+
+### A prova que estava errada e inventou um defeito
+
+A varredura de cobertura da 22.6, na primeira versão, sintetizava pontos ao
+largo varrendo longitude de 0,25 em 0,25 grau — que a 20°S são **~14 NM por
+passo**. A faixa procurada (8 a 14 NM da costa) **cabe dentro de um passo**, e
+a varredura pulou a costa continental inteira, indo parar em **Trindade**, a
+600 milhas, onde de fato não há cidade. Acusou um buraco que não existia.
+
+**Prova de resolução grossa não encontra defeito: inventa um.**
+
+Refeita sobre os 98 faróis da DHN, que já estão exatamente onde interessa e
+cobrem o litoral inteiro. E o resultado **se valida sozinho**: os únicos cinco
+faróis sem referência de terra são precisamente as cinco ilhas oceânicas —
+Fernando de Noronha, Rocas, São Pedro e São Paulo, Martim Vaz e Trindade. Lá
+realmente não há cidade, e dizer que há seria o defeito.
+
+| | |
+|---|---|
+| mediana | **18,7 NM** |
+| pior caso continental | 74 NM (Farol de São João → Viseu, costa Pará–Maranhão) |
+| sem referência | 5, e são exatamente as ilhas oceânicas |
+
+### Dois deslizes que só aparecem ouvindo
+
+*"28,0 milhas"* e *"9,0 nós"* saem do sintetizador como "vinte e oito vírgula
+zero" — o ouvido tropeça numa sílaba sem informação. Na tela o zero alinha
+colunas; no ouvido não serve para nada.
+
+E o marco de singradura dizia *"próximo waypoint Macaé… agora a referência mais
+próxima é Macaé"*. Na costa brasileira o waypoint quase sempre **tem o nome da
+cidade** — a Iara estava conversando sozinha. Agora cala quando é redundante.
+
+**Suíte 22 (12 provas), validada por mutação: 12 defeitos deliberados, 12
+apanhados.**
+
+### Números
+
+| | v2.9.0 | v2.10.0 |
+|---|---|---|
+| Provas do banco | 199 | **211** |
+| Passos da prova de fumaça | 58 | **60** |
+| Módulos | 11 | **12** (`referencias.js`) |
+| Geradores | 2 | **3** (`tools/terra/`) |
+| `app.html` | 3.235 linhas | **3.247** (teto: 3.500) |
+
+---
+
 ## v2.9.0 (20/09/2026) — TEMPO, VENTO E CORRENTE · SPRINT 2
 
 Autor: Jossian Brito (Charlie Bravo)

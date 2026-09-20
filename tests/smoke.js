@@ -295,6 +295,24 @@ const srv = http.createServer((req, res) => {
   ok('Texto do canal não vira marcação', relEsp.existe && !relEsp.temTag,
      relEsp.temTag ? 'a <img> foi interpretada — injeção' : 'escapado');
 
+  /* A REFERÊNCIA DE TERRA NO PAINEL DE WAYPOINTS.                  (v2.10.0)
+     O banco de provas garante a conta e o escape; o que só o navegador diz é
+     se a linha aparece de fato no painel que o comandante abre no 🔷 ℹ️. */
+  const refPainel = await page.evaluate(() => {
+    openWaypointsInfo();
+    const corpo = document.getElementById('waypointsInfoBody');
+    const txt = corpo.textContent;
+    const html = corpo.innerHTML;
+    closeWaypointsInfo();
+    return { temEmoji: /🏙️/.test(txt), txt: txt.slice(0, 160),
+             // Nenhuma marcação veio do dado: se um nome trouxesse "<b>",
+             // ele tem de aparecer escapado.
+             temTagInjetada: /<b>|<img/i.test(html) };
+  });
+  ok('Waypoints mostram a referência de terra', refPainel.temEmoji,
+     refPainel.temEmoji ? refPainel.txt.replace(/\s+/g, ' ').slice(0, 90) : 'sem 🏙️ no painel');
+  ok('Referência não injeta marcação', !refPainel.temTagInjetada, 'escapado');
+
   await espelho.screenshot({ path: path.join(__dirname, 'smoke-espelho.png') });
   await espelho.close();
 

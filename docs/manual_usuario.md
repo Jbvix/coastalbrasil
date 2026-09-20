@@ -488,15 +488,75 @@ zelo excessivo: o Open-Meteo só aceita a chave dentro do endereço da consulta 
 **não permite travá-la no seu domínio**. Publicada, ela seria copiável por
 qualquer visitante — e é uma chave **paga**.
 
+### 9.7.5 Cada waypoint ganha um nome de terra
+
+A partir da **v2.10.0**, abrindo o **ℹ️** você vê, abaixo de cada waypoint, a
+referência de terra mais próxima:
+
+> 🏙️ **Cabo Frio a 12,3 milhas para noroeste; porto de Niterói a 68,5**
+
+E a Iara a diz **na chegada a cada waypoint** — que é quando interessa, porque
+um waypoint chamado "WP 3" não diz a ninguém onde você está:
+
+> *"Chegamos em Búzios. Cabo Frio a 12,3 milhas para noroeste. Nova perna pra
+> Macaé: rumo zero três cinco, 28 milhas, chegada 17 e 10."*
+
+**Marcação, não só distância.** "Cabo Frio a 12 milhas" deixa você girando a
+cabeça; "12 milhas **a leste** de Cabo Frio" orienta. A marcação é do seu ponto
+**para** a referência — é para onde olhar.
+
+#### O marco de singradura
+
+Quando a cidade mais próxima **muda**, ela avisa uma vez:
+
+> *"Agora a referência mais próxima é Macaé, 6,2 milhas a noroeste."*
+
+É o equivalente falado de passar o través de um ponto notável — o jeito como se
+conta uma viagem costeira: *"passamos Cabo Frio às 14, Macaé às 17"*. Ela não
+repete de hora em hora, e cala quando o próprio waypoint já tem o nome da
+cidade, que na costa brasileira é a regra.
+
+Passando de **120 milhas** da costa, ela simplesmente não nomeia nada. Um nome
+de terra numa frase implica que ele serve de referência — e a 400 milhas não
+serve.
+
+### ⚠️ 9.7.6 PORTO NÃO É ABRIGO — leia antes de confiar
+
+Esta é a ressalva mais importante desta seção.
+
+**Um porto que aparece nessa lista não é, por estar ali, um lugar seguro para
+se meter com mau tempo.**
+
+Escolher fundeadouro exige **carta náutica, tenedouro, proteção de qual
+quadrante, profundidade e acesso noturno**. Nada disso está nesta base, nem em
+nenhuma fonte pública de onde ela veio. O que o aplicativo entrega é
+**referência de orientação** — "onde estou, em termos que uma pessoa entende".
+Não é conselho de derrota, e nunca foi pensado para ser.
+
+#### E a lista de portos está incompleta — de propósito declarado
+
+A base pública usada (Natural Earth) traz 20 portos brasileiros. **Faltam**
+Suape, Itaqui, Sepetiba/Itaguaí, São Sebastião, Angra dos Reis, Tubarão, Areia
+Branca, Imbituba, Antonina, Itajaí, Cabedelo, São Luís e Barra do Riacho.
+
+A ANTAQ não é acessível pelo gerador e o IBGE não publica coordenadas.
+**Coordenada de porto não se inventa** — seria repetir o erro que produziu a
+linha de costa errada da v2.4. Quem trabalha nesses portos tem a posição na
+ponta da língua: a emenda está pronta para ser preenchida em
+`tools/terra/gerar_referencias.mjs`, com a **procedência obrigatória**.
+
 ### 9.8 O que ela ainda NÃO faz
 
-A v2.9.0 entregou o **Sprint 2**: tempo, vento e corrente. Se você perguntar alguma
+A v2.10.0 entregou o **Sprint 3**: referências de terra. Se você perguntar alguma
 coisa, ela repete o que ouviu e admite que ainda está aprendendo a responder.
 
-Está previsto, nesta ordem: **tempo, vento e corrente** do Open-Meteo, com ETA corrigido pela
-corrente; **cidade, abrigo e farol** mais próximos de cada waypoint; **faixa
-econômica de RPM** que não estraga o ETA; **ondas e estabilidade** pelos
-sensores do tablet; e por último a **conversa livre**.
+Está previsto, nesta ordem: **faixa econômica de RPM** que não estraga o ETA;
+**ondas e estabilidade** pelos sensores do tablet; e por último a **conversa
+livre**, em que ela passa a responder perguntas.
+
+> Se você tinha lido aqui que viria "cidade, **abrigo** e farol": a palavra
+> *abrigo* saiu, e saiu por decisão técnica. Ver §9.7.6 — o aplicativo não tem
+> como saber o que é abrigo, e prometer isso seria pior que não prometer nada.
 
 ### 9.9 Ela sugere. Você decide.
 

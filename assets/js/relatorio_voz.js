@@ -88,7 +88,15 @@ vírgula cinco" e "9.5" como "nove ponto cinco" — ou, em alguns motores, como
 function falarNum(n, casas) {
   const v = Number(n);
   if (!isFinite(v)) return '—';
-  return v.toFixed(casas == null ? 1 : casas).replace('.', ',');
+  /*
+  ZERO À DIREITA SOME. "28,0 milhas" e "9,0 nós" saem do sintetizador como
+  "vinte e oito vírgula zero" — ninguém fala assim, e o ouvido tropeça na
+  sílaba a mais. Na tela o zero alinha colunas e tem função; no ouvido, não
+  tem nenhuma. É a mesma tese do módulo: dois públicos, dois vocabulários.
+  */
+  return v.toFixed(casas == null ? 1 : casas)
+          .replace('.', ',')
+          .replace(/,0+$/, '');
 }
 
 /*
@@ -329,7 +337,7 @@ function montarRelatorioHora(e) {
     partes.push('posicao');
   }
   if (isFinite(s.cog) && isFinite(s.sog)) {
-    t += `Rumo ${falarRumo(s.cog)}, ${falarNum(s.sog)} nós. `;
+    t += `Rumo ${falarRumo(s.cog)}, ${falarNos(s.sog)}. `;
     partes.push('rumo');
   } else {
     t += 'Ainda sem rumo e velocidade do GPS. ';
@@ -376,6 +384,25 @@ function montarRelatorioHora(e) {
     t += '. ';
     if (c.insuficiente) t += 'O saldo não fecha a rota que falta — vale conferir. ';
     partes.push(c.insuficiente ? 'combustivel-alerta' : 'combustivel');
+  }
+
+  /*
+  6.5. EXCEÇÃO — A CIDADE MAIS PRÓXIMA MUDOU.
+
+  Dizer "cidade mais próxima: Macaé" toda hora seria ruído: ela não muda de
+  hora em hora. Mas o INSTANTE em que ela muda é um marco de singradura — é o
+  equivalente falado de passar o través de um ponto notável, e é assim que se
+  conta uma viagem costeira: "passamos Cabo Frio às 14, Macaé às 17".
+  */
+  /* E cala-se quando o waypoint JÁ TEM o nome da cidade — que na costa
+     brasileira é a regra, não a exceção: a rota de Santos a Macaé tem
+     waypoints chamados Santos e Macaé. Dizer "próximo waypoint Macaé… agora a
+     referência mais próxima é Macaé" é a Iara conversando sozinha. */
+  const refRedundante = s.referencia && s.proxWp && s.proxWp.nome &&
+    s.referencia.toLowerCase().startsWith(String(s.proxWp.nome).toLowerCase());
+  if (s.referenciaMudou && s.referencia && !refRedundante) {
+    t += `Agora a referência mais próxima é ${s.referencia}. `;
+    partes.push('referencia-mudou');
   }
 
   // 7. EXCEÇÃO — o tempo. O próprio falarTempo() já filtra o que não merece
@@ -428,6 +455,12 @@ function montarRelatorioWaypoint(e) {
   t += `Chegamos em ${s.wpAlcancado || 'o waypoint'}. `;
   partes.push('chegada');
 
+  /* A REFERÊNCIA DE TERRA, AQUI E NÃO NO RELATÓRIO DE ROTINA.
+     Um waypoint costuma ter nome de rota ("WP 3", "Ponto Alfa") que não diz
+     onde é. É na chegada que interessa saber a que altura da costa se está —
+     e é essa a frase que vai pelo rádio quando alguém pergunta a posição. */
+  if (s.referencia) { t += `${s.referencia}. `; partes.push('referencia'); }
+
   const wp = s.proxWp;
   if (wp && wp.nome && isFinite(wp.distNM)) {
     t += `Nova perna pra ${wp.nome}: rumo ${falarRumo(wp.brg)}, ${falarNum(wp.distNM)} milhas`;
@@ -464,6 +497,7 @@ const REL_TETO_S = { tipico: 15, excecional: 30, waypoint: 20 };
 
 let relSequencia = 0;           // qual relatório é este
 let relUltimaLeg = null;        // para detectar a troca de perna
+let relUltimaCidade = null;     // para detectar o marco de singradura
 let relTimer = null;
 let relHistorico = [];          // ver nota sobre o Sprint 5, abaixo
 
@@ -506,6 +540,17 @@ function estadoAtualParaRelatorio() {
       const ct = crossTrackError(fix.lat, fix.lng, inicio, fim);
       const xte = (ct && typeof ct === 'object') ? ct.xte : ct;
       if (isFinite(xte)) { e.xteNM = xte; e.xteLado = xte < 0 ? 'bombordo' : 'boreste'; }
+    }
+
+    /* Referência de terra e a detecção do marco. Guarda-se o NOME da cidade
+       anterior, não a frase inteira: a distância muda a cada fixo e faria a
+       frase "mudar" a cada relatório, transformando marco em ruído. */
+    if (fix && typeof referenciasDoPonto === 'function') {
+      const refs = referenciasDoPonto(fix.lat, fix.lng);
+      e.referencia = fraseDeReferencia(refs);
+      const nome = refs.cidade ? refs.cidade.nome : null;
+      e.referenciaMudou = !!(nome && relUltimaCidade && nome !== relUltimaCidade);
+      if (nome) relUltimaCidade = nome;
     }
 
     // O farol mais próximo, com o alcance efetivo DESTE passadiço.
@@ -590,6 +635,7 @@ function registrarRelatorio(e, r) {
     t: (e.quando || new Date()).toISOString(),
     lat: e.lat, lng: e.lng, cog: e.cog, sog: e.sog,
     wp: e.proxWp ? e.proxWp.nome : null,
+    ref: e.referencia || null,
     xte: e.xteNM, sim: !!e.simulacao,
     partes: r.partes,
     onda: null,          // Sprint 5 — ver nota acima
@@ -662,6 +708,7 @@ function verificarTrocaDePerna() {
 function iniciarRelatorios() {
   relSequencia = 0;
   relUltimaLeg = null;
+  relUltimaCidade = null;
   try {
     const g = localStorage.getItem('cnb_rel_historico');
     if (g) relHistorico = JSON.parse(g) || [];

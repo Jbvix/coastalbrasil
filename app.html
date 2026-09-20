@@ -5,7 +5,7 @@
   COASTAL NAVIGATOR BRASIL — Sistema de Planejamento de Viagem Costeira
 ════════════════════════════════════════════════════════════════════════════════
 
-  Versão: 2.9.0
+  Versão: 2.10.0
   Autor: Jossian Brito (Charlie Bravo)
   LinkedIn: https://www.linkedin.com/in/jossianbrito/
   X: https://x.com/jossiancosta  ·  Medium: https://medium.com/@jossiancosta
@@ -44,7 +44,7 @@
   <meta name="keywords"
     content="navegação costeira, planejamento de viagem, faróis, Brasil, OpenSeaMap, GPX, rebocadores">
 
-  <title>Coastal Navigator Brasil v2.9.0 - Planejamento de Viagem</title>
+  <title>Coastal Navigator Brasil v2.10.0 - Planejamento de Viagem</title>
 
   <!-- Leaflet CSS -->
   <!-- Subresource Integrity: o navegador recusa o arquivo se o conteúdo servido
@@ -75,7 +75,7 @@
     <header class="app-header">
       <div class="header-content">
         <div class="logo">
-          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.9.0</span></h1>
+          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.10.0</span></h1>
         </div>
 
         <div class="controls">
@@ -502,6 +502,7 @@
        Ordem obrigatória: nautical.js usa `lighthouses`. -->
   <script src="assets/js/lighthouses.js"></script>
   <script src="assets/js/coastline.js"></script>
+  <script src="assets/js/referencias.js"></script>
   <script src="assets/js/nautical.js"></script>
   <script src="assets/js/report.js"></script>
   <script src="assets/js/mirror.js"></script>
@@ -2706,12 +2707,17 @@
       if (watchMode) {
         rows = (mirrorWaypoints || []).map(w => ({
           name: w.n, eta: w.eta ? new Date(w.eta) : null, dist: w.d, total: w.td,
-          fuel: w.fr, lh: w.lh, lv: w.lv
+          fuel: w.fr, lh: w.lh, lv: w.lv, ref: w.rf
         }));
       } else {
         rows = waypoints.map(w => ({
           name: w.name, eta: w.eta, dist: w.distance, total: w.totalDistance,
-          fuel: w.fuelRemaining, lh: w.nearestLighthouse ? w.nearestLighthouse.name : null, lv: w.lighthouseVisible
+          fuel: w.fuelRemaining, lh: w.nearestLighthouse ? w.nearestLighthouse.name : null, lv: w.lighthouseVisible,
+          // SPRINT 3 — cada waypoint amarrado a um nome de terra. É o pedido de
+          // bordo: "23°05'S 041°53'W" não diz nada; "12 milhas a leste de Cabo
+          // Frio" diz tudo. Calculado aqui e não no espelho porque o observador
+          // em terra recebe a frase pronta, sem precisar da base de 98 cidades.
+          ref: fraseDeReferencia(referenciasDoPonto(w.lat, w.lng))
         }));
       }
       document.getElementById('waypointsInfoBody').innerHTML = waypointsInfoHtml(rows);
@@ -2730,10 +2736,13 @@
         const acum = (w.total != null) ? `acum ${(+w.total).toFixed(1)} NM` : '';
         const fuel = (w.fuel != null) ? ` · saldo ${(+w.fuel).toFixed(0)} L` : '';
         const lh = w.lh ? `<br>💡 ${escapeHtml(w.lh)} ${w.lv ? '<span style="color:#69F0AE">(visível)</span>' : '<span style="color:#FFB74D">(fora de alcance)</span>'}` : '';
+        // Referência de terra. escapeHtml porque no modo espelho esta frase
+        // chega pelo canal — mesma regra do nome do farol logo acima.
+        const ref = w.ref ? `<br>🏙️ ${escapeHtml(w.ref)}` : '';
         return `
         <div class="wp-info-row">
           <div class="wp-info-head"><strong>${escapeHtml(w.name || '-')}</strong>${eta}</div>
-          <div class="wp-info-meta">${trecho}${acum}${fuel}${lh}</div>
+          <div class="wp-info-meta">${trecho}${acum}${fuel}${lh}${ref}</div>
         </div>`;
       }).join('');
     }
@@ -2759,7 +2768,10 @@
         wps: waypoints.map(w => ({
           n: w.name, lat: w.lat, lng: w.lng, d: w.distance, td: w.totalDistance,
           eta: w.eta ? w.eta.toISOString() : null, fr: w.fuelRemaining,
-          lh: w.nearestLighthouse ? w.nearestLighthouse.name : null, lv: w.lighthouseVisible
+          lh: w.nearestLighthouse ? w.nearestLighthouse.name : null, lv: w.lighthouseVisible,
+          // A frase de referência segue pronta: o observador em terra não
+          // precisa carregar a base de 98 cidades para ler um nome.
+          rf: fraseDeReferencia(referenciasDoPonto(w.lat, w.lng))
         })),
         // Sempre envia o rumo (COG) para o observador orientar a embarcação no curso
         // e exibir a Proa; jogo/caturro vão junto quando os sensores estão ativos.
@@ -3165,7 +3177,7 @@
       updateShareButtons();
 
       console.log('═══════════════════════════════════════════════════════════════');
-      console.log('  Coastal Navigator Brasil v2.9.0 - Inicializado ⚓');
+      console.log('  Coastal Navigator Brasil v2.10.0 - Inicializado ⚓');
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('Autor: Jossian Brito (Charlie Bravo)');
       console.log('58 Faróis curados carregados 💡 (52 DHN + 6 Validados)');

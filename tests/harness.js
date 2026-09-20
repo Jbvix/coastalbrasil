@@ -14,6 +14,7 @@ const ROOT = path.join(__dirname, '..');
  * de chaves — não há reimplementação em lugar nenhum.
  */
 const MODULOS = ['assets/js/lighthouses.js', 'assets/js/coastline.js',
+                 'assets/js/referencias.js',
                  'assets/js/nautical.js',
                  'assets/js/report.js', 'assets/js/mirror.js',
                  'assets/js/ship3d.js', 'assets/js/iara.js',
@@ -104,6 +105,7 @@ const FNS = ['calculateDistance','calculateBearing','eyeHeight','calculateVisibi
              'estadoAtualParaRelatorio',
              // Sprint 2: o triângulo da corrente e o resto da aritmética.
              // Tudo puro — a bancada não chama o proxy, chama a conta.
+             'referenciaMaisProxima','referenciasDoPonto','fraseDeReferencia',
              'nosDeKmh','rumoCardeal','beaufort','trianguloDaCorrente',
              'etaComCorrente','tendenciaBarometrica','idadeDoTempo','falarTempo'];
 
@@ -148,10 +150,13 @@ const sandboxSrc = extractLighthouses() + '\n' +
   extractDecl('TEMPO_MAR_NM') + '\n' +
   extractDecl('TEMPO_CORRENTE_NOS') + '\n' +
   extractDecl('REL_ETA_MENCIONA_MIN') + '\n' +
+  extractDecl('REF_MESMO_LUGAR_NM') + '\n' +
+  extractDecl('REF_ALCANCE_MAX_NM') + '\n' +
+  extractDecl('REFERENCIAS_TERRA') + '\n' +
   'const RESYNC_NM = ' + (SRC.match(/const RESYNC_NM = (\\d+)/) || [,'10'])[1] + ';\n' +
   FNS.map(extractFn).join('\n\n') + '\n' +
   'module.exports = { lighthouses, COSTA_BRASIL, DEFAULT_EYE_HEIGHT_M, RESYNC_NM,\n'
-  + '  IARA_NOME, IARA_PRIORIDADE, IARA_VALIDADE_MS, IARA_ROT_LIMITE, IARA_IMPERATIVOS_PROIBIDOS, IARA_TETO_S,\n'
+  + '  IARA_NOME, IARA_PRIORIDADE, IARA_VALIDADE_MS, IARA_ROT_LIMITE, IARA_IMPERATIVOS_PROIBIDOS, IARA_TETO_S, REFERENCIAS_TERRA, REF_MESMO_LUGAR_NM, REF_ALCANCE_MAX_NM,\n'
   + '  REL_XTE_MENCIONA_NM, REL_XTE_PREOCUPA_NM, REL_COMBUSTIVEL_A_CADA, REL_TETO_S,\n'
   + '  TEMPO_FRESCO_MIN, TEMPO_VELHO_MIN, TEMPO_RAJADA_DELTA, TEMPO_MAR_NM, TEMPO_CORRENTE_NOS,\n'
   + '  setTrip: t => { tripData = t; },\n'
