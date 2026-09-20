@@ -92,6 +92,22 @@ function falarNum(n, casas) {
 }
 
 /*
+NÓ NO SINGULAR QUANDO É UM.
+
+"Corrente 1,0 nós" não é português, e num relatório falado o deslize salta.
+Em português o plural acompanha tudo que não é exatamente um — inclusive
+1,5 ("um vírgula cinco nós"). E o decimal some quando o número é inteiro:
+"24 nós", não "24,0 nós".
+*/
+function falarNos(n) {
+  const v = Number(n);
+  if (!isFinite(v)) return '—';
+  if (Math.abs(v - 1) < 1e-9) return '1 nó';
+  const inteiro = Math.abs(v - Math.round(v)) < 1e-9;
+  return (inteiro ? String(Math.round(v)) : falarNum(v)) + ' nós';
+}
+
+/*
 HORA COMO HORA. "15:20" vira "quinze dois zero" em vários motores. "15 e 20" é
 inequívoco, e ":00" ganha "em ponto" porque "quinze e zero zero" é sofrível.
 */
@@ -261,6 +277,10 @@ descobre, e por isso fura a cadência.
 */
 const REL_COMBUSTIVEL_A_CADA = 4;
 
+/* Correção de ETA abaixo de 10 min sobre a rota inteira cabe na incerteza do
+   próprio modelo — anunciá-la seria dar ares de precisão a um palpite. */
+const REL_ETA_MENCIONA_MIN = 10;
+
 function deveDizerCombustivel(sequencia, saldoInsuficiente) {
   if (saldoInsuficiente) return true;
   const n = Number(sequencia);
@@ -356,6 +376,37 @@ function montarRelatorioHora(e) {
     t += '. ';
     if (c.insuficiente) t += 'O saldo não fecha a rota que falta — vale conferir. ';
     partes.push(c.insuficiente ? 'combustivel-alerta' : 'combustivel');
+  }
+
+  // 7. EXCEÇÃO — o tempo. O próprio falarTempo() já filtra o que não merece
+  //    frase (vento sempre; rajada, mar, corrente e barômetro só quando saem
+  //    do comum). Aqui só se costura o resultado.
+  if (s.tempo) {
+    const bt = falarTempo(s.tempo);
+    if (bt.texto) { t += bt.texto + ' '; partes.push(...bt.partes); }
+    if (s.tempo.correnteImpossivel) {
+      t += `Atenção: ${s.tempo.correnteImpossivel}. `;
+      partes.push('corrente-impossivel');
+    }
+  }
+
+  /*
+  8. EXCEÇÃO — o ETA da rota corrigido pela corrente.
+     Só entra quando a diferença vale a frase. Abaixo de 10 minutos sobre a
+     rota inteira, a correção está dentro da incerteza do próprio modelo e
+     anunciá-la seria dar ares de precisão a um palpite.
+  */
+  if (s.etaRota && isFinite(s.etaRota.ganhoHoras) && Math.abs(s.etaRota.ganhoHoras) * 60 >= REL_ETA_MENCIONA_MIN) {
+    const g = s.etaRota.ganhoHoras;
+    t += g > 0
+      ? `Com a corrente a favor, a rota inteira sai ${falarDuracao(g)} mais cedo do que o plano. `
+      : `A corrente cobra ${falarDuracao(-g)} a mais na rota inteira. `;
+    partes.push(g > 0 ? 'eta-rota-ganha' : 'eta-rota-perde');
+  }
+  if (s.etaRota && s.etaRota.impossiveis && s.etaRota.impossiveis.length) {
+    const im = s.etaRota.impossiveis[0];
+    t += `Atenção na perna para ${im.nome}: ${im.motivo}. `;
+    partes.push('perna-impossivel');
   }
 
   return { texto: t.trim(), partes, prioridade: 'rotina' };
@@ -469,6 +520,47 @@ function estadoAtualParaRelatorio() {
       }
     }
 
+    /*
+    O TEMPO, E A VELOCIDADE QUE ENTRA NA CONTA.                    (v2.9.0)
+
+    O triângulo da corrente precisa da velocidade ATRAVÉS DA ÁGUA, e o GPS só
+    dá velocidade no FUNDO. Usa-se a velocidade de serviço planejada da viagem
+    (tripData.speedKnots) quando ela existe, porque é essa que o navio vai
+    manter nas pernas que ainda não foram navegadas — que é justamente onde a
+    corrente prevista tem valor. Sem plano de viagem, recorre-se à SOG do
+    momento, sabendo que ali a corrente já está embutida e o ganho calculado
+    será conservador.
+    */
+    if (typeof tempoParaRelatorio === 'function') {
+      const velAgua = (typeof tripData !== 'undefined' && tripData && tripData.speedKnots > 0)
+        ? tripData.speedKnots : (fix && fix.sog);
+      e.tempo = tempoParaRelatorio(e.proxWp && e.proxWp.brg, velAgua);
+
+      /*
+      E O ETA DA ROTA INTEIRA, PERNA A PERNA.
+
+      Aqui está a entrega do Sprint 2. Na perna ATUAL o GPS já sabe tudo — a
+      corrente está embutida na SOG. Nas pernas QUE AINDA NÃO SE NAVEGOU ele
+      não sabe nada, e a mesma corrente age de forma completamente diferente
+      conforme o rumo: dois nós para o sul tiram dois nós de quem vai ao
+      norte e quase nada de quem guina para leste no waypoint seguinte.
+      */
+      if (e.tempo && e.tempo.correnteEfeito && wps.length > leg + 1 && isFinite(velAgua)) {
+        const pernas = [];
+        let de = fix ? { lat: fix.lat, lng: fix.lng } : wps[leg];
+        for (let i = leg + 1; i < wps.length; i++) {
+          const para = wps[i];
+          pernas.push({ nome: para.name,
+                        rumo: calculateBearing(de.lat, de.lng, para.lat, para.lng),
+                        distNM: calculateDistance(de.lat, de.lng, para.lat, para.lng) });
+          de = para;
+        }
+        e.etaRota = etaComCorrente(pernas, velAgua, {
+          setGraus: e.tempo.correnteEfeito.setGraus, driftNos: e.tempo.correnteEfeito.driftNos
+        });
+      }
+    }
+
     if (typeof tripData !== 'undefined' && tripData && typeof navAccumFuel !== 'undefined') {
       const restante = tripData.fuelInitial - navAccumFuel;
       const porNM = tripData.speedKnots > 0 ? tripData.fuelConsumption / tripData.speedKnots : 0;
@@ -501,7 +593,10 @@ function registrarRelatorio(e, r) {
     xte: e.xteNM, sim: !!e.simulacao,
     partes: r.partes,
     onda: null,          // Sprint 5 — ver nota acima
-    tempo: null          // Sprint 2 — vento, corrente e onda prevista
+    // O campo reservado no Sprint 1 agora é preenchido. Guarda-se o dado
+    // BRUTO do modelo, não a frase: a frase se regenera, a observação não.
+    tempo: e.tempo ? { ar: e.tempo.ar, mar: e.tempo.mar,
+                       idadeMin: e.tempo.idade && e.tempo.idade.minutos } : null
   });
   if (relHistorico.length > REL_HISTORICO_MAX) relHistorico = relHistorico.slice(-REL_HISTORICO_MAX);
   try { localStorage.setItem('cnb_rel_historico', JSON.stringify(relHistorico.slice(-48))); } catch (err) { }

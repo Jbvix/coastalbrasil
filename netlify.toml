@@ -2,6 +2,18 @@
   publish = "."
   command = "node scripts/build-config.js"
 
+# ── Funções ────────────────────────────────────────────────────────────────
+# O proxy de tempo vive aqui para que a CHAVE PAGA do Open-Meteo nunca chegue
+# ao navegador. Ela só viaja como parâmetro de URL e NÃO aceita restrição por
+# domínio — ao contrário do token Cesium, que é publicável justamente porque
+# pode ser algemado. Ver a decisão completa em docs/arquitetura.md.
+#
+# E há um ganho que não era o objetivo: sendo MESMA ORIGEM, o proxy dispensa
+# qualquer mudança na connect-src abaixo. Era a única opção que não afrouxava
+# a política.
+[functions]
+  directory = "netlify/functions"
+
 # ── Cabeçalhos de segurança ────────────────────────────────────────────────
 # A Content-Security-Policy abaixo restringe DE ONDE cada tipo de recurso pode
 # vir. Ela é a segunda linha de defesa: a primeira é não injetar conteúdo

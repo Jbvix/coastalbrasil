@@ -21,6 +21,37 @@ function eq(a, b, tol, msg) {
 }
 function ok(cond, msg) { if (!cond) throw new Error(msg); }
 
+/*
+VARREDURA DE CÓDIGO LÊ CÓDIGO — os comentários saem antes.
+
+Quatro vezes nesta suíte um comentário respondeu por código e a prova ficou
+verde ou vermelha por motivo errado:
+
+  · 19.11 casava a lista IARA_IMPERATIVOS_PROIBIDOS, que contém "reduza";
+  · 19.14 tropeçava no comentário que cita initMap() antes da chamada real;
+  · 20.15 idem, com a nota sobre o temporizador;
+  · 21.15 sobreviveu a trocar Promise.allSettled por Promise.all porque a
+    palavra "allSettled" continuava no comentário acima.
+
+O quarto foi a gota. Toda prova que afirma algo sobre o CÓDIGO passa a
+recortar o texto por aqui. Comentário é documentação: ele explica o código,
+não responde por ele.
+*/
+/* O netlify.toml comenta com '#', que o removedor de JS não conhece. Foi a
+   QUINTA ocorrência da mesma armadilha — e aconteceu no mesmo dia em que o
+   removedor foi criado, porque eu escrevi um comentário citando "connect-src"
+   logo acima da diretiva connect-src. A lição é sobre a FORMA da varredura,
+   não sobre um regex em particular. */
+function semComentariosToml(txt) {
+  return String(txt || '').replace(/^\s*#.*$/gm, ' ');
+}
+
+function semComentarios(txt) {
+  return String(txt || '')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1 ');
+}
+
 /* Referência independente: Vincenty inverso (elipsoide WGS-84) */
 function vincentyNM(lat1, lon1, lat2, lon2) {
   const a = 6378137, f = 1 / 298.257223563, b = (1 - f) * a;
@@ -1944,7 +1975,7 @@ const { falarRumo, falarNum, falarHora, falarCoord, falarDuracao, falarCaracteri
         REL_XTE_MENCIONA_NM, REL_XTE_PREOCUPA_NM, REL_COMBUSTIVEL_A_CADA, REL_TETO_S } = A;
 const fs20 = require('fs');
 const APP20 = fs20.readFileSync(ROOT + '/app.html', 'utf8');
-const REL20 = fs20.readFileSync(ROOT + '/assets/js/relatorio_voz.js', 'utf8');
+const REL20 = semComentarios(fs20.readFileSync(ROOT + '/assets/js/relatorio_voz.js', 'utf8'));
 
 /* Estado típico: 14h, ao largo de Cabo Frio, rumo 048, 9,5 nós. */
 const EST = () => ({
@@ -2243,9 +2274,356 @@ t(S20, '20.19', 'O histórico já guarda o lugar da onda do Sprint 5', () => {
   ok(i > 0, 'registrarRelatorio não existe');
   const corpo = REL20.slice(i, REL20.indexOf('\n}', i));
   ok(/onda: null/.test(corpo), 'o histórico não reserva o campo da onda (Sprint 5)');
-  ok(/tempo: null/.test(corpo), 'o histórico não reserva o campo do tempo (Sprint 2)');
+  /* O campo `tempo` era reservado no Sprint 1 e passou a ser PREENCHIDO no
+     Sprint 2 — a prova acompanha. E guarda-se o dado BRUTO do modelo, não a
+     frase: a frase se regenera a qualquer momento, a observação não. */
+  ok(/tempo: e\.tempo/.test(corpo), 'o histórico não guarda mais o tempo observado');
+  ok(/ar: e\.tempo\.ar/.test(corpo) && /mar: e\.tempo\.mar/.test(corpo),
+     'guarda a frase em vez do dado bruto do modelo — a frase se regenera, a observação não');
   ok(/lat|lng/.test(corpo) && /sim:/.test(corpo),
      'o histórico não guarda posição e procedência — série temporal inútil sem isso');
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SUÍTE 21 · Tempo, vento e corrente (Sprint 2)                    (v2.9.0)
+
+   A PERGUNTA QUE ESTE MÓDULO PRECISA RESPONDER PARA EXISTIR:
+   "Se o GPS já mede a SOG, e a SOG já CONTÉM a corrente, para que serve a
+    corrente prevista?"
+
+   Na perna ATUAL, para nada — o GPS já sabe. Nas pernas QUE AINDA NÃO SE
+   NAVEGOU, para tudo: a mesma corrente age de forma completamente diferente
+   conforme o RUMO da perna. Dois nós para o sul tiram dois nós de quem vai ao
+   norte e quase nada de quem guina para leste no waypoint seguinte. O GPS só
+   mede o que já aconteceu; o modelo prevê o que vai acontecer.
+
+   A prova 21.6 é essa tese, em número.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const S21 = '21 · Tempo e corrente';
+const { nosDeKmh, rumoCardeal, beaufort, trianguloDaCorrente, etaComCorrente,
+        tendenciaBarometrica, idadeDoTempo, falarTempo, falarNos,
+        TEMPO_FRESCO_MIN, TEMPO_VELHO_MIN, TEMPO_RAJADA_DELTA,
+        TEMPO_MAR_NM, TEMPO_CORRENTE_NOS } = A;
+const fs21 = require('fs');
+const PROXY21 = semComentarios(fs21.readFileSync(ROOT + '/netlify/functions/tempo.mjs', 'utf8'));
+const TEMPO21 = semComentarios(fs21.readFileSync(ROOT + '/assets/js/tempo.js', 'utf8'));
+const NETL21 = semComentariosToml(fs21.readFileSync(ROOT + '/netlify.toml', 'utf8'));
+
+t(S21, '21.1', 'A chave paga NUNCA aparece no cliente nem na resposta', () => {
+  /* O Open-Meteo só aceita a chave como parâmetro de URL e NÃO oferece
+     restrição por domínio. Numa página estática, chave embutida é chave
+     pública — e esta é paga: quem copiar usa a licença comercial alheia. */
+  for (const f of ['assets/js/tempo.js', 'app.html', 'scripts/build-config.js']) {
+    const txt = fs21.readFileSync(ROOT + '/' + f, 'utf8');
+    ok(!/OPEN_METEO_API_KEY|apikey=/i.test(txt), `${f} menciona a chave do Open-Meteo`);
+  }
+  // O cliente fala com o proxy, e só.
+  ok(/\/\.netlify\/functions\/tempo/.test(TEMPO21), 'o cliente não usa o proxy');
+  ok(!/open-meteo\.com/.test(TEMPO21), 'o cliente chama o Open-Meteo direto, contornando o proxy');
+  // E a função mascara a chave se ela escapar numa mensagem de erro — porque
+  // o erro do Open-Meteo pode conter a URL, e a URL contém a chave.
+  ok(/replace\(\/apikey=/.test(PROXY21), 'o proxy repassaria a chave num erro cru');
+});
+
+t(S21, '21.2', 'O proxy é mesma origem — a CSP não afrouxa', () => {
+  /* Ganho que não era o objetivo: a CSP não lista open-meteo.com em
+     connect-src, então chamada direta já seria bloqueada hoje, com ou sem
+     chave. O proxy é 'self' e portanto é a ÚNICA opção que não mexe na
+     política. O aviso 9.7 não piora. */
+  const cs = /connect-src([^;]*);/.exec(NETL21);
+  ok(cs, 'connect-src não encontrada na CSP');
+  ok(!/open-meteo/.test(cs[1]), 'a CSP foi afrouxada para o Open-Meteo — o proxy existe para evitar isso');
+  ok(/'self'/.test(cs[1]), "connect-src perdeu o 'self', que é o que autoriza o proxy");
+});
+
+t(S21, '21.3', 'Sem chave, o proxy NÃO cai no plano gratuito por conta própria', () => {
+  /* O plano livre é de uso NÃO COMERCIAL e este app roda num rebocador de
+     trabalho. Resolver o técnico abrindo o jurídico é decisão do dono, não do
+     código. Falhar declarando o motivo deixa a escolha com quem é dela. */
+  const i = PROXY21.indexOf('if (!apikey)');
+  ok(i > 0, 'o proxy não trata a ausência da chave');
+  /* Recorta só o BLOCO do if. A primeira versão desta prova pegava 400
+     caracteres a partir dali e invadia a construção das URLs logo abaixo —
+     falhava por erro do recorte, não do código. */
+  const corpo = PROXY21.slice(i, PROXY21.indexOf('\n  }', i));
+  ok(/502/.test(corpo), 'devia falhar com 502, não seguir adiante');
+  ok(/return new Response/.test(corpo), 'não interrompe: seguiria para a busca sem chave');
+  ok(!/open-meteo/.test(corpo), 'cai em algum endpoint do Open-Meteo sem chave');
+  // E a nota que explica a decisão continua no arquivo, para quem for mexer.
+  ok(/não comercial/i.test(fs21.readFileSync(ROOT + '/netlify/functions/tempo.mjs', 'utf8')),
+     'sumiu a nota de por que não se cai no plano gratuito');
+});
+
+t(S21, '21.4', 'O teto de 10 variáveis por requisição é respeitado', () => {
+  /* A cobrança do Open-Meteo é fracionária: acima de 10 variáveis a
+     requisição conta como MAIS DE UMA chamada. Quem acrescentar a décima
+     primeira dobra a conta sem perceber. */
+  const mar = /const VARS_MAR = \[([\s\S]*?)\];/.exec(PROXY21);
+  const ar = /const VARS_AR = \[([\s\S]*?)\];/.exec(PROXY21);
+  ok(mar && ar, 'as listas de variáveis não foram encontradas');
+  const conta = m => (m[1].match(/'/g) || []).length / 2;
+  ok(conta(mar) <= 10, `${conta(mar)} variáveis marinhas — acima de 10 a chamada conta dobrado`);
+  ok(conta(ar) <= 10, `${conta(ar)} variáveis de ar — acima de 10 a chamada conta dobrado`);
+  // E as que importam estão lá.
+  ok(/ocean_current_velocity/.test(mar[1]) && /ocean_current_direction/.test(mar[1]),
+     'a corrente ficou de fora, e ela é o coração deste sprint');
+  return { detail: `${conta(mar)} marinhas + ${conta(ar)} de ar` };
+});
+
+t(S21, '21.5', 'O triângulo da corrente bate com o que se resolve na carta', () => {
+  /* Três casos que qualquer navegante confere de cabeça, e é assim que se
+     valida isto: na mesa, antes de confiar no navio. Navio a 10 nós na água. */
+  // Corrente de través: caranguejeia contra ela e perde pouca velocidade.
+  let r = trianguloDaCorrente({ rumoDesejado: 0, velAgua: 10, setCorrente: 90, drift: 2 });
+  eq(r.proa, 348.46, 0.05, 'proa a governar com corrente de través');
+  eq(r.sog, 9.798, 0.01, 'SOG com corrente de través');
+  // Corrente de proa: não precisa corrigir rumo, só perde velocidade.
+  r = trianguloDaCorrente({ rumoDesejado: 0, velAgua: 10, setCorrente: 180, drift: 2 });
+  eq(r.correcao, 0, 0.001, 'corrigiu rumo com corrente de proa');
+  eq(r.sog, 8, 0.001, 'SOG com corrente de proa');
+  // Corrente de popa: ganha tudo.
+  r = trianguloDaCorrente({ rumoDesejado: 0, velAgua: 10, setCorrente: 0, drift: 2 });
+  eq(r.sog, 12, 0.001, 'SOG com corrente de popa');
+  /* O SINAL, que é onde mora o perigo. `ocean_current_direction` é PARA ONDE a
+     corrente vai (confirmado na documentação do Open-Meteo), ao contrário de
+     vento e onda, que são DE ONDE vêm. Tratar a corrente como "de onde vem"
+     inverteria o vetor em 180° e jogaria a correção de proa para o BORDO
+     ERRADO — o navio sairia da derrota justamente ao tentar segurá-la.
+     Corrente indo para LESTE empurra para boreste, logo governa-se a BOMBORDO. */
+  r = trianguloDaCorrente({ rumoDesejado: 0, velAgua: 10, setCorrente: 90, drift: 2 });
+  ok(r.correcao < 0, `corrente para leste devia mandar governar a bombordo, deu ${r.correcao.toFixed(1)}°`);
+  r = trianguloDaCorrente({ rumoDesejado: 0, velAgua: 10, setCorrente: 270, drift: 2 });
+  ok(r.correcao > 0, `corrente para oeste devia mandar governar a boreste, deu ${r.correcao.toFixed(1)}°`);
+});
+
+t(S21, '21.6', 'A TESE DO SPRINT: a mesma corrente age diferente em cada rumo', () => {
+  /* Esta é a prova que justifica o módulo inteiro. Dois nós de corrente para
+     o SUL, três pernas de 20 milhas, navio a 10 nós na água. O GPS mediria a
+     mesma SOG de agora e projetaria as três pernas iguais. Estão longe disso. */
+  const corrente = { setGraus: 180, driftNos: 2 };
+  const perna = rumo => etaComCorrente([{ nome: 'x', rumo, distNM: 20 }], 10, corrente).pernas[0];
+  const norte = perna(0), leste = perna(90), sul = perna(180);
+  eq(norte.sog, 8, 0.01, 'perna ao norte, contra a corrente');
+  eq(sul.sog, 12, 0.01, 'perna ao sul, com a corrente');
+  eq(leste.sog, 9.798, 0.01, 'perna a leste, corrente de través');
+  // 20 NM: 150 min contra, 122 de través, 100 a favor. O ingênuo diria 120 nas três.
+  const min = p => p.horas * 60;
+  ok(min(norte) > 145 && min(norte) < 155, `perna ao norte: ${min(norte).toFixed(0)} min`);
+  ok(min(sul) > 95 && min(sul) < 105, `perna ao sul: ${min(sul).toFixed(0)} min`);
+  ok(min(norte) - min(sul) > 45,
+     'a diferença entre ir contra e ir a favor sumiu — o efeito do rumo não está sendo calculado');
+  return { detail: `norte ${min(norte).toFixed(0)} min · través ${min(leste).toFixed(0)} · sul ${min(sul).toFixed(0)} (ingênuo: 120)` };
+});
+
+t(S21, '21.7', 'Corrente forte demais para a derrota é DITA, não engolida', () => {
+  /* Se |Vc·sen(α)| > Vb o arcsen não existe. Não é erro de conta: é o mar
+     dizendo que ESTA DERROTA NÃO SE MANTÉM com esta velocidade. Devolver NaN
+     em silêncio esconderia justamente a informação mais grave que esta função
+     pode produzir. */
+  const r = trianguloDaCorrente({ rumoDesejado: 0, velAgua: 4, setCorrente: 90, drift: 5 });
+  ok(r.possivel === false, 'corrente de 5 nós de través com navio de 4 foi dada como possível');
+  ok(/não se mantém/.test(r.motivo), 'não explicou por quê: ' + r.motivo);
+  ok(!isFinite(r.proa), 'devolveu uma proa que não existe');
+  // E a rota inteira registra a perna impossível em vez de inventar um ETA.
+  const e = etaComCorrente([{ nome: 'Ruim', rumo: 0, distNM: 10 }], 4, { setGraus: 90, driftNos: 5 });
+  ok(e.impossiveis.length === 1, 'a perna impossível não foi registrada');
+  ok(isFinite(e.horas) && e.horas > 0, 'o ETA total virou NaN por causa de uma perna');
+  // Corrente que anula o avanço: SOG zero não pode virar divisão por zero.
+  const parado = etaComCorrente([{ nome: 'Parado', rumo: 0, distNM: 10 }], 2, { setGraus: 180, driftNos: 2 });
+  ok(parado.impossiveis.length === 1, 'SOG nula não foi tratada');
+  ok(isFinite(parado.horas), 'SOG nula produziu ETA infinito');
+});
+
+t(S21, '21.8', 'Sem corrente conhecida, a conta não inventa nada', () => {
+  const r = trianguloDaCorrente({ rumoDesejado: 47, velAgua: 9 });
+  ok(r.possivel && r.semCorrente, 'sem corrente devia seguir possível');
+  eq(r.sog, 9, 1e-9, 'inventou ganho sem corrente');
+  eq(r.proa, 47, 1e-9, 'corrigiu a proa sem corrente para corrigir');
+  ok(!trianguloDaCorrente({ velAgua: 10 }).possivel, 'sem rumo devia falhar');
+  ok(!trianguloDaCorrente({ rumoDesejado: 0, velAgua: 0 }).possivel, 'navio parado devia falhar');
+});
+
+t(S21, '21.9', 'km/h vira nó pela milha náutica exata, e o rumo vira palavra', () => {
+  /* A corrente é a única variável que o Open-Meteo não entrega em nó — o
+     vento entrega. 1 NM = 1852 m exatos, não 1800 nem 2000. */
+  eq(nosDeKmh(1.852), 1, 1e-9, 'conversão km/h -> nó');
+  eq(nosDeKmh(18.52), 10, 1e-9, 'conversão km/h -> nó');
+  ok(!isFinite(nosDeKmh(null)), 'valor ausente virou número');
+  // Na ponte ninguém diz "vento de 042 graus": diz "vento de nordeste".
+  ok(rumoCardeal(0) === 'norte' && rumoCardeal(90) === 'leste', rumoCardeal(90));
+  ok(rumoCardeal(45) === 'nordeste' && rumoCardeal(225) === 'sudoeste', rumoCardeal(225));
+  ok(rumoCardeal(359) === 'norte', `359° devia dar norte, deu ${rumoCardeal(359)}`);
+  ok(rumoCardeal(-45) === 'noroeste', `-45° devia dar noroeste, deu ${rumoCardeal(-45)}`);
+  ok(rumoCardeal(NaN) === '', 'rumo inválido virou palavra');
+});
+
+t(S21, '21.10', 'Beaufort: "força 6" diz mais ao comandante que "23 nós"', () => {
+  /* Um número de nós é medida; a força Beaufort é uma DESCRIÇÃO DO MAR que se
+     compara com o que se vê pela janela. Limites da escala, em nós. */
+  ok(beaufort(0).f === 0 && beaufort(23).f === 6 && beaufort(35).f === 8,
+     `23 nós deu força ${beaufort(23).f}, esperado 6`);
+  ok(beaufort(16).f === 4 && beaufort(17).f === 5, 'a fronteira 16/17 nós está errada');
+  ok(beaufort(100).f === 12, 'ventos de furacão saíram da escala');
+  ok(beaufort(-1) === null && beaufort(NaN) === null, 'vento inválido entrou na escala');
+  // A escala é monotônica: força nunca cai quando o vento sobe.
+  let ant = -1;
+  for (let v = 0; v <= 70; v++) { const f = beaufort(v).f; ok(f >= ant, `força caiu em ${v} nós`); ant = f; }
+});
+
+t(S21, '21.11', 'O barômetro que o tablet não tem, em hPa por 3 horas', () => {
+  /* O Galaxy Tab S10 FE NÃO tem barômetro — verificado nas especificações. "O
+     barômetro está caindo" é o aviso de mau tempo mais antigo que existe, e
+     aqui ele só pode ser PREVISTO, nunca medido. */
+  const base = Date.now();
+  const serie = h => [{ t: base, hPa: 1015 }, { t: base + 3 * 3600000, hPa: 1015 + h }];
+  ok(tendenciaBarometrica(serie(-6)).sentido === 'caindo', 'queda não detectada');
+  ok(tendenciaBarometrica(serie(+6)).sentido === 'subindo', 'subida não detectada');
+  eq(tendenciaBarometrica(serie(-6)).por3h, -6, 0.01, 'taxa por 3 h errada');
+  ok(tendenciaBarometrica(serie(-0.2)).sentido === '', 'variação desprezível virou tendência');
+  // Queda de 3 hPa em 3 h num rebocador costeiro é para prestar atenção.
+  ok(tendenciaBarometrica(serie(-3.4)).atencao, 'queda de 3,4 hPa/3h não acendeu atenção');
+  ok(!tendenciaBarometrica(serie(-1.0)).atencao, 'queda leve acendeu atenção à toa');
+  // Série curta não vira tendência — extrapolar 10 minutos para 3 horas mente.
+  ok(tendenciaBarometrica([{ t: base, hPa: 1015 }]) === null, 'uma amostra virou tendência');
+  ok(tendenciaBarometrica([{ t: base, hPa: 1015 }, { t: base + 60000, hPa: 1014 }]) === null,
+     'um minuto de série virou tendência de 3 horas');
+  ok(tendenciaBarometrica(null) === null, 'série nula quebrou');
+});
+
+t(S21, '21.12', 'Dado velho é ROTULADO como velho, não escondido nem descartado', () => {
+  /* A decisão aprovada: quando o proxy falha, serve-se o último valor
+     conhecido DIZENDO A IDADE, em vez de cair no plano gratuito. Dado velho
+     rotulado vale mais que dado fresco de procedência duvidosa, e quem decide
+     se ainda serve é o comandante. */
+  const agora = Date.now();
+  const em = min => new Date(agora - min * 60000).toISOString();
+  ok(idadeDoTempo(em(10), agora).rotulo === '', 'dado de 10 min ganhou rótulo à toa');
+  ok(idadeDoTempo(em(10), agora).fresco, '10 min não foi considerado fresco');
+  const velho = idadeDoTempo(em(90), agora);
+  ok(/90 minutos/.test(velho.rotulo), velho.rotulo);
+  const antigo = idadeDoTempo(em(500), agora);
+  ok(antigo.velho && /horas/.test(antigo.rotulo), antigo.rotulo);
+  ok(idadeDoTempo('não é data') === null, 'data inválida não virou null');
+  ok(TEMPO_FRESCO_MIN < TEMPO_VELHO_MIN, 'os dois limiares estão trocados');
+  /* E o cliente NÃO joga fora o valor bom quando a busca falha — é isso que
+     permite o rótulo existir. */
+  const i = TEMPO21.indexOf('catch (e) {', TEMPO21.indexOf('async function buscarTempo'));
+  const corpo = TEMPO21.slice(i, i + 420);
+  ok(!/tempoAtual = null/.test(corpo), 'a falha apaga o último valor bom — aí não há o que rotular');
+});
+
+t(S21, '21.13', 'O tempo também entra por exceção — o que se repete ninguém escuta', () => {
+  const ar = { wind_speed_10m: 12, wind_direction_10m: 45, wind_gusts_10m: 14, pressure_msl: 1015 };
+  // Vento calmo, mar baixo, sem rajada: só a frase do vento.
+  let r = falarTempo({ ar, mar: { wave_height: 0.6, wave_direction: 90 } });
+  ok(r.partes.includes('vento'), 'o vento devia ser dito sempre');
+  ok(!r.partes.includes('mar'), `mar de 0,6 m não merecia frase: ${r.texto}`);
+  ok(!r.partes.includes('rajada'), 'rajada de 2 nós acima da média virou frase');
+  // Rajada de verdade: num rebocador com cabo na água, isso decide manobra.
+  r = falarTempo({ ar: Object.assign({}, ar, { wind_gusts_10m: 12 + TEMPO_RAJADA_DELTA + 1 }) });
+  ok(r.partes.includes('rajada'), 'rajada de 9 nós acima da média foi engolida');
+  // Mar que já faz o navio trabalhar.
+  r = falarTempo({ ar, mar: { wave_height: TEMPO_MAR_NM + 0.1, wave_direction: 90, wave_period: 8 } });
+  ok(r.partes.includes('mar'), 'mar de 1,6 m não foi mencionado');
+  // Corrente irrelevante não vira frase; relevante vira.
+  r = falarTempo({ ar, correnteEfeito: { driftNos: 0.4, setGraus: 180, ganhoNos: -0.1 } });
+  ok(!r.partes.includes('corrente-atrapalha'), 'efeito de 0,1 nó virou frase');
+  r = falarTempo({ ar, correnteEfeito: { driftNos: 1.2, setGraus: 180, ganhoNos: -0.9 } });
+  ok(r.partes.includes('corrente-atrapalha'), 'efeito de 0,9 nó foi engolido');
+  ok(TEMPO_CORRENTE_NOS > 0 && TEMPO_CORRENTE_NOS < 1, 'o limiar da corrente saiu da faixa defensável');
+});
+
+t(S21, '21.14', 'Nó no singular, e o Beaufort não repete a palavra "vento"', () => {
+  /* "Corrente 1,0 nós" não é português, e num relatório falado o deslize
+     salta. E "Vento de nordeste, 24 nós, vento muito fresco" soa a máquina
+     travada — o nome Beaufort já começa com "vento". */
+  ok(falarNos(1) === '1 nó', falarNos(1));
+  ok(falarNos(24) === '24 nós', falarNos(24));
+  ok(falarNos(0.85) === '0,8 nós' || falarNos(0.85) === '0,9 nós', falarNos(0.85));
+  ok(!/24,0/.test(falarNos(24)), 'número inteiro saiu com decimal');
+  const r = falarTempo({ ar: { wind_speed_10m: 23.5, wind_direction_10m: 42, wind_gusts_10m: 25 } });
+  ok(!/vento.*vento/i.test(r.texto), 'repetiu "vento": ' + r.texto);
+  ok(/força 6/.test(r.texto), 'perdeu a força Beaufort: ' + r.texto);
+});
+
+t(S21, '21.16', 'O tempo CHEGA ao relatório falado — a conta ligada à voz', () => {
+  /* As provas 21.5 a 21.14 medem a aritmética; a suíte 20 mede o relatório
+     dado um estado. Faltava a costura: a mutação mostrou que dava para
+     desligar o bloco de tempo inteiro sem nenhuma prova reclamar. Conta certa
+     que não chega à ponte não serve para nada. */
+  const base = { quando: new Date(2026, 8, 20, 14, 0), lat: -23.09, lng: -41.88,
+                 cog: 48, sog: 9.5, sequencia: 2,
+                 proxWp: { nome: 'Cabo Frio', distNM: 12.4, brg: 52, eta: new Date(2026, 8, 20, 15, 20) } };
+  const tempo = {
+    ar: { wind_speed_10m: 23.5, wind_direction_10m: 42, wind_gusts_10m: 25, pressure_msl: 1009 },
+    mar: { wave_height: 2.1, wave_direction: 71, wave_period: 6 },
+    idade: { minutos: 8, rotulo: '' },
+    barometro: { hPa: 1009, por3h: -3.4, sentido: 'caindo', texto: 'caindo', atencao: true },
+    correnteEfeito: { driftNos: 1.0, setGraus: 233, ganhoNos: -0.85 }
+  };
+  const r = montarRelatorioHora(Object.assign({}, base, { tempo }));
+  ['vento', 'mar', 'corrente-atrapalha', 'barometro-atencao'].forEach(x =>
+    ok(r.partes.includes(x), `"${x}" não chegou ao relatório falado`));
+  ok(/força 6/.test(r.texto), 'a força Beaufort não chegou: ' + r.texto);
+  ok(/sudoeste/.test(r.texto), 'a direção da corrente não chegou');
+  // E continua dentro do teto excepcional, mesmo com tudo disparando.
+  const seg = duracaoFaladaS(r.texto);
+  ok(seg <= REL_TETO_S.excecional, `com tempo o relatório foi a ${seg.toFixed(0)} s, teto ${REL_TETO_S.excecional}`);
+  // Sem tempo nenhum (offline desde o início), o relatório não quebra nem mente.
+  const semTempo = montarRelatorioHora(base);
+  ok(!/vento|corrente|barômetro/i.test(semTempo.texto), 'inventou tempo sem dado: ' + semTempo.texto);
+  return { detail: `${seg.toFixed(0)} s com tempo, ${r.partes.length} partes` };
+});
+
+t(S21, '21.17', 'O ETA da rota corrigido só fala quando a diferença vale a frase', () => {
+  /* Abaixo de 10 min sobre a rota inteira a correção cabe na incerteza do
+     próprio modelo — anunciá-la daria ares de precisão a um palpite. */
+  const base = { quando: new Date(2026, 8, 20, 14, 0), cog: 48, sog: 9.5, sequencia: 2,
+                 proxWp: { nome: 'Cabo Frio', distNM: 12.4, brg: 52 } };
+  const com = h => montarRelatorioHora(Object.assign({}, base, { etaRota: { ganhoHoras: h, impossiveis: [] } }));
+  ok(!com(0.1).partes.includes('eta-rota-perde') && !com(0.1).partes.includes('eta-rota-ganha'),
+     '6 minutos de correção viraram frase');
+  ok(com(-0.75).partes.includes('eta-rota-perde'), '45 min de atraso pela corrente foram engolidos');
+  ok(com(0.75).partes.includes('eta-rota-ganha'), '45 min de ganho pela corrente foram engolidos');
+  ok(/cobra/.test(com(-0.75).texto), com(-0.75).texto);
+  // Perna que a corrente não deixa cumprir é avisada, sempre.
+  const r = montarRelatorioHora(Object.assign({}, base, {
+    etaRota: { ganhoHoras: 0, impossiveis: [{ nome: 'Arraial', motivo: 'sem avanço no fundo' }] } }));
+  ok(r.partes.includes('perna-impossivel'), 'perna impossível não foi anunciada');
+  ok(/Arraial/.test(r.texto), 'não disse QUAL perna: ' + r.texto);
+});
+
+t(S21, '21.18', 'A busca de tempo começa e termina junto com a navegação', () => {
+  /* Um módulo perfeito que ninguém liga é código morto com boa consciência. */
+  const app = semComentarios(fs21.readFileSync(ROOT + '/app.html', 'utf8'));
+  ok(/<script src="assets\/js\/tempo\.js">/.test(fs21.readFileSync(ROOT + '/app.html', 'utf8')),
+     'o módulo do tempo não é carregado');
+  const iniN = app.indexOf('iniciarRelatorios()');
+  const iniT = app.indexOf('iniciarTempo(');
+  ok(iniT > 0, 'iniciarTempo() nunca é chamada — o tempo nunca seria buscado');
+  ok(Math.abs(iniT - iniN) < 600, 'a busca de tempo não arranca junto com a navegação');
+  ok(/pararTempo\(\)/.test(app), 'a busca de tempo nunca para — gastaria cota com o navio atracado');
+  // E o ponto de posição é o fixo do GPS, não um lugar fixo qualquer.
+  ok(/iniciarTempo\(\(\) => navLastFix\)/.test(app), 'o tempo não segue a posição da embarcação');
+});
+
+t(S21, '21.15', 'O proxy arredonda à grade e serve todo mundo com uma busca', () => {
+  /* Sem arredondar, cada requisição traria coordenada diferente (o barco anda)
+     e o cache nunca acertaria. 0,05° ≈ 3 NM está DENTRO da resolução dos
+     próprios modelos (8 a 25 km) — a precisão que se "perde" já não existia no
+     dado de origem. E a 10 nós o rebocador cruza 3 NM em 18 min, quase o TTL.
+     Ganho concreto: cada observador do espelho gastaria uma chamada da cota;
+     com o proxy, gastam zero. */
+  ok(/const GRADE = 0\.05;/.test(PROXY21), 'a grade de arredondamento mudou sem revisão da nota');
+  ok(/TTL_MS = 15 \* 60 \* 1000/.test(PROXY21), 'o TTL não acompanha o passo de 15 min do modelo');
+  // A MESMA coordenada arredondada vai ao Open-Meteo e vira chave do cache:
+  // guardar sob uma chave e buscar por outra é marcar a posição no diário e
+  // plotar outra na carta.
+  ok(/latitude=\$\{la\}&longitude=\$\{ln\}/.test(PROXY21), 'pede coordenada crua e guarda arredondada');
+  ok(/Cache-Control/.test(PROXY21), 'sem Cache-Control a CDN não guarda nada');
+  // E as duas fontes são independentes: num estuário o mar devolve null e o
+  // vento continua válido. Meia informação correta vale mais que nenhuma.
+  ok(/allSettled/.test(PROXY21), 'uma fonte que falhe derrubaria a outra');
 });
 
 /* ═══ RELATÓRIO ═══ */

@@ -5,7 +5,7 @@
   COASTAL NAVIGATOR BRASIL — Sistema de Planejamento de Viagem Costeira
 ════════════════════════════════════════════════════════════════════════════════
 
-  Versão: 2.8.0
+  Versão: 2.9.0
   Autor: Jossian Brito (Charlie Bravo)
   LinkedIn: https://www.linkedin.com/in/jossianbrito/
   X: https://x.com/jossiancosta  ·  Medium: https://medium.com/@jossiancosta
@@ -44,7 +44,7 @@
   <meta name="keywords"
     content="navegação costeira, planejamento de viagem, faróis, Brasil, OpenSeaMap, GPX, rebocadores">
 
-  <title>Coastal Navigator Brasil v2.8.0 - Planejamento de Viagem</title>
+  <title>Coastal Navigator Brasil v2.9.0 - Planejamento de Viagem</title>
 
   <!-- Leaflet CSS -->
   <!-- Subresource Integrity: o navegador recusa o arquivo se o conteúdo servido
@@ -75,7 +75,7 @@
     <header class="app-header">
       <div class="header-content">
         <div class="logo">
-          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.8.0</span></h1>
+          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.9.0</span></h1>
         </div>
 
         <div class="controls">
@@ -507,6 +507,7 @@
   <script src="assets/js/mirror.js"></script>
   <script src="assets/js/ship3d.js"></script>
   <script src="assets/js/iara.js"></script>
+  <script src="assets/js/tempo.js"></script>
   <script src="assets/js/relatorio_voz.js"></script>
 
   <!-- three.js (carregado sob demanda ao abrir o painel 3D de atitude do rebocador) -->
@@ -1922,6 +1923,11 @@
       // Relatórios falados de hora em hora (alinhados na hora cheia, para
       // casarem com o registro do diário de bordo) — ver relatorio_voz.js.
       iniciarRelatorios();
+      // Tempo pelo proxy do Netlify (a chave paga nunca chega ao navegador —
+      // ver docs/arquitetura.md). Busca de 15 em 15 min, que é o passo do
+      // próprio modelo; entre uma e outra o relatório usa o último valor
+      // conhecido, rotulado com a idade.
+      iniciarTempo(() => navLastFix);
       // Pré-carrega o consumo já feito se a viagem partiu antes de agora (em andamento)
       navAccumFuel = elapsedFuel(tripData, Date.now());
       if (tripData) tripData.fuelAlreadyUsed = navAccumFuel;
@@ -1959,6 +1965,7 @@
     function stopNavigation() {
       navActive = false;
       pararRelatorios();
+      pararTempo();
       if (navWatchId !== null) {
         navigator.geolocation.clearWatch(navWatchId);
         navWatchId = null;
@@ -3158,7 +3165,7 @@
       updateShareButtons();
 
       console.log('═══════════════════════════════════════════════════════════════');
-      console.log('  Coastal Navigator Brasil v2.8.0 - Inicializado ⚓');
+      console.log('  Coastal Navigator Brasil v2.9.0 - Inicializado ⚓');
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('Autor: Jossian Brito (Charlie Bravo)');
       console.log('58 Faróis curados carregados 💡 (52 DHN + 6 Validados)');

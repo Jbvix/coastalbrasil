@@ -417,9 +417,80 @@ Vai pelo canal que já transmitia a posição: nenhum gasto de dados a mais.
 
 A bordo esse quadro **não aparece** — você já ouviu, e a tela é do XTE.
 
+### 9.7.4 Tempo, vento e corrente
+
+A partir da **v2.9.0** a Iara consulta o modelo meteorológico e traz vento,
+mar, corrente e barômetro para dentro do relatório — **também por exceção**:
+
+| Ela diz | Quando |
+|---|---|
+| **vento** | sempre — direção, nós e força Beaufort |
+| **rajada** | só quando passa 8 nós acima da média. Num rebocador com cabo na água, isso decide manobra |
+| **mar** | a partir de 1,5 m, com direção e período |
+| **corrente** | só quando muda seu avanço em 0,3 nó ou mais |
+| **barômetro** | só quando não está estável |
+
+> *"Vento de nordeste, 24 nós, muito fresco, força 6. Mar de lés-nordeste, 2,1
+> metros, período de 6 segundos. Corrente 1 nó para sudoeste, tirando 0,8 nós
+> do seu avanço. Barômetro 1009, caindo — vale ficar de olho."*
+
+#### 🧭 O que o GPS não pode saber, e o modelo pode
+
+Esta é a parte que vale o sprint inteiro, e merece explicação.
+
+**Na perna em que você está agora, o GPS já sabe tudo.** A velocidade no fundo
+que ele mostra já tem a corrente embutida — o modelo não acrescenta nada.
+
+**Nas pernas que você ainda não navegou, ele não sabe nada.** E a mesma
+corrente age de forma completamente diferente conforme o rumo da perna. Com 2
+nós de corrente para o sul, pernas de 20 milhas, navio a 10 nós:
+
+| Sua perna | Velocidade no fundo | Tempo |
+|---|---|---|
+| ao **norte**, contra | 8,0 nós | **2h30** |
+| a **leste**, de través | 9,8 nós | **2h02** |
+| ao **sul**, a favor | 12,0 nós | **1h40** |
+
+**Cinquenta minutos de diferença, com a mesma corrente.** É por isso que a Iara
+recalcula o ETA da rota **perna a perna** e avisa quando a diferença passa de
+10 minutos:
+
+> *"A corrente cobra 40 minutos a mais na rota inteira."*
+
+Abaixo de 10 minutos ela fica calada — a correção caberia na incerteza do
+próprio modelo, e anunciá-la seria dar ares de precisão a um palpite.
+
+#### ⚠️ Quando a corrente não deixa cumprir a derrota
+
+Se a corrente de través for mais forte que a sua velocidade na água, **não
+existe proa que segure a derrota** — nenhuma. A Iara diz isso, com o número,
+em vez de calar:
+
+> *"Atenção: a corrente atravessa 5 nós e o navio só faz 4 na água — esta
+> derrota não se mantém."*
+
+#### 🔇 Sem internet, o dado fica velho — e ela diz a idade
+
+Se a consulta falhar, ela **não joga fora** o último valor conhecido: serve com
+o rótulo.
+
+> *"…dados de 90 minutos atrás."*
+
+Dado velho **rotulado como velho** vale mais que dado fresco de procedência
+duvidosa — e quem decide se ainda serve é você. Abaixo de 45 minutos ela nem
+menciona a idade; acima de 6 horas, avisa que pode ter mudado.
+
+#### 🔒 Sobre a sua chave do Open-Meteo
+
+A chave **não está no aplicativo**. Ela fica no servidor do Netlify, e o
+navegador conversa com um intermediário no seu próprio domínio. Isso não é
+zelo excessivo: o Open-Meteo só aceita a chave dentro do endereço da consulta e
+**não permite travá-la no seu domínio**. Publicada, ela seria copiável por
+qualquer visitante — e é uma chave **paga**.
+
 ### 9.8 O que ela ainda NÃO faz
 
-A v2.8.0 entregou o **Sprint 1**: os relatórios automáticos. Se você perguntar alguma
+A v2.9.0 entregou o **Sprint 2**: tempo, vento e corrente. Se você perguntar alguma
 coisa, ela repete o que ouviu e admite que ainda está aprendendo a responder.
 
 Está previsto, nesta ordem: **tempo, vento e corrente** do Open-Meteo, com ETA corrigido pela

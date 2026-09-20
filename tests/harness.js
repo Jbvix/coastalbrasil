@@ -17,7 +17,7 @@ const MODULOS = ['assets/js/lighthouses.js', 'assets/js/coastline.js',
                  'assets/js/nautical.js',
                  'assets/js/report.js', 'assets/js/mirror.js',
                  'assets/js/ship3d.js', 'assets/js/iara.js',
-                 'assets/js/relatorio_voz.js'];
+                 'assets/js/relatorio_voz.js', 'assets/js/tempo.js'];
 const SRC = [path.join(ROOT, 'app.html'), ...MODULOS.map(m => path.join(ROOT, m))]
   .map(f => fs.readFileSync(f, 'utf8')).join('\n');
 module.exports = module.exports || {};
@@ -97,11 +97,15 @@ const FNS = ['calculateDistance','calculateBearing','eyeHeight','calculateVisibi
              'falarRumo','falarNum','falarHora','falarCoord','falarDuracao',
              'deveDizerXte','deveDizerFarol','deveDizerCombustivel',
              'prefixoSimulacao','montarRelatorioHora','montarRelatorioWaypoint',
-             'falarCaracteristica',
+             'falarCaracteristica','falarNos',
              // Colhe o estado das globais. Não é pura — mas é ONDE MORA o erro
              // de índice que anunciaria o waypoint já ultrapassado, e erro que
              // não se prova é erro que volta.
-             'estadoAtualParaRelatorio'];
+             'estadoAtualParaRelatorio',
+             // Sprint 2: o triângulo da corrente e o resto da aritmética.
+             // Tudo puro — a bancada não chama o proxy, chama a conta.
+             'nosDeKmh','rumoCardeal','beaufort','trianguloDaCorrente',
+             'etaComCorrente','tendenciaBarometrica','idadeDoTempo','falarTempo'];
 
 const sandboxSrc = extractLighthouses() + '\n' +
   'let _coastline = null;\n' +
@@ -135,11 +139,21 @@ const sandboxSrc = extractLighthouses() + '\n' +
   extractDecl('REL_CORES') + '\n' +
   extractDecl('REL_FONETICO') + '\n' +
   extractDecl('REL_TETO_S') + '\n' +
+  extractDecl('TEMPO_CARDEAIS') + '\n' +
+  extractDecl('TEMPO_BEAUFORT') + '\n' +
+  extractDecl('TEMPO_TENDENCIA') + '\n' +
+  extractDecl('TEMPO_FRESCO_MIN') + '\n' +
+  extractDecl('TEMPO_VELHO_MIN') + '\n' +
+  extractDecl('TEMPO_RAJADA_DELTA') + '\n' +
+  extractDecl('TEMPO_MAR_NM') + '\n' +
+  extractDecl('TEMPO_CORRENTE_NOS') + '\n' +
+  extractDecl('REL_ETA_MENCIONA_MIN') + '\n' +
   'const RESYNC_NM = ' + (SRC.match(/const RESYNC_NM = (\\d+)/) || [,'10'])[1] + ';\n' +
   FNS.map(extractFn).join('\n\n') + '\n' +
   'module.exports = { lighthouses, COSTA_BRASIL, DEFAULT_EYE_HEIGHT_M, RESYNC_NM,\n'
   + '  IARA_NOME, IARA_PRIORIDADE, IARA_VALIDADE_MS, IARA_ROT_LIMITE, IARA_IMPERATIVOS_PROIBIDOS, IARA_TETO_S,\n'
   + '  REL_XTE_MENCIONA_NM, REL_XTE_PREOCUPA_NM, REL_COMBUSTIVEL_A_CADA, REL_TETO_S,\n'
+  + '  TEMPO_FRESCO_MIN, TEMPO_VELHO_MIN, TEMPO_RAJADA_DELTA, TEMPO_MAR_NM, TEMPO_CORRENTE_NOS,\n'
   + '  setTrip: t => { tripData = t; },\n'
   + '  setRota: (r, leg) => { waypoints = r; navActiveLeg = leg || 0; },\n'
   + '  setFix: f => { navLastFix = f; },\n'

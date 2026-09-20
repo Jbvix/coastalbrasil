@@ -11,6 +11,163 @@ executável.
 
 ```
 
+## v2.9.0 (20/09/2026) — TEMPO, VENTO E CORRENTE · SPRINT 2
+
+Autor: Jossian Brito (Charlie Bravo)
+
+Open-Meteo pelo proxy, e a aritmética náutica que dá sentido a ele.
+
+### A pergunta que este módulo precisava responder para existir
+
+> *"Se o GPS já mede a SOG, e a SOG já CONTÉM a corrente, para que serve a
+> corrente prevista?"*
+
+A objeção é boa e quase mata o recurso. A resposta:
+
+**Na perna atual, para nada** — o GPS já sabe. **Nas pernas que ainda não se
+navegou, para tudo** — porque a mesma corrente age de forma completamente
+diferente conforme o rumo. Medido, com 2 nós de corrente para o sul, pernas de
+20 NM e navio a 10 nós na água:
+
+| Perna | SOG | ETA | Ingênuo diria |
+|---|---|---|---|
+| ao **norte** (contra) | 8,0 nós | **150 min** | 120 |
+| a **leste** (través) | 9,8 nós | **122 min** | 120 |
+| ao **sul** (a favor) | 12,0 nós | **100 min** | 120 |
+
+Cinquenta minutos de diferença entre a primeira e a última, com a mesma
+corrente. **O GPS só mede o que já aconteceu; o modelo prevê o que vai
+acontecer.** Por isso o ETA da rota é recalculado perna a perna, cada uma com
+o seu triângulo.
+
+### O triângulo da corrente, resolvido em vez de desenhado
+
+```
+α        = θc − θt                    ângulo da corrente vs. derrota
+correção = arcsen( −Vc·sen(α) / Vb )  a caranguejada
+proa     = θt + correção
+SOG      = Vb·cos(correção) + Vc·cos(α)
+```
+
+Conferido contra três casos que se resolvem de cabeça: corrente de través a 2
+nós com navio de 10 dá proa 348,5° e SOG 9,80; de proa, SOG 8,00; de popa,
+12,00.
+
+**E quando `|Vc·sen(α)| > Vb` o arcsen não existe.** Isso não é erro de conta:
+é o mar dizendo que **esta derrota não se mantém** com esta velocidade.
+Devolver `NaN` em silêncio esconderia justamente a informação mais grave que
+a função pode produzir — então ela diz, com o número.
+
+### A armadilha de convenção, verificada na documentação
+
+As três direções do Open-Meteo **não seguem a mesma convenção**:
+
+| Variável | Convenção |
+|---|---|
+| `wind_direction_10m` | **DE** onde o vento vem |
+| `wave_direction` | **DE** onde a onda vem |
+| `ocean_current_direction` | **PARA** onde a corrente vai |
+
+Tratar a corrente como "de onde vem" inverteria o vetor em 180° e jogaria a
+correção de proa **para o bordo errado** — o navio sairia da derrota
+justamente ao tentar segurá-la. A prova 21.5 fixa o sinal nos dois bordos.
+
+### O proxy: a chave paga não vai ao navegador
+
+Decisão aprovada em 20/09, registrada em `docs/arquitetura.md`. Resumo:
+
+- O Open-Meteo só aceita a chave como **parâmetro de URL** e **não oferece
+  restrição por domínio**. Numa página estática, chave embutida é chave
+  pública — e esta é paga: quem copiar usa a licença comercial alheia.
+- **O precedente do Cesium não se aplica.** O token ion é publicável *porque
+  pode ser algemado* (o próprio `build-config.js` diz isso). Esta não pode.
+- **Ganho que não era o objetivo:** a CSP não lista `open-meteo.com` em
+  `connect-src`, então chamada direta já seria bloqueada hoje. Sendo mesma
+  origem, o proxy é a **única** opção que não afrouxa a política.
+- **Cache em dois andares** (memória do contêiner + CDN), chaveado pela posição
+  arredondada a 0,05°. Isso não é truque: 0,05° ≈ 3 NM está **dentro** da
+  resolução dos próprios modelos (8 a 25 km), e a 10 nós o rebocador cruza 3 NM
+  em 18 min — quase o TTL de 15 min. Cada observador do espelho gastaria uma
+  chamada da cota; com o proxy, gastam **zero**.
+- **Sem chave, não cai no plano gratuito.** O plano livre é de uso não
+  comercial e o app roda num rebocador de trabalho: resolver o técnico abrindo
+  o jurídico é decisão do dono, não do código. Falha declarando o motivo.
+- **Teto de 10 variáveis** por requisição, porque acima disso a cobrança do
+  Open-Meteo conta como mais de uma chamada. São 8 marinhas e 5 de ar.
+- **`Promise.allSettled`**, não `all`: num estuário o modelo marinho devolve
+  `null` e o vento continua bom. Meia informação correta vale mais que nenhuma,
+  desde que se diga qual metade falta.
+
+O proxy foi exercitado de ponta a ponta nesta bancada, com os endpoints pagos
+redirecionados para os gratuitos: cache acertando em 1 ms, chave nunca no
+corpo da resposta, ponto em terra devolvendo meia informação, coordenada
+inválida em 400.
+
+### O barômetro que o tablet não tem
+
+O Galaxy Tab S10 FE **não tem barômetro** — verificado antes de desenhar. "O
+barômetro está caindo" é o aviso de mau tempo mais antigo que existe, e aqui
+ele só pode ser **previsto**. A tendência sai da série de `pressure_msl`, em
+hPa por 3 horas, e uma queda de 3 hPa/3h acende atenção.
+
+### Dado velho é rotulado, não escondido
+
+Quando o proxy falha, serve-se o último valor **dizendo a idade** — *"dados de
+40 minutos atrás"* — em vez de cair no plano gratuito. É a mesma lógica da
+regra 5 da Iara, só que aqui, em vez de descartar, ela **diz a idade** e o
+comandante decide se serve.
+
+### Português que a medição denunciou
+
+*"Corrente 1,0 nós"* não é português, e *"Vento de nordeste, 24 nós, **vento**
+muito fresco"* soa a máquina travada. Entrou `falarNos()` e o nome Beaufort
+perdeu o prefixo. Também: `Number(null)` é **zero**, não `NaN` — sem guarda,
+"não sei qual é a corrente" viraria "a corrente é de zero nó", que são
+afirmações muito diferentes.
+
+### O quinto comentário que respondeu por código
+
+**Suíte 21 (18 provas), validada por mutação: 18 defeitos deliberados, 18
+apanhados** — mas duas mutações só foram pegas depois de consertar as provas, e
+uma delas pela quinta vez pelo mesmo motivo:
+
+1. `Promise.allSettled` → `Promise.all` sobreviveu porque a palavra
+   "allSettled" continuava **no comentário acima da linha**.
+2. A CSP afrouxada passou despercebida porque eu escrevi um comentário citando
+   `connect-src` logo acima da diretiva `connect-src`.
+
+Foi a gota. Entrou `semComentarios()` no banco de provas, aplicado a toda
+varredura que afirma algo sobre o código — e `semComentariosToml()` depois,
+porque o TOML comenta com `#`. **Varredura de código lê código; comentário é
+documentação, explica o código mas não responde por ele.**
+
+E duas lacunas de **integração**: a mutação mostrou que dava para desligar o
+bloco de tempo inteiro, e para nunca chamar `iniciarTempo()`, sem uma prova
+reclamar. As suítes mediam a conta e mediam o relatório, mas não a costura.
+**Conta certa que não chega à ponte não serve para nada.** Entraram 21.16 e
+21.18.
+
+### Um erro meu no caminho, e o que ele custou
+
+Durante a validação por mutação usei `git checkout --` para restaurar
+`relatorio_voz.js` e `app.html` — que tinham trabalho **não commitado** do
+Sprint 2. Perdi as edições de integração e tive de refazê-las. Nada foi
+publicado quebrado, mas o método estava errado: **restaura-se de cópia de
+segurança, nunca do índice, quando há trabalho pendente.** O resto das
+mutações passou a usar `cp` de um `/tmp/bak_*`.
+
+### Números
+
+| | v2.8.0 | v2.9.0 |
+|---|---|---|
+| Provas do banco | 181 | **199** |
+| Módulos | 10 | **11** (`tempo.js`) |
+| Funções de servidor | 0 | **1** (`netlify/functions/tempo.mjs`) |
+| Mudanças na CSP | — | **nenhuma** |
+| `app.html` | 3.228 linhas | **3.235** (teto: 3.500) |
+
+---
+
 ## v2.8.0 (20/09/2026) — A IARA PASSA A RELATAR · SPRINT 1
 
 Autor: Jossian Brito (Charlie Bravo)
