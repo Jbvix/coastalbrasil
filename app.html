@@ -5,7 +5,7 @@
   COASTAL NAVIGATOR BRASIL — Sistema de Planejamento de Viagem Costeira
 ════════════════════════════════════════════════════════════════════════════════
 
-  Versão: 2.7.0
+  Versão: 2.8.0
   Autor: Jossian Brito (Charlie Bravo)
   LinkedIn: https://www.linkedin.com/in/jossianbrito/
   X: https://x.com/jossiancosta  ·  Medium: https://medium.com/@jossiancosta
@@ -44,7 +44,7 @@
   <meta name="keywords"
     content="navegação costeira, planejamento de viagem, faróis, Brasil, OpenSeaMap, GPX, rebocadores">
 
-  <title>Coastal Navigator Brasil v2.7.0 - Planejamento de Viagem</title>
+  <title>Coastal Navigator Brasil v2.8.0 - Planejamento de Viagem</title>
 
   <!-- Leaflet CSS -->
   <!-- Subresource Integrity: o navegador recusa o arquivo se o conteúdo servido
@@ -75,7 +75,7 @@
     <header class="app-header">
       <div class="header-content">
         <div class="logo">
-          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.7.0</span></h1>
+          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.8.0</span></h1>
         </div>
 
         <div class="controls">
@@ -202,6 +202,14 @@
           <button class="nav-icon-btn" title="Informações dos waypoints" onclick="event.stopPropagation(); openWaypointsInfo()" id="navInfoBtn">ℹ️</button>
           <button class="nav-icon-btn" title="Atitude 3D do rebocador (sensores)" onclick="event.stopPropagation(); openShip3D()" id="navShip3dBtn">🚢</button>
         </div>
+      </div>
+      <!-- Último relatório falado pela Iara. Só aparece no MODO ESPELHO: a
+           bordo o comandante já ouviu, e repetir na tela é ocupar espaço do
+           que ele precisa olhar. Em terra é o contrário — é a única forma de
+           saber o que foi dito. -->
+      <div id="mirrorRelatorio" class="mirror-rel">
+        <div class="mirror-rel-cab">🎙️ Iara relatou às <span class="mirror-rel-hora">--:--</span></div>
+        <div class="mirror-rel-txt"></div>
       </div>
       <div class="nav-hud-body" id="navHudBody">
         <div class="nav-clock" id="navClock">--</div>
@@ -499,6 +507,7 @@
   <script src="assets/js/mirror.js"></script>
   <script src="assets/js/ship3d.js"></script>
   <script src="assets/js/iara.js"></script>
+  <script src="assets/js/relatorio_voz.js"></script>
 
   <!-- three.js (carregado sob demanda ao abrir o painel 3D de atitude do rebocador) -->
   <script type="importmap">
@@ -1910,6 +1919,9 @@
       }
 
       navActive = true;
+      // Relatórios falados de hora em hora (alinhados na hora cheia, para
+      // casarem com o registro do diário de bordo) — ver relatorio_voz.js.
+      iniciarRelatorios();
       // Pré-carrega o consumo já feito se a viagem partiu antes de agora (em andamento)
       navAccumFuel = elapsedFuel(tripData, Date.now());
       if (tripData) tripData.fuelAlreadyUsed = navAccumFuel;
@@ -1946,6 +1958,7 @@
     /* Encerra a navegação e libera recursos. */
     function stopNavigation() {
       navActive = false;
+      pararRelatorios();
       if (navWatchId !== null) {
         navigator.geolocation.clearWatch(navWatchId);
         navWatchId = null;
@@ -2060,6 +2073,10 @@
           navLegAncorada = true;
         }
         advanceActiveLeg(lat, lng);
+        // A Iara OBSERVA a troca de perna em vez de decidi-la. Duas fontes de
+        // verdade sobre "chegamos" sempre acabam divergindo, e aí o relatório
+        // falado contradiz o painel na frente do comandante.
+        verificarTrocaDePerna();
         const legStart = waypoints[navActiveLeg];
         const legEnd = waypoints[navActiveLeg + 1];
         const ct = crossTrackError(lat, lng, legStart, legEnd);
@@ -2746,7 +2763,11 @@
         // essa distinção não é espelho — é fonte de informação falsa para quem
         // confia nele. Segue sempre, inclusive false, para o observador poder
         // apagar a faixa quando a simulação termina.
-        sim: !!navSimActive
+        sim: !!navSimActive,
+        // O último relatório falado segue junto: quem está em terra lê
+        // exatamente o que a ponte ouviu, pelo canal que já existe, sem
+        // nenhuma chamada de rede a mais.
+        rel: relatorioParaEspelho()
       };
       mirrorShares.forEach(s => {
         if (!s.channel) return;
@@ -3050,6 +3071,32 @@
       // remontada aqui a partir dos campos, com escape.
       if (h.lighthouse !== undefined) renderLighthouseCard(h.lighthouse);
       if (p.vessel) document.getElementById('mirrorBannerToken').textContent = p.vessel + ' #' + mirrorToken;
+
+      /*
+      O RELATÓRIO DA IARA, PARA QUEM ESTÁ EM TERRA.
+
+      Quem acompanha lê exatamente o que a ponte ouviu — mesma frase, mesmo
+      instante. É a família sabendo que o barco passou pelo waypoint, e o
+      armador tendo o registro escrito do que foi dito a bordo.
+
+      Chega pelo canal que já existe: nenhuma chamada de rede a mais.
+
+      TEXTO VINDO DO CANAL NUNCA VAI PARA innerHTML — a mesma regra do cartão
+      de farol, três linhas acima. Aqui é textContent, e a marca de hora é
+      remontada a partir do número, não recebida pronta.
+      */
+      if (p.rel && typeof p.rel.txt === 'string') {
+        const cx = document.getElementById('mirrorRelatorio');
+        if (cx) {
+          const quando = Number(p.rel.t);
+          const hora = isFinite(quando) && quando > 0
+            ? new Date(quando).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+            : '--:--';
+          cx.querySelector('.mirror-rel-hora').textContent = hora;
+          cx.querySelector('.mirror-rel-txt').textContent = p.rel.txt;
+          cx.classList.add('active');
+        }
+      }
     }
 
     function setMirrorConn(text, cls) {
@@ -3111,7 +3158,7 @@
       updateShareButtons();
 
       console.log('═══════════════════════════════════════════════════════════════');
-      console.log('  Coastal Navigator Brasil v2.7.0 - Inicializado ⚓');
+      console.log('  Coastal Navigator Brasil v2.8.0 - Inicializado ⚓');
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('Autor: Jossian Brito (Charlie Bravo)');
       console.log('58 Faróis curados carregados 💡 (52 DHN + 6 Validados)');

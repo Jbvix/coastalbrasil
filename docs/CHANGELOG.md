@@ -11,6 +11,136 @@ executável.
 
 ```
 
+## v2.8.0 (20/09/2026) — A IARA PASSA A RELATAR · SPRINT 1
+
+Autor: Jossian Brito (Charlie Bravo)
+
+Relatórios falados de hora em hora e a cada waypoint. **Funcionam offline** —
+a síntese de voz é local, e essa foi a regra estrutural fixada no Sprint 0.
+
+### Duas teses sustentam este módulo
+
+**1. O texto para o olho não é o texto para o ouvido.**
+
+O painel mostra `03°43.6'S` e `Fl(3) W 15s`. Jogado num sintetizador, sai
+*"zero três grau quarenta e três ponto seis linha ésse"* e *"efe éle abre
+parênteses três fecha parênteses dábliu quinze ésse"*. O vigia não faz ideia do
+que procurar no horizonte — e pior, pode ACHAR que entendeu.
+
+Mas todo navegante sabe ler isso em voz alta, e sempre soube:
+
+| Carta | Voz |
+|---|---|
+| `Fl(3) W 15s` | três lampejos brancos a cada 15 segundos |
+| `LFl W 30s` | lampejo longo branco a cada 30 segundos |
+| `Oc(2) R 6s` | duas ocultações vermelhas a cada 6 segundos |
+| `Mo(A) W 8s` | morse alfa branco a cada 8 segundos |
+| `048°` | rumo zero quatro oito |
+| `15:20` | 15 e 20 |
+
+Rumo vai dígito a dígito porque é assim no rádio, e por uma razão operacional:
+*"quarenta e oito"* e *"cento e quarenta e oito"* se confundem num alto-falante
+ruim; *"quatro oito"* e *"um quatro oito"* não. **As 98 características da base
+da DHN traduzem**, verificado uma a uma.
+
+**2. Relatório por exceção.**
+
+O que se repete toda hora vira ruído de fundo em dois dias — e aí ninguém
+escuta justamente quando havia algo diferente. É o mal do alarme que toca
+sempre. Então o essencial vai sempre e o resto entra só quando importa:
+
+| Item | Quando entra |
+|---|---|
+| hora, posição, rumo, próximo WP, ETA | **sempre** |
+| fora de rumo | só acima de **0,1 NM** — abaixo é ruído de GPS (185 m contra 5–10 m de erro do aparelho) |
+| farol | só **dentro do alcance efetivo** — ou seja, só quando pode ser avistado deste passadiço |
+| combustível | de 4 em 4 relatórios, ou **na hora** se o saldo não fecha a rota |
+| **SIMULAÇÃO** | **sempre, e na primeira frase** |
+
+Medido: o relatório típico leva **14 s**; com as três exceções juntas, 26 s.
+Há dois tetos (15 s e 30 s) e o segundo não é desleixo — quando três coisas
+merecem atenção ao mesmo tempo é exatamente a hora em que o comandante quer
+ouvir as três. Um relatório que se cala sobre o farol porque "já falou demais"
+troca incômodo por risco.
+
+### A regra da simulação não tem exceção
+
+Foi um simulador ligado ao lado do botão mais usado que produziu
+`628.616 L de perda por desvio` na v2.3.3. **Números simulados ditos em voz
+alta, com o aplomb de uma assistente e sem avisar, são a forma mais perigosa
+desse defeito**: voz convence mais que tela e não deixa rastro para reler. Se a
+simulação está ligada, a Iara abre o relatório avisando. É prova (20.10).
+
+### Alinhado na hora cheia, não "de 60 em 60 minutos"
+
+Parece cosmético e não é. Um temporizador de 60 minutos dispara às 14h07,
+15h07 — e o relatório deixa de casar com o diário de bordo, que é escrito na
+hora cheia. Alinhados, o falado e o escrito contam a mesma história na mesma
+linha do tempo. Quem já reconstituiu uma viagem depois sabe o quanto vale.
+
+A troca de perna é **observada**, não recalculada: a Iara lê o `navActiveLeg`
+que o app já avançou. Duas fontes de verdade sobre "chegamos" sempre divergem,
+e aí o relatório falado contradiz o painel na frente do comandante.
+
+### Quem está em terra ouve o mesmo
+
+O relatório segue no pacote de telemetria que já existe — **nenhuma chamada de
+rede a mais**. Aparece **só no espelho**: a bordo o comandante já ouviu, e
+repetir na tela tomaria o espaço do XTE. Texto vindo do canal vai para
+`textContent`, nunca `innerHTML` — mesma regra do cartão de farol.
+
+### Quatro defeitos que as provas pegaram, e um que a mutação pegou
+
+1. **`navActiveLeg` é o waypoint de ORIGEM da perna.** Escrevi `wps[leg]`: a
+   Iara teria anunciado o waypoint **já ultrapassado**, com a distância caindo
+   a zero e depois crescendo. Na voz, soa como o barco andando de ré — e o
+   comandante acreditaria, porque o número é coerente consigo mesmo.
+2. **`crossTrackError(lat, lng, start, end)` recebe OBJETOS** nas duas pontas.
+   Chamado com seis números devolvia `NaN` em silêncio, e o "fora de rumo"
+   simplesmente nunca apareceria.
+3. **`falarRumo(359,7)` dizia "três seis zero".** Eu normalizava antes de
+   arredondar. Rumo 360 não existe na carta nem na boca de ninguém: é 000.
+4. **Concordância.** As duas primeiras versões da tabela diziam *"dois
+   ocultações vermelhos"* e *"luz fixa vermelho"*. Em português só UM e DOIS
+   flexionam em gênero. Um assistente que fala errado perde autoridade na
+   terceira frase — e autoridade é o que faz o comandante ouvir o aviso de fora
+   de rumo quando ele vier.
+
+Os dois primeiros eu corrigi lendo o código; **nenhum dos dois estava coberto
+por prova**, e a mutação denunciou: o defeito vivia na função que lê as
+globais, que eu não estava exercitando. Entrou a prova 20.18, que expõe
+`estadoAtualParaRelatorio()` à bancada com rota e fixo falsos.
+
+**Suíte 20 (19 provas), validada por mutação: 14 defeitos deliberados, 14
+apanhados.**
+
+### O histórico guarda um campo que ainda não é usado
+
+Cada relatório fica registrado com `onda: null` e `tempo: null`. A comparação
+entre a onda **medida** pelos sensores e a **prevista** pelo modelo (Sprint 5)
+só tem valor com série temporal — e **dado que não foi gravado hoje não volta
+amanhã**. Custa um `null` e evita perder meses de observação.
+
+### Decisão arquitetural registrada
+
+`docs/arquitetura.md` ganhou o registro da decisão aprovada sobre a **chave
+paga do Open-Meteo**: ela não vai ao navegador. Proxy por Função Netlify, com
+recuo para cache rotulado. O motivo curto: a chave Open-Meteo só viaja como
+parâmetro de URL e **não aceita restrição por domínio** — ao contrário do token
+Cesium, que é publicável justamente porque pode ser algemado. E o proxy é a
+única opção que **não afrouxa a CSP**, porque é mesma origem.
+
+### Números
+
+| | v2.7.0 | v2.8.0 |
+|---|---|---|
+| Provas do banco | 162 | **181** |
+| Passos da prova de fumaça | 55 | **58** |
+| Módulos | 9 | **10** (`relatorio_voz.js`) |
+| `app.html` | 3.177 linhas | **3.203** (teto: 3.500) |
+
+---
+
 ## v2.7.0 (20/09/2026) — A IARA NASCE · SPRINT 0 do assistente de voz
 
 Autor: Jossian Brito (Charlie Bravo)

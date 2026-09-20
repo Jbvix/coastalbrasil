@@ -330,18 +330,104 @@ esses não dependem de sinal"* — em vez de fingir que não entendeu.
 > uma voz feminina bonita que emudece no mar e uma voz comum que fala sempre, a
 > escolha de bordo é óbvia.
 
-### 9.7 O que ela ainda NÃO faz
+### 9.7 Os relatórios automáticos
 
-A v2.7.0 é o **Sprint 0** do assistente: a fundação. Se você perguntar alguma
+A partir da **v2.8.0** a Iara relata sozinha, **sem você pedir nada**, em dois
+momentos: **na hora cheia** e **a cada waypoint alcançado**. Começam quando
+você inicia a navegação e param quando você a encerra.
+
+**Na hora cheia, e não "de hora em hora".** Diferença que parece cosmética e
+não é: um relógio de 60 em 60 minutos dispararia às 14h07, 15h07, 16h07 — e o
+relatório deixaria de casar com o registro do diário de bordo, que é feito na
+hora cheia. Alinhados, o falado e o escrito contam a mesma história.
+
+#### O que ela diz sempre
+
+Hora, posição, rumo, velocidade, próximo waypoint com distância e marcação, e a
+hora prevista de chegada. Leva uns **14 segundos**:
+
+> *"14 horas em ponto. Posição 23 graus e 5 sul, 41 graus e 53 oeste. Rumo zero
+> quatro oito, 9,5 nós. Próximo waypoint Cabo Frio, 12,4 milhas, marcação zero
+> cinco dois. Chegada prevista 15 e 20."*
+
+#### O que ela diz só quando importa
+
+Este é o ponto do projeto: **um relatório que repete as mesmas nove coisas toda
+hora vira ruído de fundo em dois dias** — e aí você deixa de ouvir justamente
+na hora em que havia algo diferente. É o mal do alarme que toca sempre.
+
+| Ela menciona… | Só quando… |
+|---|---|
+| **fora de rumo** | passa de **0,1 milha**. Abaixo disso é tremor de GPS, não desvio |
+| **farol** | ele está **dentro do alcance que VOCÊ enxerga** daí — o menor entre o luminoso e o geográfico, que depende da altura do seu olho |
+| **combustível** | de 4 em 4 relatórios — ou **na hora**, se o saldo não fecha a rota que falta |
+
+#### Quando três coisas importam juntas, ela fala das três
+
+Aí o relatório chega a uns 26 segundos, e é de propósito. Quando fora de rumo,
+farol à vista e combustível merecem atenção ao mesmo tempo, é exatamente a hora
+em que você quer ouvir os três. Uma assistente que se cala sobre o farol porque
+"já falou demais" troca um incômodo por um risco.
+
+#### Ao alcançar um waypoint
+
+Neste instante você está guinando, então ela é curta e fala só do que vem:
+
+> *"Chegamos em Búzios. Nova perna pra Cabo Frio: rumo zero cinco dois, 12,4
+> milhas, chegada 15 e 20."*
+
+No último waypoint da rota ela percebe e se despede.
+
+### 9.7.1 🧪 Simulação: ela avisa SEMPRE, na primeira frase
+
+> *"Atenção: isto é simulação, não é a navegação real. 14 horas em ponto…"*
+
+**Isto não tem como ser desligado, e a razão é séria.** Na v2.3.3 o painel
+chegou a mostrar 628.616 L de "perda por desvio" porque o simulador estava
+ligado ao lado do botão mais usado, contaminando os contadores reais. Números
+simulados ditos **em voz alta**, com a segurança de uma assistente e sem
+avisar, são a forma mais perigosa desse mesmo defeito: a voz convence mais que
+a tela, e não deixa rastro para você reler e desconfiar.
+
+### 9.7.2 Ela fala como marinheiro, não como máquina
+
+Você vai notar que ela **não soletra**:
+
+| Na tela | Na voz dela |
+|---|---|
+| `048°` | *"rumo zero quatro oito"* |
+| `Fl(3) W 15s` | *"três lampejos brancos a cada 15 segundos"* |
+| `Oc(2) R 6s` | *"duas ocultações vermelhas a cada 6 segundos"* |
+| `15:20` | *"15 e 20"* |
+| `23°05.4'S` | *"23 graus e 5 sul"* |
+
+O rumo vai dígito a dígito porque é assim no rádio — e há razão: *"quarenta e
+oito"* e *"cento e quarenta e oito"* se confundem num alto-falante ruim;
+*"quatro oito"* e *"um quatro oito"*, não.
+
+E a característica do farol ela lê como você leria em voz alta olhando a carta,
+porque é essa forma que o seu olho consegue comparar com o que está lá fora.
+**As 98 luzes da Lista da DHN** estão traduzidas.
+
+### 9.7.3 Quem está em terra ouve o mesmo
+
+Se você compartilhou o link do espelho, quem acompanha **lê o relatório que
+você ouviu** — mesma frase, mesmo instante, num quadro azul no alto do painel.
+Vai pelo canal que já transmitia a posição: nenhum gasto de dados a mais.
+
+A bordo esse quadro **não aparece** — você já ouviu, e a tela é do XTE.
+
+### 9.8 O que ela ainda NÃO faz
+
+A v2.8.0 entregou o **Sprint 1**: os relatórios automáticos. Se você perguntar alguma
 coisa, ela repete o que ouviu e admite que ainda está aprendendo a responder.
 
-Está previsto, nesta ordem: **relatórios automáticos** de hora em hora e a cada
-waypoint; **tempo, vento e corrente** do Open-Meteo, com ETA corrigido pela
+Está previsto, nesta ordem: **tempo, vento e corrente** do Open-Meteo, com ETA corrigido pela
 corrente; **cidade, abrigo e farol** mais próximos de cada waypoint; **faixa
 econômica de RPM** que não estraga o ETA; **ondas e estabilidade** pelos
 sensores do tablet; e por último a **conversa livre**.
 
-### 9.8 Ela sugere. Você decide.
+### 9.9 Ela sugere. Você decide.
 
 Nenhuma frase da Iara manda no navio. Ela diz *"dá pra"*, *"vale"*, *"sugiro"* —
 nunca *"reduza"*, *"vire"*, *"desvie"*. Isso é verificado automaticamente a cada

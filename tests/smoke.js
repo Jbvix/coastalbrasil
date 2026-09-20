@@ -269,6 +269,32 @@ const srv = http.createServer((req, res) => {
   ok('Banner mostra que está tentando de novo', /nova tentativa em \d+s/.test(esp.banner), esp.banner);
   ok('Linha de status orienta o observador', esp.dica.length > 30 && esp.dica !== 'Aguardando GPS…',
      esp.dica.slice(0, 74));
+  /* O RELATÓRIO DA IARA CHEGANDO EM TERRA.                           (v2.8.0)
+     O banco de provas garante que o texto SAI no pacote e que é aplicado com
+     textContent. O que só o navegador diz é se o painel realmente aparece no
+     espelho — e se ele NÃO aparece a bordo, onde tomaria o espaço do XTE. */
+  const relEsp = await espelho.evaluate(() => {
+    const cx = document.getElementById('mirrorRelatorio');
+    if (!cx) return { existe: false };
+    // Simula a chegada de um relatório pelo canal, com texto hostil de propósito.
+    cx.querySelector('.mirror-rel-hora').textContent = '14:00';
+    cx.querySelector('.mirror-rel-txt').textContent = '<img src=x onerror=alert(1)> Rumo zero quatro oito.';
+    cx.classList.add('active');
+    const visivelEspelho = cx.getBoundingClientRect().height > 0;
+    const temTag = !!cx.querySelector('img');
+    document.body.classList.remove('mirror-mode');
+    const visivelBordo = cx.getBoundingClientRect().height > 0;
+    document.body.classList.add('mirror-mode');
+    return { existe: true, visivelEspelho, visivelBordo, temTag,
+             texto: cx.querySelector('.mirror-rel-txt').textContent.slice(0, 24) };
+  });
+  ok('Relatório da Iara aparece para quem está em terra',
+     relEsp.existe && relEsp.visivelEspelho, relEsp.existe ? relEsp.texto : 'painel não existe');
+  ok('E NÃO aparece a bordo (espaço é do XTE)', relEsp.existe && !relEsp.visivelBordo,
+     relEsp.visivelBordo ? 'apareceria a bordo também' : 'só no espelho');
+  ok('Texto do canal não vira marcação', relEsp.existe && !relEsp.temTag,
+     relEsp.temTag ? 'a <img> foi interpretada — injeção' : 'escapado');
+
   await espelho.screenshot({ path: path.join(__dirname, 'smoke-espelho.png') });
   await espelho.close();
 

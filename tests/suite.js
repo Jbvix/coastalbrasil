@@ -1924,6 +1924,330 @@ t(S19, '19.16', 'O relatório automático NÃO depende de ouvir — a regra estr
   ok(/continuous = false/.test(IARA19), 'o microfone poderia ficar aberto continuamente');
 });
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SUÍTE 20 · Relatórios falados da Iara (Sprint 1)                 (v2.8.0)
+
+   Duas teses sustentam este módulo, e são elas que esta suíte defende:
+
+   1. O TEXTO PARA O OLHO NÃO É O TEXTO PARA O OUVIDO. O painel mostra
+      `03°43.6'S` e `Fl(3) W 15s`; um sintetizador lê isso como lixo. Existe
+      um formatador só para a fala, e ele é provado caractere a caractere.
+
+   2. RELATÓRIO POR EXCEÇÃO. O que se repete toda hora vira ruído de fundo em
+      dois dias — e aí ninguém escuta na hora em que havia algo diferente.
+      Aqui se prova não só o que é DITO, mas o que é deliberadamente OMITIDO.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const S20 = '20 · Relatórios falados';
+const { falarRumo, falarNum, falarHora, falarCoord, falarDuracao, falarCaracteristica,
+        deveDizerXte, deveDizerFarol, deveDizerCombustivel, prefixoSimulacao,
+        montarRelatorioHora, montarRelatorioWaypoint,
+        REL_XTE_MENCIONA_NM, REL_XTE_PREOCUPA_NM, REL_COMBUSTIVEL_A_CADA, REL_TETO_S } = A;
+const fs20 = require('fs');
+const APP20 = fs20.readFileSync(ROOT + '/app.html', 'utf8');
+const REL20 = fs20.readFileSync(ROOT + '/assets/js/relatorio_voz.js', 'utf8');
+
+/* Estado típico: 14h, ao largo de Cabo Frio, rumo 048, 9,5 nós. */
+const EST = () => ({
+  quando: new Date(2026, 8, 20, 14, 0), lat: -23.0917, lng: -41.8833,
+  cog: 48, sog: 9.5, sequencia: 2,
+  proxWp: { nome: 'Cabo Frio', distNM: 12.4, brg: 52, eta: new Date(2026, 8, 20, 15, 20) }
+});
+
+t(S20, '20.1', 'Rumo se fala dígito a dígito, como no rádio', () => {
+  /* "Quarenta e oito" e "cento e quarenta e oito" se confundem num alto-falante
+     ruim; "quatro oito" e "um quatro oito" não. Dígito isolado sobrevive a
+     ruído e a sotaque — é por isso que o rádio marítimo faz assim. */
+  ok(falarRumo(48) === 'zero quatro oito', falarRumo(48));
+  ok(falarRumo(148) === 'um quatro oito', falarRumo(148));
+  ok(falarRumo(0) === 'zero zero zero', falarRumo(0));
+  ok(falarRumo(360) === 'zero zero zero', `360° devia normalizar para 000, deu ${falarRumo(360)}`);
+  ok(falarRumo(-10) === 'três cinco zero', `rumo negativo não normalizou: ${falarRumo(-10)}`);
+  ok(falarRumo(359.7) === 'zero zero zero', `arredondamento errado: ${falarRumo(359.7)}`);
+  // E NUNCA pode sair dígito solto colado, que o sintetizador lê como número.
+  ok(!/\d/.test(falarRumo(123)), 'sobrou algarismo no rumo falado — vira "cento e vinte e três"');
+});
+
+t(S20, '20.2', 'Número decimal com VÍRGULA — em pt-BR o ponto vira outra coisa', () => {
+  /* "9.5" é lido como "nove ponto cinco" em alguns motores e "noventa e cinco"
+     em outros. A vírgula é a forma correta e a única segura. */
+  ok(falarNum(9.5) === '9,5', falarNum(9.5));
+  ok(falarNum(0.42, 2) === '0,42', falarNum(0.42, 2));
+  ok(!/\./.test(falarNum(1234.56, 2)), 'sobrou ponto decimal: ' + falarNum(1234.56, 2));
+  ok(falarNum(NaN) === '—' && falarNum(undefined) === '—', 'número inválido não virou travessão');
+});
+
+t(S20, '20.3', 'Hora se fala como hora, não como dois números', () => {
+  ok(falarHora(new Date(2026, 8, 20, 15, 20)) === '15 e 20', falarHora(new Date(2026, 8, 20, 15, 20)));
+  // "quinze e zero zero" é sofrível; hora cheia ganha "em ponto".
+  ok(/em ponto/.test(falarHora(new Date(2026, 8, 20, 15, 0))), falarHora(new Date(2026, 8, 20, 15, 0)));
+  ok(falarHora(new Date(2026, 8, 20, 9, 5)) === '9 e 05', falarHora(new Date(2026, 8, 20, 9, 5)));
+  ok(falarHora(null) === '—' && falarHora(new Date('x')) === '—', 'data inválida não virou travessão');
+  ok(!/:/.test(falarHora(new Date(2026, 8, 20, 15, 20))), 'sobrou dois-pontos na hora falada');
+});
+
+t(S20, '20.4', 'Posição em graus e minutos, com o hemisfério certo', () => {
+  const sul = falarCoord(-23.0917, -41.8833);
+  ok(/sul/.test(sul) && /oeste/.test(sul), sul);
+  ok(!/°|'/.test(sul), 'sobrou símbolo de grau ou minuto na posição falada: ' + sul);
+  const norte = falarCoord(3.5, 10.25);
+  ok(/norte/.test(norte) && /leste/.test(norte), norte);
+  /* 59,6' arredonda para 60 — tem de virar o grau, não dizer "60 minutos".
+     É o mesmo defeito que a prova 7.2 pegou no fmtCoord da tela, em 2026. */
+  const virada = falarCoord(-23.999, -41.999);
+  ok(!/ 60 /.test(virada), 'disse "60 minutos" em vez de virar o grau: ' + virada);
+  ok(/24 graus/.test(virada), 'não virou o grau ao arredondar: ' + virada);
+});
+
+t(S20, '20.5', 'A característica do farol é DITA, não soletrada', () => {
+  /* `Fl(3) W 15s` é notação de carta. No sintetizador sai "efe éle abre
+     parênteses três..." e o vigia não sabe o que procurar no horizonte.
+     Todo navegante lê isso em voz alta, e sempre soube: "três lampejos
+     brancos a cada 15 segundos". */
+  ok(falarCaracteristica('Fl(3) W 15s') === 'três lampejos brancos a cada 15 segundos',
+     falarCaracteristica('Fl(3) W 15s'));
+  ok(falarCaracteristica('LFl W 30s') === 'lampejo longo branco a cada 30 segundos',
+     falarCaracteristica('LFl W 30s'));
+  ok(falarCaracteristica('Mo(A) W 8s') === 'morse alfa branco a cada 8 segundos',
+     falarCaracteristica('Mo(A) W 8s'));
+  // Notação desconhecida: diz como está, em vez de inventar.
+  ok(falarCaracteristica('Coisa Estranha') === 'Coisa Estranha', 'inventou tradução para notação desconhecida');
+  ok(falarCaracteristica('') === '' && falarCaracteristica(null) === '', 'característica vazia quebrou');
+  /* E A BASE REAL INTEIRA. 98 faróis da DHN — se um só ficar sem tradução, o
+     vigia ouve sigla em vez de descrição justamente no farol que ele tem pela
+     proa. */
+  const cruas = lighthouses.filter(l => falarCaracteristica(l.character) === l.character);
+  ok(cruas.length === 0, `${cruas.length} farol(óis) sem tradução: ${cruas.slice(0, 3).map(l => l.character)}`);
+  return { detail: `${lighthouses.length} características traduzidas` };
+});
+
+t(S20, '20.6', 'Concordância de gênero e número — são palavras ditas no passadiço', () => {
+  /* "dois ocultações vermelhos" e "luz fixa vermelho" foram as duas primeiras
+     versões desta tabela. Um assistente que fala errado perde autoridade na
+     terceira frase — e autoridade é o que faz o comandante ouvir o aviso de
+     fora de rumo quando ele vier. */
+  ok(falarCaracteristica('Oc(2) R 6s') === 'duas ocultações vermelhas a cada 6 segundos',
+     falarCaracteristica('Oc(2) R 6s'));
+  ok(falarCaracteristica('F R') === 'luz fixa vermelha', falarCaracteristica('F R'));
+  ok(falarCaracteristica('Fl(2) W 10s') === 'dois lampejos brancos a cada 10 segundos',
+     falarCaracteristica('Fl(2) W 10s'));
+  // "a cada 1 segundos" não é português — e cintilante de 1 s existe.
+  ok(/a cada 1 segundo$/.test(falarCaracteristica('Q W 1s')), falarCaracteristica('Q W 1s'));
+  // Varredura da base real: nenhum numeral masculino antes de substantivo feminino.
+  const erradas = lighthouses.map(l => falarCaracteristica(l.character))
+    .filter(f => /\b(dois|três|quatro|cinco|seis|sete|oito|nove)\s+(ocultações|luzes)\s+\w+os?\b/.test(f)
+              || /\bdois\s+(ocultações|luzes)/.test(f));
+  ok(erradas.length === 0, `${erradas.length} concordância(s) errada(s): ${erradas.slice(0, 2)}`);
+});
+
+t(S20, '20.7', 'Fora de rumo só acima do ruído do GPS', () => {
+  /* O GPS de um tablet acerta em 5 a 10 m. 0,1 NM são 185 m — uma ordem de
+     grandeza acima do ruído. Anunciar abaixo disso ensina o comandante a
+     ignorar o aviso, que é o pior resultado possível. */
+  ok(!deveDizerXte(0.05).dizer, '0,05 NM (93 m) é ruído de GPS e foi anunciado');
+  ok(deveDizerXte(0.15).dizer, '0,15 NM não foi anunciado');
+  ok(deveDizerXte(-0.5).dizer, 'desvio a bombordo (negativo) não foi anunciado');
+  ok(!deveDizerXte(0.2).preocupa, '0,2 NM não devia ser tratado como preocupante');
+  ok(deveDizerXte(0.4).preocupa, '0,4 NM devia preocupar');
+  ok(!deveDizerXte(NaN).dizer, 'XTE indisponível virou anúncio');
+  ok(REL_XTE_MENCIONA_NM < REL_XTE_PREOCUPA_NM, 'os dois limiares estão trocados');
+});
+
+t(S20, '20.8', 'Farol só entra quando pode ser VISTO daqui', () => {
+  /* "Farol de Cabo Frio a 60 milhas" é informação inútil, e gera o hábito de
+     ignorar. O critério é o alcance efetivo — o menor entre o luminoso e o
+     geográfico, e o geográfico depende da altura do olho DESTE passadiço. */
+  ok(deveDizerFarol({ distNM: 14, alcanceNM: 22 }), 'farol dentro do alcance ficou de fora');
+  ok(!deveDizerFarol({ distNM: 60, alcanceNM: 22 }), 'anunciou farol a 60 NM com alcance de 22');
+  ok(deveDizerFarol({ distNM: 22, alcanceNM: 22 }), 'exatamente no alcance devia entrar');
+  ok(!deveDizerFarol(null) && !deveDizerFarol({}), 'farol ausente virou anúncio');
+});
+
+t(S20, '20.9', 'Combustível de 4 em 4 horas — mas na falta, na hora', () => {
+  ok(deveDizerCombustivel(1, false), 'o primeiro relatório devia trazer o combustível');
+  ok(!deveDizerCombustivel(2, false) && !deveDizerCombustivel(3, false), 'repetiu consumo sem necessidade');
+  ok(deveDizerCombustivel(1 + REL_COMBUSTIVEL_A_CADA, false), 'perdeu a cadência de 4 em 4');
+  // Saldo que não fecha a rota fura a cadência: é para ser dito no instante.
+  ok(deveDizerCombustivel(3, true), 'saldo insuficiente esperou a vez na cadência');
+});
+
+t(S20, '20.10', 'SIMULAÇÃO se anuncia SEMPRE, e na primeira frase', () => {
+  /* Foi um simulador ligado ao lado do botão mais usado que produziu
+     "628.616 L de perda por desvio" na v2.3.3. Dizer números simulados EM VOZ
+     ALTA, com o aplomb de uma assistente e sem avisar, é a forma mais perigosa
+     desse defeito: voz convence mais que tela e não deixa rastro para reler. */
+  const sim = Object.assign(EST(), { simulacao: true });
+  for (const r of [montarRelatorioHora(sim), montarRelatorioWaypoint(Object.assign(sim, { wpAlcancado: 'Búzios' }))]) {
+    ok(/^Atenção: isto é simulação/.test(r.texto), 'relatório simulado não abre avisando: ' + r.texto.slice(0, 40));
+    ok(r.partes.includes('simulacao'), 'a simulação não foi registrada nas partes');
+  }
+  // E o relatório real NUNCA carrega o aviso — senão ele vira ruído e some.
+  const real = montarRelatorioHora(EST());
+  ok(!/simula/i.test(real.texto), 'relatório real mencionou simulação');
+  ok(prefixoSimulacao(false) === '', 'o prefixo vaza quando não há simulação');
+});
+
+t(S20, '20.11', 'O relatório TÍPICO é curto — é ele que decide se alguém escuta', () => {
+  /* Medido, não estimado: hora, posição, rumo, próximo waypoint e ETA levam
+     14 s. É o caso comum, e é o comum que determina se o comandante ainda
+     presta atenção no terceiro dia de viagem. */
+  const r = montarRelatorioHora(EST());
+  const seg = duracaoFaladaS(r.texto);
+  ok(seg <= REL_TETO_S.tipico, `relatório típico leva ${seg.toFixed(0)} s, teto ${REL_TETO_S.tipico} s`);
+  // E traz o essencial, sem exceção nenhuma disparada.
+  ['hora', 'posicao', 'rumo', 'proximo-wp', 'eta'].forEach(p =>
+    ok(r.partes.includes(p), `faltou "${p}" no relatório típico`));
+  ['xte', 'farol', 'combustivel'].forEach(p =>
+    ok(!r.partes.includes(p), `"${p}" entrou sem motivo — o relatório por exceção não está filtrando`));
+  return { detail: `${seg.toFixed(0)} s, partes: ${r.partes.join(',')}` };
+});
+
+t(S20, '20.12', 'Quando três coisas importam ao mesmo tempo, as três são ditas', () => {
+  /* Poderia forçar tudo em 15 s cortando conteúdo. Não se faz: quando fora de
+     rumo, farol à vista e combustível merecem atenção JUNTOS, é exatamente a
+     hora em que o comandante quer ouvir os três. Um relatório que se cala
+     sobre o farol porque "já falou demais" troca incômodo por risco. */
+  const cheio = Object.assign(EST(), {
+    sequencia: 1, xteNM: -0.42,
+    farol: { nome: 'de Cabo Frio', distNM: 14.2, caracteristica: 'Fl(3) W 15s', alcanceNM: 22 },
+    combustivel: { usadoL: 1340, restanteL: 2100, insuficiente: false }
+  });
+  const r = montarRelatorioHora(cheio);
+  ['xte-preocupa', 'farol', 'combustivel'].forEach(p =>
+    ok(r.partes.includes(p), `a exceção "${p}" foi engolida`));
+  const seg = duracaoFaladaS(r.texto);
+  ok(seg <= REL_TETO_S.excecional, `relatório excepcional leva ${seg.toFixed(0)} s, teto ${REL_TETO_S.excecional} s`);
+  // A característica entra falada, não soletrada.
+  ok(/lampejos brancos/.test(r.texto), 'a característica do farol foi soletrada no relatório');
+  return { detail: `${seg.toFixed(0)} s, ${r.partes.length} partes` };
+});
+
+t(S20, '20.13', 'Sem GPS e sem rota, ela diz isso — não diz "undefined"', () => {
+  /* Um relatório que fala "próximo waypoint undefined, NaN milhas" é pior que
+     silêncio: quem ouve conclui que o aplicativo quebrou e para de confiar em
+     tudo, inclusive no que estava certo. */
+  for (const e of [{}, null, { quando: new Date(2026, 8, 20, 14, 0) }]) {
+    const r = montarRelatorioHora(e);
+    ok(!/undefined|NaN|null|\[object/.test(r.texto), 'vazou valor cru: ' + r.texto);
+    ok(r.texto.length > 10, 'relatório vazio demais: ' + r.texto);
+  }
+  const semNada = montarRelatorioHora({ quando: new Date(2026, 8, 20, 14, 0) });
+  ok(semNada.partes.includes('sem-gps'), 'não avisou que está sem GPS');
+  ok(semNada.partes.includes('sem-rota'), 'não avisou que está sem rota');
+});
+
+t(S20, '20.14', 'Chegada a waypoint fala da PERNA NOVA, não da posição', () => {
+  /* Neste instante o comandante está guinando. Ele quer duas coisas: que a
+     perna fechou, e os números da perna nova. Posição e combustível agora
+     seriam ruído em cima de uma manobra. */
+  const r = montarRelatorioWaypoint(Object.assign(EST(), { wpAlcancado: 'Búzios' }));
+  ok(/Chegamos em Búzios/.test(r.texto), r.texto);
+  ok(/rumo zero cinco dois/.test(r.texto), 'não deu o rumo da perna nova: ' + r.texto);
+  ok(r.partes.includes('nova-perna') && !r.partes.includes('posicao'), 'partes erradas: ' + r.partes);
+  ok(r.prioridade === 'evento', 'chegada devia ter prioridade de evento, não de rotina');
+  ok(duracaoFaladaS(r.texto) <= REL_TETO_S.waypoint, 'relatório de waypoint longo demais');
+  // Último waypoint da rota: ela percebe e se despede, em vez de dizer "sem rota".
+  const fim = montarRelatorioWaypoint({ wpAlcancado: 'Santos' });
+  ok(fim.partes.includes('fim-de-rota'), 'não reconheceu o fim da rota');
+  ok(/último waypoint/i.test(fim.texto), fim.texto);
+});
+
+t(S20, '20.15', 'O relatório nasce na HORA CHEIA, não 60 minutos depois', () => {
+  /* Diferença que parece cosmética e não é. Um temporizador de 60 em 60
+     minutos dispara às 14h07, 15h07 — e o relatório deixa de casar com o
+     registro do diário de bordo, que é feito na hora cheia. Alinhados, o
+     falado e o escrito contam a mesma história na mesma linha do tempo. */
+  const i = REL20.indexOf('function agendarProximaHora');
+  ok(i > 0, 'agendarProximaHora não existe');
+  const corpo = REL20.slice(i, REL20.indexOf('\n}', i));
+  // O [^)]* não atravessava o ")" de getHours() — a prova falhava por erro
+  // dela, não do código. Casa a chamada inteira com [\s\S].
+  ok(/setHours\([\s\S]{0,40}\+ 1, 0, 0, 0\)/.test(corpo), 'não alinha na hora cheia');
+  ok(!/60 \* 60 \* 1000|3600000\s*\)/.test(corpo), 'usa intervalo fixo de 1 h em vez da hora cheia');
+  // E se reagenda sozinho, senão para no primeiro relatório.
+  ok(/agendarProximaHora\(\)/.test(corpo), 'não reagenda o próximo relatório');
+});
+
+t(S20, '20.16', 'A troca de perna é OBSERVADA, não decidida de novo', () => {
+  /* Duas fontes de verdade sobre "chegamos" sempre acabam divergindo — e aí o
+     relatório falado contradiz o painel na frente do comandante. A Iara lê o
+     navActiveLeg que o app já avançou. */
+  const i = REL20.indexOf('function verificarTrocaDePerna');
+  ok(i > 0, 'verificarTrocaDePerna não existe');
+  const corpo = REL20.slice(i, REL20.indexOf('\n}', i));
+  ok(!/ARRIVAL_RADIUS|calculateDistance/.test(corpo),
+     'a Iara está recalculando a chegada em vez de observar o navActiveLeg');
+  // E o app chama a observação DEPOIS de avançar a perna.
+  const av = APP20.indexOf('advanceActiveLeg(lat, lng);');
+  const ver = APP20.indexOf('verificarTrocaDePerna();');
+  ok(av > 0 && ver > av, 'a verificação não vem logo depois de advanceActiveLeg');
+});
+
+t(S20, '20.17', 'O mesmo relatório chega a quem acompanha em terra', () => {
+  /* Pelo canal de telemetria que já existe: nenhuma chamada de rede a mais.
+     E texto vindo do canal NUNCA vai para innerHTML — mesma regra do cartão
+     de farol. */
+  ok(/rel: relatorioParaEspelho\(\)/.test(APP20), 'o relatório não segue no pacote de telemetria');
+  const i = APP20.indexOf('if (p.rel && typeof p.rel.txt');
+  ok(i > 0, 'o observador não recebe o relatório');
+  const corpo = APP20.slice(i, i + 900);
+  ok(/textContent/.test(corpo), 'o relatório recebido não usa textContent');
+  ok(!/innerHTML/.test(corpo), 'texto vindo do canal foi para innerHTML — injeção');
+  // E só aparece no espelho: a bordo o comandante já ouviu.
+  ok(/body\.mirror-mode \.mirror-rel\.active/.test(
+       fs20.readFileSync(ROOT + '/assets/css/app.css', 'utf8')),
+     'o painel de relatório apareceria também a bordo, ocupando espaço do XTE');
+});
+
+t(S20, '20.18', 'O PRÓXIMO waypoint é o de VANTE, não o que ficou pra trás', () => {
+  /* navActiveLeg é o índice do waypoint de ORIGEM da perna ativa — o app usa
+     legStart = waypoints[navActiveLeg] e legEnd = waypoints[navActiveLeg+1].
+     Escrevi `wps[leg]` na primeira versão: a Iara teria anunciado o waypoint
+     JÁ ULTRAPASSADO, com a distância caindo a zero e depois crescendo. Na voz,
+     isso soa como o barco andando de ré — e o comandante acreditaria, porque
+     o número é coerente consigo mesmo.
+
+     Esta prova existe porque a mutação encontrou o buraco: o defeito vivia na
+     função que lê as globais, que eu não estava exercitando. */
+  const rota = [{ name: 'Búzios', lat: -22.75, lng: -41.88 },
+                { name: 'Cabo Frio', lat: -22.88, lng: -41.99 },
+                { name: 'Arraial', lat: -22.97, lng: -42.02 }];
+  A.setRota(rota, 0);
+  A.setFix({ lat: -22.80, lng: -41.90, cog: 200, sog: 9 });
+  const e0 = A.estadoAtualParaRelatorio();
+  ok(e0.proxWp && e0.proxWp.nome === 'Cabo Frio',
+     `na perna 0 o próximo WP devia ser Cabo Frio, veio "${e0.proxWp && e0.proxWp.nome}"`);
+  // Avançando a perna, o alvo tem de andar junto.
+  A.setRota(rota, 1);
+  const e1 = A.estadoAtualParaRelatorio();
+  ok(e1.proxWp && e1.proxWp.nome === 'Arraial',
+     `na perna 1 o próximo WP devia ser Arraial, veio "${e1.proxWp && e1.proxWp.nome}"`);
+  // E o XTE tem de existir de verdade: crossTrackError recebe OBJETOS nas duas
+  // pontas, não seis números. Chamado errado devolvia NaN em silêncio, e o
+  // "fora de rumo" simplesmente nunca apareceria no relatório.
+  ok(isFinite(e0.xteNM), 'o XTE não foi calculado — a chamada está com a assinatura errada');
+  // Última perna: não há mais "próximo", e isso não pode virar undefined falado.
+  A.setRota(rota, 2);
+  const e2 = A.estadoAtualParaRelatorio();
+  ok(!e2.proxWp, 'na última perna ainda apontou um próximo waypoint inexistente');
+  ok(!/undefined/.test(montarRelatorioHora(e2).texto), 'vazou "undefined" no fim da rota');
+  A.setRota([], 0); A.setFix(null);
+  return { detail: `perna 0 → Cabo Frio (${e0.proxWp.distNM.toFixed(1)} NM), perna 1 → Arraial` };
+});
+
+t(S20, '20.19', 'O histórico já guarda o lugar da onda do Sprint 5', () => {
+  /* A comparação entre a onda MEDIDA pelos sensores e a PREVISTA pelo modelo
+     só tem valor com série temporal. Dado que não foi gravado hoje não volta
+     amanhã — o campo nasce vazio agora, custa um `null`, e evita perder meses
+     de observação. */
+  const i = REL20.indexOf('function registrarRelatorio');
+  ok(i > 0, 'registrarRelatorio não existe');
+  const corpo = REL20.slice(i, REL20.indexOf('\n}', i));
+  ok(/onda: null/.test(corpo), 'o histórico não reserva o campo da onda (Sprint 5)');
+  ok(/tempo: null/.test(corpo), 'o histórico não reserva o campo do tempo (Sprint 2)');
+  ok(/lat|lng/.test(corpo) && /sim:/.test(corpo),
+     'o histórico não guarda posição e procedência — série temporal inútil sem isso');
+});
+
 /* ═══ RELATÓRIO ═══ */
 const byStatus = s => results.filter(r=>r.status===s).length;
 const ICON = { PASS:'\x1b[32m✔\x1b[0m', FAIL:'\x1b[31m✘\x1b[0m', WARN:'\x1b[33m▲\x1b[0m' };

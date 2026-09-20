@@ -868,6 +868,26 @@
       .nav-icon-btn.iara-ouvindo { animation: none; }
     }
 
+    /*
+    O RELATÓRIO DA IARA NO ESPELHO.                                  (v2.8.0)
+    Só existe para quem acompanha em terra — `body.mirror-mode`. A bordo o
+    comandante JÁ OUVIU a frase; repeti-la na tela tomaria espaço do XTE e do
+    próximo waypoint, que é o que ele precisa olhar. Em terra é o oposto: é a
+    única forma de saber o que foi dito no passadiço.
+    */
+    .mirror-rel { display: none; }
+    body.mirror-mode .mirror-rel.active {
+      display: block;
+      margin: 6px 0 2px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: rgba(3, 169, 244, 0.14);
+      box-shadow: inset 0 0 0 1.5px rgba(129, 212, 250, 0.5);
+      font-family: var(--font-body);
+    }
+    .mirror-rel-cab { font-size: 0.72rem; font-weight: 700; color: #81D4FA; letter-spacing: 0.4px; }
+    .mirror-rel-txt { font-size: 0.82rem; line-height: 1.35; color: #E3F2FD; margin-top: 3px; }
+
     .nav-hud-body {
       padding: 10px;
     }

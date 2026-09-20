@@ -16,7 +16,8 @@ const ROOT = path.join(__dirname, '..');
 const MODULOS = ['assets/js/lighthouses.js', 'assets/js/coastline.js',
                  'assets/js/nautical.js',
                  'assets/js/report.js', 'assets/js/mirror.js',
-                 'assets/js/ship3d.js', 'assets/js/iara.js'];
+                 'assets/js/ship3d.js', 'assets/js/iara.js',
+                 'assets/js/relatorio_voz.js'];
 const SRC = [path.join(ROOT, 'app.html'), ...MODULOS.map(m => path.join(ROOT, m))]
   .map(f => fs.readFileSync(f, 'utf8')).join('\n');
 module.exports = module.exports || {};
@@ -90,13 +91,27 @@ const FNS = ['calculateDistance','calculateBearing','eyeHeight','calculateVisibi
              // sobra o efeito.
              'escolherVoz','visualIara','emManobra','podeFalar',
              'enfileirarFala','limparVencidas','textoApresentacao','violaRegra6',
-             'duracaoFaladaS'];
+             'duracaoFaladaS',
+             // Sprint 1: o texto para o OUVIDO e as regras de exceção. Puras,
+             // porque a bancada não tem GPS, rota, nem alto-falante.
+             'falarRumo','falarNum','falarHora','falarCoord','falarDuracao',
+             'deveDizerXte','deveDizerFarol','deveDizerCombustivel',
+             'prefixoSimulacao','montarRelatorioHora','montarRelatorioWaypoint',
+             'falarCaracteristica',
+             // Colhe o estado das globais. Não é pura — mas é ONDE MORA o erro
+             // de índice que anunciaria o waypoint já ultrapassado, e erro que
+             // não se prova é erro que volta.
+             'estadoAtualParaRelatorio'];
 
 const sandboxSrc = extractLighthouses() + '\n' +
   'let _coastline = null;\n' +
   'let tripData = null;\n' +
   'let waypoints = [];\n' +
   'let navActiveLeg = 0;\n' +
+  'let navSimActive = false;\n' +
+  'let navAccumFuel = 0;\n' +
+  'let relSequencia = 0;\n' +
+  'let navLastFix = null;\n' +
   'const ARRIVAL_RADIUS_NM = 0.3;\n' +
   'const DEFAULT_EYE_HEIGHT_M = 5;\n' +
   extractConst('FORA_DA_LINHA_DE_COSTA') + '\n' +
@@ -112,12 +127,23 @@ const sandboxSrc = extractLighthouses() + '\n' +
   extractDecl('IARA_VOZ_M') + '\n' +
   extractDecl('IARA_IMPERATIVOS_PROIBIDOS') + '\n' +
   extractDecl('IARA_TETO_S') + '\n' +
+  extractDecl('IARA_DIGITOS') + '\n' +
+  extractDecl('REL_XTE_MENCIONA_NM') + '\n' +
+  extractDecl('REL_XTE_PREOCUPA_NM') + '\n' +
+  extractDecl('REL_COMBUSTIVEL_A_CADA') + '\n' +
+  extractDecl('REL_RITMO') + '\n' +
+  extractDecl('REL_CORES') + '\n' +
+  extractDecl('REL_FONETICO') + '\n' +
+  extractDecl('REL_TETO_S') + '\n' +
   'const RESYNC_NM = ' + (SRC.match(/const RESYNC_NM = (\\d+)/) || [,'10'])[1] + ';\n' +
   FNS.map(extractFn).join('\n\n') + '\n' +
   'module.exports = { lighthouses, COSTA_BRASIL, DEFAULT_EYE_HEIGHT_M, RESYNC_NM,\n'
   + '  IARA_NOME, IARA_PRIORIDADE, IARA_VALIDADE_MS, IARA_ROT_LIMITE, IARA_IMPERATIVOS_PROIBIDOS, IARA_TETO_S,\n'
+  + '  REL_XTE_MENCIONA_NM, REL_XTE_PREOCUPA_NM, REL_COMBUSTIVEL_A_CADA, REL_TETO_S,\n'
   + '  setTrip: t => { tripData = t; },\n'
   + '  setRota: (r, leg) => { waypoints = r; navActiveLeg = leg || 0; },\n'
+  + '  setFix: f => { navLastFix = f; },\n'
+  + '  setSim: v => { navSimActive = !!v; },\n'
   + '  getLeg: () => navActiveLeg, '
   + FNS.join(', ') + ' };';
 
