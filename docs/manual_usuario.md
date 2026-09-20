@@ -235,6 +235,122 @@ proa mergulhava quando deveria subir. Não era o sensor nem o seu celular — er
 o modelo, desenhado com a proa para o lado oposto ao que o painel supunha. Está
 corrigido. Se você tinha aprendido a "ler ao contrário", pode desaprender.
 
+## 9. A Iara — sua assistente de voz
+
+A partir da **v2.7.0** há um microfone 🎙️ na barra de navegação. É a **Iara**:
+não um leitor de números, mas uma **consultora e especialista em navegação** que
+fala — faróis, derrota, corrente, consumo e estabilidade.
+
+### 9.1 O primeiro toque: ela se apresenta
+
+Da primeira vez que você tocar no 🎙️, a Iara **se apresenta** em vez de ouvir.
+Isso não é enfeite: Android e iPhone **bloqueiam áudio sem um toque do usuário**,
+então o primeiro toque é o que dá voz a ela. Do segundo em diante, o botão ouve.
+
+Na apresentação ela diz três coisas, e nenhuma é dispensável:
+
+1. **Quem ela é** — especialista em navegação costeira. É o que autoriza você a
+   perguntar coisas técnicas, não só "quanto falta".
+2. **Quem decide** — *"te ajudo a decidir, quem decide é você"*. Uma voz
+   simpática e segura é muito convincente; a fronteira vem antes da confiança.
+3. **O contrato do microfone** — *"eu só escuto quando você me chama"*.
+
+### 9.2 O microfone só abre quando você manda
+
+**A Iara não fica escutando.** O microfone abre no toque do botão e fecha
+sozinho quando você para de falar. Não existe modo "sempre ouvindo" — e nem
+poderia: o Chrome no Android recusa esse modo.
+
+O ícone diz o estado, e você o distingue de três maneiras ao mesmo tempo
+(desenho, cor e moldura), porque sob sol de passadiço uma delas sempre falha:
+
+| Ícone | Cor | Estado |
+|---|---|---|
+| 🎙️ | azul apagado | **Fechado.** Nenhum áudio captado |
+| 🔴 | vermelho **pulsando** | **ABERTO.** Ela está ouvindo você |
+| ⏳ | âmbar | Microfone fechado, processando |
+| 🔊 | azul | Microfone fechado, ela está falando |
+| 🔕 | cinza | **Silenciada** |
+
+Só o vermelho pulsa, de propósito: movimento é o que o canto do olho capta sem
+você tirar a vista do tráfego.
+
+### 9.3 Como calar a Iara — o mudo é soberano
+
+**Segure o botão por meio segundo** (ou clique com o botão direito, no
+computador). Ela cala na hora, esvazia tudo o que ia dizer, e o ícone vira 🔕.
+Toque de novo para reativar. A escolha fica gravada no aparelho.
+
+O mudo **cala até avisos críticos**. Quem mandou calar tem motivo, e o motivo
+pode ser o VHF chamando.
+
+> **E o que estava na fila é DESCARTADO, não guardado.** Se você silenciar por
+> uma hora e reativar, ela não despeja doze relatórios velhos de uma vez. O
+> próximo relatório vem no horário, com dados de agora.
+
+### 9.4 Quando ela cala sozinha
+
+Sem você pedir, a Iara se cala:
+
+- **enquanto um alerta do app está tocando** — o alarme manda, ela espera;
+- **durante manobra** — guinada acima de 10°/min, ou você dentro de 0,3 NM do
+  waypoint. Um ASD guina rápido, e quem está no leme não quer ouvir consumo
+  acumulado. Só aviso crítico fura a manobra;
+- **enquanto ela mesma está falando** — enfileira, não atropela.
+
+### 9.5 A regra que mais importa: fala vencida não é dita
+
+Um relatório de posição que ficou 20 minutos na fila **não é atrasado, é
+errado**. A 10 nós o barco andou 3,3 milhas desde que aquele texto foi montado.
+Dizer *"faltam 4 milhas para o waypoint"* quando faltam 0,7 é pior que ficar
+calado.
+
+Por isso toda fala da Iara nasce com prazo de validade. Vencida, é jogada fora
+em silêncio — e o relatório seguinte vem com os números de agora.
+
+### 9.6 Sem internet: ela fala, mas não ouve
+
+Esta é a diferença mais importante de entender a bordo:
+
+| | Offshore, sem 4G |
+|---|---|
+| **Os relatórios automáticos** | ✅ **continuam normalmente** |
+| **Perguntar alguma coisa** | ❌ **não funciona** |
+
+O motivo é técnico e não tem contorno: **falar** usa vozes instaladas no próprio
+tablet; **ouvir** manda o áudio para servidores na internet. A 30 milhas da
+costa não há sinal para isso.
+
+Quando você tocar no microfone sem sinal, ela responde com todas as letras —
+*"tô sem internet, não consigo te ouvir agora; mas os relatórios continuam,
+esses não dependem de sinal"* — em vez de fingir que não entendeu.
+
+> **Por isso ela prefere voz instalada no aparelho.** Na hora de escolher entre
+> as vozes disponíveis, a Iara dá mais peso a uma voz local que ao gênero: entre
+> uma voz feminina bonita que emudece no mar e uma voz comum que fala sempre, a
+> escolha de bordo é óbvia.
+
+### 9.7 O que ela ainda NÃO faz
+
+A v2.7.0 é o **Sprint 0** do assistente: a fundação. Se você perguntar alguma
+coisa, ela repete o que ouviu e admite que ainda está aprendendo a responder.
+
+Está previsto, nesta ordem: **relatórios automáticos** de hora em hora e a cada
+waypoint; **tempo, vento e corrente** do Open-Meteo, com ETA corrigido pela
+corrente; **cidade, abrigo e farol** mais próximos de cada waypoint; **faixa
+econômica de RPM** que não estraga o ETA; **ondas e estabilidade** pelos
+sensores do tablet; e por último a **conversa livre**.
+
+### 9.8 Ela sugere. Você decide.
+
+Nenhuma frase da Iara manda no navio. Ela diz *"dá pra"*, *"vale"*, *"sugiro"* —
+nunca *"reduza"*, *"vire"*, *"desvie"*. Isso é verificado automaticamente a cada
+versão, varrendo tudo o que ela é capaz de dizer.
+
+O motivo é simples: a Iara **não enxerga o tráfego, não sente o cabo de reboque
+e não sabe que o rebocado está guinando**. Ela é uma consultora com acesso a
+bons números — e uma consultora, por melhor que seja, não é quem está no leme.
+
 ## 8.0 A barra de botões da navegação
 
 | Ícone | O que faz |
@@ -246,6 +362,7 @@ corrigido. Se você tinha aprendido a "ler ao contrário", pode desaprender.
 | 🔄 | **Zerar a singradura** — distância, consumo e perda por desvio voltam a zero, sem encerrar a navegação |
 | ℹ️ | **Informações dos waypoints** |
 | 🚢 | **Atitude 3D** do rebocador |
+| 🎙️ | **Iara**, a assistente de voz — toque para perguntar, segure para silenciar (§9) |
 
 O 🔊 e o 🎯 **ficam gravados no aparelho**: a escolha sobrevive a recarregar a
 página. É deliberado — um alerta silenciado que volta sozinho ao ligar o som, ou

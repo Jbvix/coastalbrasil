@@ -5,7 +5,7 @@
   COASTAL NAVIGATOR BRASIL — Sistema de Planejamento de Viagem Costeira
 ════════════════════════════════════════════════════════════════════════════════
 
-  Versão: 2.6.0
+  Versão: 2.7.0
   Autor: Jossian Brito (Charlie Bravo)
   LinkedIn: https://www.linkedin.com/in/jossianbrito/
   X: https://x.com/jossiancosta  ·  Medium: https://medium.com/@jossiancosta
@@ -44,7 +44,7 @@
   <meta name="keywords"
     content="navegação costeira, planejamento de viagem, faróis, Brasil, OpenSeaMap, GPX, rebocadores">
 
-  <title>Coastal Navigator Brasil v2.6.0 - Planejamento de Viagem</title>
+  <title>Coastal Navigator Brasil v2.7.0 - Planejamento de Viagem</title>
 
   <!-- Leaflet CSS -->
   <!-- Subresource Integrity: o navegador recusa o arquivo se o conteúdo servido
@@ -75,7 +75,7 @@
     <header class="app-header">
       <div class="header-content">
         <div class="logo">
-          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.6.0</span></h1>
+          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.7.0</span></h1>
         </div>
 
         <div class="controls">
@@ -186,6 +186,14 @@
         <span class="nav-hud-title"><span class="nav-pulse"></span> NAVEGANDO</span>
         <button class="nav-icon-btn" title="Recolher" id="navCollapseBtn">▾</button>
         <div class="nav-hud-actions">
+          <!-- IARA. Primeira da fileira porque é a mais tocada e o polegar chega
+               primeiro na borda esquerda. SEM onclick inline: o aviso 9.7 conta
+               58 atributos desses, que são o que força a CSP a aceitar
+               'unsafe-inline'. Código novo não aumenta a dívida — a ligação é
+               por addEventListener em iaraInit(). O ícone e o title são
+               reescritos a cada mudança de estado por pintarIara(). -->
+          <button class="nav-icon-btn iara-off" title="Perguntar à Iara" id="iaraBtn"
+                  aria-label="Microfone FECHADO. Tocar e falar para perguntar à Iara.">🎙️</button>
           <button class="nav-icon-btn" title="Compartilhar (espelhar p/ quem está em terra)" onclick="event.stopPropagation(); toggleShare()" id="navShareBtn">📤</button>
           <button class="nav-icon-btn" title="Som dos alertas" onclick="event.stopPropagation(); toggleNavMute()" id="navMuteBtn">🔊</button>
           <button class="nav-icon-btn" title="Centralizar no barco" onclick="event.stopPropagation(); toggleNavFollow()" id="navFollowBtn">🎯</button>
@@ -490,6 +498,7 @@
   <script src="assets/js/report.js"></script>
   <script src="assets/js/mirror.js"></script>
   <script src="assets/js/ship3d.js"></script>
+  <script src="assets/js/iara.js"></script>
 
   <!-- three.js (carregado sob demanda ao abrir o painel 3D de atitude do rebocador) -->
   <script type="importmap">
@@ -3080,6 +3089,14 @@
       a persistência foi feita para evitar.
       */
       pintarBotoesNav();   // reflete as preferências gravadas no aparelho
+      /*
+      IARA ANTES DO MAPA — mesma razão que a prova 17.10 guarda para o
+      pintarBotoesNav(): o initMap() depende do Leaflet vindo de CDN e, quando a
+      CDN falha, ele ESTOURA e leva embora o resto do DOMContentLoaded. Botão de
+      microfone que nasceu morto por causa de um mapa que não carregou é defeito
+      que já aconteceu neste arquivo, com outro botão.
+      */
+      iaraInit();
       initMap();
       startClock();        // relógio de data/hora (embarcação e observador)
 
@@ -3094,7 +3111,7 @@
       updateShareButtons();
 
       console.log('═══════════════════════════════════════════════════════════════');
-      console.log('  Coastal Navigator Brasil v2.6.0 - Inicializado ⚓');
+      console.log('  Coastal Navigator Brasil v2.7.0 - Inicializado ⚓');
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('Autor: Jossian Brito (Charlie Bravo)');
       console.log('58 Faróis curados carregados 💡 (52 DHN + 6 Validados)');

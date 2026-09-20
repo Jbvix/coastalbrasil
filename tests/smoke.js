@@ -360,6 +360,41 @@ const srv = http.createServer((req, res) => {
     });
     ok(`Seletor de casco legível (${nomeTela})`, selW >= 100, selW + ' px');
 
+    /* A IARA NO NAVEGADOR DE VERDADE.                                (v2.7.0)
+       O banco de provas mede a DECISÃO (que estado, falar ou calar). O que só
+       um navegador diz é se o botão nasceu, se o ícone realmente troca, e se
+       o toque não recolhe o painel — que era o defeito mais provável, porque
+       o cabeçalho inteiro do HUD recolhe ao clique. */
+    const iara = await tela.evaluate(() => {
+      const hud = document.getElementById('navHud');
+      hud.classList.add('active');
+      const b = document.getElementById('iaraBtn');
+      if (!b) return { existe: false };
+      const r0 = b.getBoundingClientRect();
+      const antes = { icone: b.textContent.trim(), classe: b.className, aria: b.getAttribute('aria-label') };
+      // Percorre os quatro estados pela função real do módulo.
+      const vistos = ['off', 'ouvindo', 'processando', 'respondendo'].map(e => {
+        iaraEstado = e; pintarIara();
+        return { e, icone: b.textContent.trim(), classe: b.className };
+      });
+      // E o toque NÃO pode recolher o painel.
+      const recolhidoAntes = hud.classList.contains('collapsed');
+      b.click();
+      const recolhidoDepois = hud.classList.contains('collapsed');
+      iaraEstado = 'off'; pintarIara();
+      return { existe: true, largura: Math.round(r0.width), altura: Math.round(r0.height),
+               antes, vistos, recolheu: !recolhidoAntes && recolhidoDepois };
+    });
+    ok(`Botão da Iara existe e tem 44 px (${nomeTela})`,
+       iara.existe && iara.largura >= 44 && iara.altura >= 44,
+       iara.existe ? `${iara.largura}x${iara.altura}` : 'não existe');
+    ok(`Ícone da Iara troca nos 4 estados (${nomeTela})`,
+       iara.existe && new Set(iara.vistos.map(v => v.icone)).size === 4 &&
+       new Set(iara.vistos.map(v => v.classe)).size === 4,
+       iara.existe ? iara.vistos.map(v => v.e + '=' + v.icone).join(' ') : '—');
+    ok(`Perguntar à Iara não recolhe o painel (${nomeTela})`, iara.existe && !iara.recolheu,
+       iara.recolheu ? 'o toque recolheu o HUD' : 'painel continua aberto');
+
     // E o 💡 só existe onde há globo: em Atitude tem de sumir de fato.
     const lampada = await tela.evaluate(() => {
       const ov = document.getElementById('ship3dModal');

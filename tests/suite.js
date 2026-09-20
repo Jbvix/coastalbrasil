@@ -1626,6 +1626,304 @@ t(S18, '18.10', 'A fileira do cabeçalho 3D quebra linha em vez de espremer', ()
   ok(/text-overflow:\s*ellipsis/.test(blocoT), 'nome comprido de embarcação não vira reticências');
 });
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SUÍTE 19 · IARA — assistente de viagem por voz (Sprint 0)        (v2.7.0)
+
+   POR QUE ESTA SUÍTE EXISTE COM ESTA FORMA. Esta bancada não tem microfone,
+   não tem alto-falante e não tem nenhuma voz instalada — `speechSynthesis`
+   simplesmente não existe aqui. A resposta não foi "então não se testa": foi
+   separar a DECISÃO do EFEITO. Qual voz escolher, que estado mostrar, falar
+   ou calar, o que descartar — tudo isso é aritmética e regra, e é provado
+   aqui. Ao navegador sobra emitir o som.
+
+   É a mesma disciplina do farolEarthSpec() na v2.6.0, e pelo mesmo motivo: o
+   cálculo se confere na mesa antes de se confiar no navio.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const S19 = '19 · Iara (voz)';
+const { escolherVoz, visualIara, emManobra, podeFalar, enfileirarFala,
+        limparVencidas, textoApresentacao, violaRegra6, duracaoFaladaS,
+        IARA_NOME, IARA_VALIDADE_MS, IARA_ROT_LIMITE, IARA_TETO_S } = A;
+const fs19 = require('fs');
+const APP19 = fs19.readFileSync(ROOT + '/app.html', 'utf8');
+const CSS19 = fs19.readFileSync(ROOT + '/assets/css/app.css', 'utf8');
+const IARA19 = fs19.readFileSync(ROOT + '/assets/js/iara.js', 'utf8');
+
+/* Fábrica de vozes falsas, no formato do SpeechSynthesisVoice. */
+const voz = (name, lang, localService, def) =>
+  ({ name, lang, localService: !!localService, default: !!def, voiceURI: name });
+
+t(S19, '19.1', 'A voz preferida é a que FALA NO MAR — local vence remota bonita', () => {
+  /* A decisão mais importante desta função, e ela é operacional, não estética.
+     Uma voz "de nuvem" soa melhor no cais e EMUDECE a 30 NM da costa, que é
+     exatamente onde a Iara importa. Entre uma voz feminina remota e uma comum
+     local, a escolha de bordo é a que continua falando sem sinal. */
+  const escolhida = escolherVoz([
+    voz('Luciana (Premium)', 'pt-BR', false),      // feminina, linda, REMOTA
+    voz('pt-br-x-pte-local', 'pt-BR', true)        // comum, mas LOCAL
+  ]);
+  ok(escolhida.localService === true,
+     `escolheu a voz remota "${escolhida.name}" — ela cala quando a costa some`);
+});
+
+t(S19, '19.2', 'Nunca escolhe voz de outra língua, nem na falta de pt-BR', () => {
+  /* Um assistente de bordo que se apresenta em inglês com sotaque americano
+     lendo "Cabo Frio" não é um defeito cosmético: os nomes de farol e de porto
+     ficam irreconhecíveis, e o relatório perde a utilidade inteira. */
+  ok(escolherVoz([voz('Samantha', 'en-US', true, true), voz('Daniel', 'en-GB', true)]) === null,
+     'escolheu voz estrangeira em vez de admitir que não há pt');
+  ok(escolherVoz([]) === null, 'lista vazia devia devolver null');
+  ok(escolherVoz(null) === null, 'lista nula quebrou a escolha');
+  // pt-PT serve de recuo, mas perde para pt-BR.
+  const br = escolherVoz([voz('Joana', 'pt-PT', true), voz('Maria', 'pt-BR', true)]);
+  ok(br.lang === 'pt-BR', `preferiu ${br.lang} a pt-BR`);
+});
+
+t(S19, '19.3', 'Entre iguais, escolhe a feminina — foi o que se pediu', () => {
+  const e = escolherVoz([voz('Ricardo', 'pt-BR', true), voz('Francisca', 'pt-BR', true)]);
+  ok(/Francisca/.test(e.name), `escolheu "${e.name}" em vez da voz feminina`);
+  // O código curto do Google Android ("afs" = female, "ams" = male) também conta.
+  const g = escolherVoz([voz('pt-br-x-ams#male_1-local', 'pt-BR', true),
+                         voz('pt-br-x-afs#female_1-local', 'pt-BR', true)]);
+  ok(/afs|female/.test(g.name), `escolheu "${g.name}" — não leu o código de gênero do Android`);
+});
+
+t(S19, '19.4', 'O gosto de quem ouve oito horas vence a minha heurística', () => {
+  const manual = escolherVoz([voz('Francisca', 'pt-BR', true), voz('Ricardo', 'pt-BR', true)], 'Ricardo');
+  ok(manual.name === 'Ricardo', 'a escolha manual do usuário foi ignorada');
+});
+
+t(S19, '19.5', 'Os estados do microfone são distinguíveis por TRÊS canais', () => {
+  /* Ícone, classe (cor+moldura) e aria. Três porque um vai falhar: o ícone
+     some sob reflexo, a cor lava no sol, a moldura desaparece para quem tem
+     daltonismo. Se dois estados compartilham qualquer canal, o canal não
+     distingue nada. */
+  const estados = ['off', 'ouvindo', 'processando', 'respondendo'];
+  const vs = estados.map(e => visualIara(e, false)).concat([visualIara('off', true)]);
+  for (const campo of ['icone', 'classe', 'aria']) {
+    const vistos = new Set(vs.map(v => v[campo]));
+    ok(vistos.size === vs.length,
+       `dois estados compartilham o mesmo "${campo}" — ${vs.length - vistos.size} colisão(ões)`);
+  }
+  /* E o aria tem de DIZER se o microfone está aberto. Um dia alguém vai operar
+     isto com a tela apagada para poupar bateria, e "ouvindo" precisa ser
+     inequívoco em palavras, não só em vermelho. */
+  ok(/ABERTO/.test(visualIara('ouvindo', false).aria), 'o estado "ouvindo" não diz que o microfone está ABERTO');
+  ['off', 'processando', 'respondendo'].forEach(e =>
+    ok(/FECHADO|fechado/.test(visualIara(e, false).aria), `o estado "${e}" não afirma que o microfone está fechado`));
+  ok(/fechado/i.test(visualIara('off', true).aria), 'muda não afirma microfone fechado');
+});
+
+t(S19, '19.6', 'Manobra cala a Iara: guinada e chegada a waypoint', () => {
+  /* Não existe sensor de "manobra"; existem dois sintomas. Um ASD guina rápido
+     — é para isso que os azimutais servem — e quem está no leme nessa hora não
+     quer ouvir consumo acumulado. */
+  /* VALORES ABSOLUTOS, DE PROPÓSITO. A primeira versão desta prova usava
+     `IARA_ROT_LIMITE + 1` como entrada — ou seja, a entrada andava junto com a
+     constante sob prova, e afrouxar o limiar para 999°/min passava despercebido.
+     Prova que se move com o defeito não é prova. 15°/min é manobra num
+     rebocador, ponto final, independente de como a constante esteja hoje. */
+  ok(emManobra({ rotGrausMin: 15 }).manobra, 'guinada de 15°/min não calou a Iara');
+  ok(emManobra({ rotGrausMin: -20 }).manobra, 'guinada de 20°/min a bombordo não calou (erro de sinal)');
+  ok(IARA_ROT_LIMITE >= 5 && IARA_ROT_LIMITE <= 15,
+     `limiar de guinada em ${IARA_ROT_LIMITE}°/min está fora da faixa defensável (5 a 15)`);
+  ok(!emManobra({ rotGrausMin: 2 }).manobra, 'derrota estável foi tomada por manobra');
+  ok(emManobra({ distProxWpNM: 0.2 }).manobra, 'chegada ao waypoint não calou');
+  ok(!emManobra({ distProxWpNM: 4 }).manobra, '4 NM do waypoint não é manobra');
+  ok(!emManobra({}).manobra && !emManobra(null).manobra, 'contexto vazio virou manobra');
+});
+
+t(S19, '19.7', 'REGRA 1 — o mudo é soberano, e DESCARTA em vez de guardar', () => {
+  /* Cala até a emergência: quem mandou calar tem motivo, e o motivo pode ser o
+     VHF chamando. E descarta em vez de enfileirar, porque desmudar depois de
+     uma hora não pode despejar doze relatórios velhos de uma vez na cara de
+     quem acabou de voltar à ponte. */
+  for (const p of ['rotina', 'evento', 'resposta', 'critica']) {
+    const d = podeFalar({ muda: true, prioridade: p });
+    ok(d.acao === 'descartar', `prioridade "${p}" furou o mudo com acao=${d.acao}`);
+  }
+});
+
+t(S19, '19.8', 'REGRAS 2,3,4 — alarme, manobra e a própria voz enfileiram', () => {
+  ok(podeFalar({ alertaAtivo: true }).acao === 'enfileirar', 'falaria por cima do alarme do app');
+  ok(podeFalar({ falando: true }).acao === 'enfileirar', 'interromperia a si mesma');
+  ok(podeFalar({ manobrando: true }).acao === 'enfileirar', 'falaria durante a manobra');
+  // Segurança fura manobra — mas não fura alarme nem mudo.
+  ok(podeFalar({ manobrando: true, prioridade: 'critica' }).acao === 'falar',
+     'um aviso CRÍTICO ficou preso na manobra');
+  ok(podeFalar({ alertaAtivo: true, prioridade: 'critica' }).acao === 'enfileirar',
+     'o crítico atropelou o alarme do app — dois sons ao mesmo tempo não se entende');
+  ok(podeFalar({}).acao === 'falar', 'com tudo livre ela não falaria');
+});
+
+t(S19, '19.9', 'REGRA 5 — relatório velho não é atrasado, é ERRADO', () => {
+  /* A 10 nós o barco anda 3,3 NM em 20 minutos. Dizer "faltam 4 milhas" quando
+     faltam 0,7 é pior que ficar calado: é induzir a erro com a voz mansa de
+     quem tem certeza. */
+  ok(podeFalar({ venceEm: -1 }).acao === 'descartar', 'diria uma fala já vencida');
+  ok(podeFalar({ venceEm: 30000 }).acao === 'falar', 'descartou fala ainda válida');
+  // E a limpeza da fila faz o mesmo.
+  const agora = 1000000;
+  const fila = [
+    { texto: 'velha', prioridade: 'rotina', nascidaEm: agora - IARA_VALIDADE_MS.rotina - 1 },
+    { texto: 'nova', prioridade: 'rotina', nascidaEm: agora - 1000 }
+  ];
+  const limpa = limparVencidas(fila, agora);
+  ok(limpa.length === 1 && limpa[0].texto === 'nova', `sobrou ${limpa.length}, esperado só a nova`);
+  // Rotina vence mais rápido que evento: o próximo relatório vem logo.
+  ok(IARA_VALIDADE_MS.rotina < IARA_VALIDADE_MS.critica, 'rotina dura mais que o crítico');
+  ok(IARA_VALIDADE_MS.resposta < IARA_VALIDADE_MS.rotina,
+     'resposta a pergunta dura mais que relatório — se demorou, o comandante já resolveu sozinho');
+});
+
+t(S19, '19.10', 'A fila põe a RESPOSTA na frente do relatório', () => {
+  /* O comandante acabou de apertar o botão e falar. Se ele espera e ouve um
+     relatório de waypoint em vez da resposta, conclui — com razão — que a Iara
+     não o escutou. Confiança numa ponte se perde uma vez só. */
+  let f = [];
+  f = enfileirarFala(f, { texto: 'rotina', prioridade: 'rotina', nascidaEm: 1 });
+  f = enfileirarFala(f, { texto: 'evento', prioridade: 'evento', nascidaEm: 2 });
+  f = enfileirarFala(f, { texto: 'resposta', prioridade: 'resposta', nascidaEm: 3 });
+  f = enfileirarFala(f, { texto: 'critica', prioridade: 'critica', nascidaEm: 4 });
+  const ordem = f.map(x => x.texto).join(',');
+  ok(ordem === 'critica,resposta,evento,rotina', 'ordem da fila errada: ' + ordem);
+  // Empate de prioridade resolve por chegada, não por sorteio.
+  let g = enfileirarFala([], { texto: 'b', prioridade: 'rotina', nascidaEm: 20 });
+  g = enfileirarFala(g, { texto: 'a', prioridade: 'rotina', nascidaEm: 10 });
+  ok(g[0].texto === 'a', 'empate de prioridade não respeitou a ordem de chegada');
+});
+
+t(S19, '19.11', 'REGRA 6 — a Iara SUGERE, nunca manda no navio', () => {
+  /* Uma voz feminina, simpática e segura é MUITO convincente. Se ela disser
+     "reduza para mil e duzentas rotações", alguém reduz sem pensar. E a Iara
+     não enxerga o tráfego, não sente o cabo, não sabe que o rebocado está
+     guinando. O imperativo fica para quem está no leme. */
+  ok(violaRegra6('Reduza para 1200 rotações').length > 0, 'a prova não pega um imperativo óbvio');
+  ok(violaRegra6('Dá pra fazer o ETA com 1.480 rotações, se quiser').length === 0,
+     'a prova acusa uma sugestão legítima');
+  /* E agora o corpo de texto REAL da Iara. ATENÇÃO AO QUE SE VARRE: a primeira
+     versão desta prova casava qualquer trecho entre aspas do arquivo e engolia
+     COMENTÁRIOS e a própria lista de imperativos proibidos — ficava verde ou
+     vermelha por motivo errado, que é pior que não existir. Agora tira os
+     comentários, tira a declaração da lista, e varre só o que a Iara DIZ:
+     os argumentos de iaraDizer() e o texto da apresentação. */
+  const semComentario = IARA19.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
+  const semLista = semComentario.replace(/const IARA_IMPERATIVOS_PROIBIDOS = \[[\s\S]*?\];/, ' ');
+  /* Casar só `iaraDizer(<literal>` perderia as falas dentro de um ternário —
+     e é justamente lá que mora a mensagem de "estou sem internet". Então
+     varre-se TODO literal em prosa (4 palavras ou mais) do arquivo já limpo.
+     Pegar de lambuja um console.warn não faz mal: ele também não pode mandar
+     no navio. */
+  const falas = (semLista.match(/(?:`[^`]*`|'[^']*')/g) || [])
+    .filter(f => f.slice(1, -1).trim().split(/\s+/).length >= 4)
+    .concat([textoApresentacao()]);
+  ok(falas.length >= 6, `só ${falas.length} fala(s) encontradas — a varredura não está achando o texto da Iara`);
+  const sujas = falas.filter(f => violaRegra6(f).length > 0);
+  ok(sujas.length === 0, `${sujas.length} fala(s) mandam no navio: ${sujas.slice(0, 2)}`);
+  ok(violaRegra6(textoApresentacao()).length === 0, 'a própria apresentação manda no navio');
+});
+
+t(S19, '19.12', 'A apresentação diz as três coisas que não podem faltar', () => {
+  const t0 = textoApresentacao();
+  // 1. QUEM ELA É — consultora e especialista, não leitora de números. É o que
+  //    autoriza o comandante a perguntar coisas técnicas.
+  ok(/especialista|consultora/i.test(t0), 'não se apresenta como especialista em navegação');
+  ok(new RegExp(IARA_NOME, 'i').test(t0), 'não diz o próprio nome');
+  // 2. QUEM DECIDE — dita em voz alta, na primeira frase que ela diz na vida.
+  ok(/quem decide é você|você.{0,12}decide/i.test(t0), 'não estabelece que quem decide é o comandante');
+  // 3. O CONTRATO DO MICROFONE — privacidade anunciada em voz alta vale mais
+  //    que privacidade escrita em rodapé que ninguém lê.
+  ok(/só escuto quando/i.test(t0), 'não anuncia que o microfone só abre quando chamado');
+  ok(/mudo/i.test(t0), 'não diz como calá-la');
+  ok(/hora em hora/i.test(t0) && /waypoint/i.test(t0), 'não explica os relatórios automáticos');
+  /* E TEM TETO. A primeira versão desta apresentação tinha 42 segundos falados
+     — ninguém numa ponte quer parágrafo, e foi esta prova que denunciou. */
+  const seg = duracaoFaladaS(t0);
+  ok(seg <= IARA_TETO_S.apresentacao,
+     `a apresentação leva ${seg.toFixed(0)} s — o teto é ${IARA_TETO_S.apresentacao} s`);
+  return { detail: `${t0.length} caracteres, ~${seg.toFixed(0)} s falados` };
+});
+
+t(S19, '19.13', 'O botão da Iara existe, é alcançável e NÃO usa onclick inline', () => {
+  const i = APP19.indexOf('class="nav-hud-header"');
+  const fim = APP19.indexOf('class="nav-hud-body"');
+  const barra = APP19.slice(i, fim);
+  const btn = /<button[^>]*id="iaraBtn"[^>]*>/.exec(barra);
+  ok(btn, 'o botão da Iara não está no cabeçalho da navegação');
+  ok(/class="nav-icon-btn/.test(btn[0]), 'não usa o alvo de 44 px do passadiço');
+  ok(/title="/.test(btn[0]), 'sem title');
+  ok(/aria-label="/.test(btn[0]), 'sem aria-label — quem usa leitor de tela fica sem saber do microfone');
+  /* CSP: o aviso 9.7 conta 58 atributos onclick=, e são eles que obrigam a
+     script-src a aceitar 'unsafe-inline'. Código novo não aumenta a dívida. */
+  ok(!/onclick=/.test(btn[0]), 'o botão novo usa onclick inline e piora a CSP');
+  ok(/addEventListener\('click'/.test(IARA19), 'a ligação por evento não existe');
+  ok(/stopPropagation/.test(IARA19),
+     'sem stopPropagation, perguntar à Iara RECOLHE o painel na cara do comandante');
+});
+
+t(S19, '19.14', 'A Iara nasce antes do mapa (a lição da prova 17.10)', () => {
+  /* O initMap() depende do Leaflet vindo de CDN; quando a CDN falha ele estoura
+     e leva embora o resto do DOMContentLoaded. Botão de microfone nascido morto
+     por causa de um mapa que não carregou é defeito que já aconteceu neste
+     arquivo, com outro botão. */
+  /* Comparar contra o PRIMEIRO 'initMap()' do arquivo casava com a DEFINIÇÃO
+     da função, lá em cima — a prova ficava verde com a ordem invertida. O que
+     importa é a ordem das CHAMADAS dentro do arranque, então recorta-se o
+     arranque primeiro. */
+  const bruto = APP19.slice(APP19.indexOf("pintarBotoesNav();   // reflete as preferências"));
+  /* E TIRA OS COMENTÁRIOS. Terceira vez nesta suíte que texto de comentário
+     entra numa varredura e responde por código: aqui era o MEU PRÓPRIO
+     comentário — "o initMap() depende do Leaflet" — que aparece antes da
+     chamada real e invertia a ordem medida. Varredura de código lê código. */
+  const arranque = bruto.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
+  ok(arranque.length > 100, 'bloco de arranque não encontrado');
+  const ini = arranque.indexOf('iaraInit()');
+  const mapa = arranque.indexOf('initMap()');
+  ok(ini >= 0, 'iaraInit() nunca é chamada no arranque');
+  ok(mapa >= 0, 'initMap() não foi encontrada no arranque');
+  ok(ini < mapa, 'a Iara é inicializada DEPOIS do mapa — some se a CDN do Leaflet falhar');
+});
+
+t(S19, '19.15', 'Estado do microfone por cor e moldura, nunca por transparência', () => {
+  /* Sob sol de passadiço, opacidade 0,4 e 1,0 são a mesma coisa. E aqui o custo
+     de errar é maior que num botão comum: "o microfone está aberto" não pode
+     ficar ambíguo. */
+  for (const cls of ['iara-off', 'iara-ouvindo', 'iara-processando', 'iara-respondendo', 'iara-muda']) {
+    const i = CSS19.indexOf('.nav-icon-btn.' + cls + ' {');
+    ok(i > 0, `falta a regra CSS de .${cls}`);
+    const bloco = CSS19.slice(i, CSS19.indexOf('}', i));
+    ok(/box-shadow:\s*inset/.test(bloco), `.${cls} não tem moldura própria`);
+    ok(/background:/.test(bloco), `.${cls} não tem fundo próprio`);
+    ok(!/opacity:/.test(bloco), `.${cls} sinaliza estado por transparência — some no sol`);
+  }
+  // Movimento só no OUVINDO: é o que o olho periférico capta sem a cabeça virar.
+  ok(/\.nav-icon-btn\.iara-ouvindo[^}]*animation:/.test(CSS19), 'o microfone aberto não pulsa');
+  ok(/prefers-reduced-motion[\s\S]{0,200}iara-ouvindo[^}]*animation:\s*none/.test(CSS19),
+     'ignora quem pediu menos movimento no sistema');
+});
+
+t(S19, '19.16', 'O relatório automático NÃO depende de ouvir — a regra estrutural', () => {
+  /* Verificado antes de escrever o módulo: falar usa vozes do APARELHO e
+     funciona offline; ouvir manda áudio à NUVEM e morre sem sinal. A 30 NM da
+     costa não há 4G. Logo o caminho da fala automática não pode encostar em
+     reconhecimento — e quando o reconhecimento falhar por rede, ela tem de
+     DIZER isso, não fingir que não entendeu. */
+  const iDizer = IARA19.indexOf('function iaraDizer');
+  const iEmitir = IARA19.indexOf('function iaraEmitir');
+  const iDrenar = IARA19.indexOf('function iaraDrenarFila');
+  ok(iDizer > 0 && iEmitir > 0 && iDrenar > 0, 'o caminho da fala automática não existe');
+  const caminho = [[iDizer, 'iaraDizer'], [iEmitir, 'iaraEmitir'], [iDrenar, 'iaraDrenarFila']];
+  for (const [ini, nome] of caminho) {
+    const corpo = IARA19.slice(ini, IARA19.indexOf('\n}', ini));
+    ok(!/SpeechRecognition|iaraRec|iaraOuvir/.test(corpo),
+       `${nome}() encosta em reconhecimento de voz — o relatório morreria offshore`);
+  }
+  // A falha de rede tem resposta honesta e nomeada, não um "não entendi".
+  ok(/'network'/.test(IARA19), 'a falha de rede do reconhecimento não é tratada por nome');
+  ok(/sem internet/i.test(IARA19), 'não avisa o comandante de que ficou sem ouvir por falta de sinal');
+  // E o microfone nunca fica aberto sozinho (Chromium 40324711 e bom senso).
+  ok(/continuous = false/.test(IARA19), 'o microfone poderia ficar aberto continuamente');
+});
+
 /* ═══ RELATÓRIO ═══ */
 const byStatus = s => results.filter(r=>r.status===s).length;
 const ICON = { PASS:'\x1b[32m✔\x1b[0m', FAIL:'\x1b[31m✘\x1b[0m', WARN:'\x1b[33m▲\x1b[0m' };

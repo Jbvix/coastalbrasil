@@ -11,6 +11,164 @@ executável.
 
 ```
 
+## v2.7.0 (20/09/2026) — A IARA NASCE · SPRINT 0 do assistente de voz
+
+Autor: Jossian Brito (Charlie Bravo)
+
+Primeiro sprint do assistente de viagem por voz. **Iara** — não um leitor de
+números, mas uma **consultora e especialista em navegação** que fala. Este
+sprint entrega a fundação: ela se apresenta, fala, mostra o próprio estado e
+obedece às regras de passadiço. Responder perguntas vem no Sprint 6.
+
+### A verificação que desenhou o módulo inteiro
+
+Antes de escrever uma linha, três coisas foram medidas — e uma inverteu a
+arquitetura:
+
+| | Tecnologia | Offshore, sem 4G |
+|---|---|---|
+| **Falar** (`SpeechSynthesis`) | vozes **no aparelho** | ✅ **funciona** |
+| **Ouvir** (`SpeechRecognition`) | áudio vai à **nuvem** | ❌ **morre** |
+
+Um rebocador a 30 NM da costa não tem sinal. Daí a regra estrutural, que é
+prova (19.16) e não intenção:
+
+> **Os relatórios automáticos JAMAIS dependem de reconhecimento de voz.**
+
+Offshore a Iara continua relatando; o que ela perde é a capacidade de ouvir — e
+nesse caso ela **diz isso**, em vez de fingir que não entendeu. Consequência
+concreta: `escolherVoz()` pontua `localService` com peso **+60**, acima do peso
+do gênero (+30). Entre uma voz feminina de nuvem que emudece no mar e uma voz
+comum que fala sempre, a escolha de bordo é a que continua falando.
+
+Também verificado: o Chromium **recusa** `continuous` no Android
+([40324711](https://issues.chromium.org/issues/40324711)). O microfone só ao
+toque do botão — que era o pedido de bordo — é o único caminho que funciona.
+Bom instinto de passadiço virou boa engenharia.
+
+E o Galaxy Tab S10 FE **não tem barômetro**. A tendência barométrica terá de
+vir do modelo, não do aparelho. Registrado em `docs/dados_embarcacao.md` antes
+que alguém desenhe o Sprint 5 contando com ela.
+
+### As seis regras de passadiço, em código
+
+Um assistente falante numa ponte é **risco de distração** e pode **mascarar o
+VHF e os alarmes**. Intenção escrita em comentário não sobrevive à terceira
+refatoração, então virou função pura com prova:
+
+| # | Regra | Prova |
+|---|---|---|
+| 1 | **Mudo é soberano** — cala até o crítico, e **descarta** em vez de guardar | 19.7 |
+| 2 | Não fala sobre alarme do app | 19.8 |
+| 3 | Não fala em manobra (crítico fura) | 19.8 |
+| 4 | Não interrompe a si mesma | 19.8 |
+| 5 | **Fala vencida não é dita** | 19.9 |
+| 6 | **Ela sugere, não manda** | 19.11 |
+
+A regra 1 descarta em vez de enfileirar de propósito: desmudar depois de uma
+hora não pode despejar doze relatórios velhos na cara de quem acabou de voltar
+à ponte.
+
+A regra 5 merece o nome que tem. **Relatório de posição guardado 20 minutos não
+é atrasado — é errado.** A 10 nós o barco andou 3,3 milhas desde que o texto foi
+escrito; dizer "faltam 4 milhas" quando faltam 0,7 é pior que ficar calado, é
+induzir a erro com a voz mansa de quem tem certeza. Toda fala nasce com prazo.
+
+A regra 6 existe porque **uma voz feminina, simpática e segura é muito
+convincente**. Se a Iara disser "reduza para 1.200 rotações", alguém reduz sem
+pensar — e ela não enxerga o tráfego, não sente o cabo, não sabe que o rebocado
+está guinando. Nenhuma fala dela usa imperativo sobre governo do navio; o verbo
+no imperativo fica para quem está no leme.
+
+### A apresentação, e o que ela é obrigada a dizer
+
+Falada uma vez, no **primeiro toque** do 🎙️ — e isso não é estilo: Android e
+iOS bloqueiam áudio sem gesto do usuário, então uma Iara que se apresentasse ao
+carregar a página simplesmente não sairia som nenhum.
+
+Três coisas obrigatórias, cada uma com prova (19.12): **quem ela é**
+(especialista, o que autoriza perguntas técnicas), **quem decide** ("quem decide
+é você", dito na primeira frase que ela diz na vida), e **o contrato do
+microfone** ("eu só escuto quando você me chama" — privacidade anunciada em voz
+alta vale mais que privacidade escrita em rodapé).
+
+A primeira versão levava **42 segundos falados**. Foi a própria prova que
+denunciou, e entrou um teto: 30 s para a apresentação, 15 s para relatório de
+rotina. Ninguém numa ponte quer parágrafo.
+
+### O ícone: quatro estados, três canais redundantes
+
+🎙️ fechado · 🔴 **ouvindo** · ⏳ processando · 🔊 falando · 🔕 muda.
+
+Cada estado tem **ícone, cor+moldura e `aria-label` próprios**, e a prova 19.5
+exige que nenhum canal colida entre estados — porque um deles vai falhar: o
+ícone some sob reflexo, a cor lava no sol, a moldura desaparece para quem tem
+daltonismo. Nada de transparência (lição da v2.3.3). Só o **ouvindo** anima: é
+o que o olho periférico capta sem a cabeça virar de quem está olhando o tráfego.
+
+### Como isto foi provado sem microfone nem alto-falante
+
+Esta bancada não tem nenhum dos dois, e `speechSynthesis` não existe nela. Mesma
+disciplina do `farolEarthSpec()`: **separa-se a decisão do efeito**. Que voz
+escolher, que estado mostrar, falar ou calar, o que descartar — tudo isso é
+regra e aritmética, provado aqui; ao navegador sobra emitir o som.
+
+**Suíte 19 (16 provas), validada por mutação: 12 defeitos deliberados, 12
+apanhados** — voz remota aceita, voz em inglês, crítico furando o mudo, a Iara
+se interrompendo, fala durante manobra, relatório vencido sendo dito, guinada
+deixando de calar, resposta no fim da fila, "quem decide é você" removido,
+estado por transparência, Iara nascendo depois do mapa, microfone contínuo.
+
+**Três das doze só foram apanhadas depois de consertar a própria prova** — e as
+três falhas eram da mesma família, que vale registrar:
+
+1. **19.11 varria comentários.** O regex de aspas engolia um trecho que ia do
+   código até dentro da lista `IARA_IMPERATIVOS_PROIBIDOS`, que naturalmente
+   contém "reduza". Ficava vermelha por motivo errado, que é tão ruim quanto
+   ficar verde por motivo errado.
+2. **19.6 usava a constante sob prova como entrada** (`IARA_ROT_LIMITE + 1`), de
+   modo que afrouxar o limiar para 999°/min passava despercebido: a entrada
+   andava junto com o defeito. Agora usa valor absoluto — 15°/min é manobra num
+   rebocador, ponto final.
+3. **19.14 comparava contra a definição de `initMap`,** não contra a chamada; e
+   depois de corrigida, passou a tropeçar no **meu próprio comentário
+   explicativo**, que cita `initMap()` antes da chamada real.
+
+Terceira vez na mesma suíte que texto de comentário respondeu por código.
+**Varredura de código lê código** — os comentários saem antes.
+
+### Dívida que para de crescer
+
+O aviso 9.7 conta 58 atributos `onclick=` no app, e são eles que obrigam a CSP
+a aceitar `'unsafe-inline'`. **O botão da Iara não tem `onclick`**: a ligação é
+por `addEventListener`, com `stopPropagation` (sem ele, perguntar à Iara
+recolheria o HUD na cara do comandante — defeito que a prova de fumaça pegou em
+navegador de verdade). Daqui em diante, código novo não aumenta a dívida.
+
+### Dado de bordo recebido
+
+`docs/dados_embarcacao.md`, novo: faixa de rotação do ASD 2810 informada por
+Charlie Bravo — **lenta 650 · cruzeiro 1250 · máxima 1800**. O cruzeiro está em
+**52% da faixa útil** acima da marcha lenta. Vai ancorar a curva do Sprint 4.
+
+### Números
+
+| | v2.6.0 | v2.7.0 |
+|---|---|---|
+| Provas do banco | 146 | **162** |
+| Passos da prova de fumaça | 46 | **55** |
+| Módulos | 8 | **9** (`iara.js`) |
+| `app.html` | 3.164 linhas | **3.177** (teto: 3.500) |
+
+### Ainda não entregue (Sprints 1 a 6)
+
+Relatórios automáticos, Open-Meteo, referência de porto/cidade, faixa econômica
+de RPM, ondas e GM pelos sensores, e a conversa livre. A Iara deste sprint fala,
+mostra o estado e **diz a verdade sobre o que ainda não sabe fazer** — botão que
+não faz nada confunde mais que botão nenhum; botão que diz a verdade, não.
+
+---
+
 ## v2.6.0 (10/09/2026) — OS FARÓIS SUBIRAM NO GLOBO
 
 Autor: Jossian Brito (Charlie Bravo)

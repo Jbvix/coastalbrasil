@@ -817,6 +817,57 @@
       box-shadow: inset 0 0 0 1.5px rgba(129, 199, 132, 0.75);
     }
 
+    /*
+    ════════════════════════════════════════════════════════════════════════
+    IARA — os quatro estados do microfone                            (v2.7.0)
+    ════════════════════════════════════════════════════════════════════════
+    "O microfone está aberto" é a última informação do mundo que pode ficar
+    ambígua numa ponte. Por isso cada estado tem TRÊS canais redundantes e
+    independentes — ícone, cor de fundo e moldura — porque um deles vai falhar:
+    o ícone some sob reflexo, a cor lava no sol, a moldura fica invisível para
+    quem tem daltonismo. Três canais, nenhum deles a transparência (lição da
+    v2.3.3: sob sol de passadiço, opacidade 0,4 e 1,0 são a mesma coisa).
+
+    OUVINDO é o único estado com animação, e de propósito: movimento é o que o
+    olho periférico capta sem que a cabeça vire. Quem está com os olhos no
+    tráfego precisa perceber que o microfone ficou aberto sem parar de olhar
+    para fora.
+    */
+    .nav-icon-btn.iara-off {
+      background: rgba(255, 255, 255, 0.06);
+      box-shadow: inset 0 0 0 1.5px rgba(179, 229, 252, 0.45);
+    }
+    .nav-icon-btn.iara-ouvindo {
+      background: rgba(244, 67, 54, 0.30);
+      box-shadow: inset 0 0 0 2px rgba(255, 82, 82, 0.95);
+      animation: iaraPulso 1.1s ease-in-out infinite;
+    }
+    .nav-icon-btn.iara-processando {
+      background: rgba(255, 193, 7, 0.24);
+      box-shadow: inset 0 0 0 2px rgba(255, 213, 79, 0.85);
+    }
+    .nav-icon-btn.iara-respondendo {
+      background: rgba(3, 169, 244, 0.30);
+      box-shadow: inset 0 0 0 2px rgba(129, 212, 250, 0.9);
+    }
+    /* Muda: cinza e dessaturada, como o 🔇 dos alertas — mesma gramática
+       visual, para não obrigar a aprender dois vocabulários de estado. */
+    .nav-icon-btn.iara-muda {
+      background: rgba(255, 255, 255, 0.06);
+      box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.35);
+      filter: grayscale(1);
+    }
+    @keyframes iaraPulso {
+      0%, 100% { box-shadow: inset 0 0 0 2px rgba(255, 82, 82, 0.95), 0 0 0 0 rgba(244, 67, 54, 0.55); }
+      50%      { box-shadow: inset 0 0 0 2px rgba(255, 82, 82, 0.95), 0 0 0 7px rgba(244, 67, 54, 0); }
+    }
+    /* Quem pediu menos movimento no sistema não perde a informação: o estado
+       continua legível pela cor e pela moldura, que nunca dependeram da
+       animação para existir. */
+    @media (prefers-reduced-motion: reduce) {
+      .nav-icon-btn.iara-ouvindo { animation: none; }
+    }
+
     .nav-hud-body {
       padding: 10px;
     }
