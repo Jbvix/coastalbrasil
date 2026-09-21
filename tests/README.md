@@ -46,9 +46,14 @@ v2.2.0 isso deixou de ser hipotético.
 
 `npm run smoke` abre o app de verdade e percorre o fluxo completo — configurar
 viagem, criar waypoints, apagar o primeiro, exportar GPX, gerar relatório — e
-falha se aparecer **um único** erro de console. São 70 passos.
+falha se aparecer **um único** erro de console. São 71 passos.
 
-Dois deles esperam **32 segundos de relógio** de propósito: o defeito que
+Um deles confere a **premissa** das provas do banner — o canal de telemetria
+é bloqueado de propósito (`routeWebSocket`), porque `route()` intercepta HTTP e
+o Realtime do Supabase é WebSocket. Sem esse bloqueio explícito, as provas só
+valiam na máquina de quem as escreveu.
+
+Outros dois esperam **32 segundos de relógio** de propósito: o defeito que
 guardam (a revalidação do espelho acusando o link de quem está em terra) só
 nasce aos 30 s. Encurtar o intervalo mediria um intervalo que não existe em
 produção — prova de corrida que não deixa a corrida acontecer não prova nada.

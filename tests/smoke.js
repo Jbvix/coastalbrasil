@@ -81,6 +81,37 @@ const srv = http.createServer((req, res) => {
     return route.continue();
   });
 
+  /* ═══════════════════════════════════════════════════════════════════════
+     O CANAL DE TELEMETRIA TAMBÉM PRECISA SER BLOQUEADO.          (v2.15.0)
+
+     `ctx.route()` intercepta HTTP. O Realtime do Supabase é WEBSOCKET, e
+     WebSocket o `route()` NÃO toca. Durante meses isso passou despercebido
+     porque a bancada de desenvolvimento não tem rota até o supabase.co: o
+     canal falhava sozinho, e as provas do banner davam certo por acidente
+     de ambiente, não por construção.
+
+     A primeira execução na integração contínua desmascarou: o runner tem
+     internet de verdade, o WebSocket ABRIU, e o aplicativo — corretamente —
+     passou a dizer "📡 Canal aberto. Aguardando a embarcação transmitir."
+     em vez de "servidor fora do ar". Duas provas caíram acusando o
+     aplicativo de um defeito que era premissa do teste.
+
+     Duas consequências, e a segunda é a que mais importa:
+
+       · a prova só valia na máquina de quem a escreveu — o pior tipo de
+         prova, porque parece verde e não mede nada em outro lugar;
+       · a fumaça abria uma ligação REAL com o Supabase de produção a
+         partir de um runner de pull request. Nada vazou (a chave é a
+         publishable e o token é falso), mas era dependência externa não
+         declarada dentro de um teste.
+
+     Agora o bloqueio é EXPLÍCITO e vale em qualquer máquina. Isto não
+     afrouxa nada: ao contrário, é o que faz a prova medir o mesmo cenário
+     — projeto Supabase suspenso — em toda parte.
+     ═══════════════════════════════════════════════════════════════════════ */
+  let wsBloqueados = 0;
+  await ctx.routeWebSocket(/.*/, ws => { wsBloqueados++; ws.close(); });
+
   const erros = [], falhas = [];
   const RUIDO = /Failed to load resource|ERR_FAILED|ERR_CONNECTION|net::/;
   page.on('console', m => { if (m.type() === 'error' && !RUIDO.test(m.text())) erros.push(m.text().slice(0, 200)); });
@@ -263,6 +294,17 @@ const srv = http.createServer((req, res) => {
     modo:   document.body.classList.contains('mirror-mode')
   }));
   ok('Modo espelho reconhece o token da URL', esp.modo && esp.token.includes('ab457fdc1428'), esp.token);
+  /* A PROVA CONFERE A PRÓPRIA PREMISSA.                              (v2.15.0)
+     As duas provas seguintes só fazem sentido com o backend inalcançável. Se
+     o canal abrir, elas acusam o aplicativo de um defeito que é do teste —
+     foi exatamente o que aconteceu na primeira execução na integração
+     contínua. Então a premissa deixa de ser suposição e passa a ser medida:
+     se nenhum WebSocket foi bloqueado, o cenário não é o que se pretendia e
+     é ISSO que precisa aparecer em vermelho, não o banner. */
+  ok('O canal de telemetria foi mesmo bloqueado (premissa das 2 provas seguintes)',
+     wsBloqueados > 0,
+     wsBloqueados > 0 ? `${wsBloqueados} WebSocket(s) bloqueado(s)`
+                      : 'NENHUM WebSocket interceptado — o cenário testado não é o pretendido');
   ok('Banner nomeia a causa em vez de "erro de conexão"',
      /servidor fora do ar|sem internet|reconectando/.test(esp.banner) && !/^erro de conexão$/.test(esp.banner),
      esp.banner);

@@ -109,6 +109,34 @@ A quarta é a armadilha da casa pela sexta vez. O comentário da emenda cita
 `error` e `supa.rpc` de propósito, para explicar; a prova recorta o texto com
 `semComentarios()` antes de varrer. **Varredura de código lê código.**
 
+### A prova que só valia na máquina de quem a escreveu
+
+A mesma execução do CI derrubou **outras duas** provas — e essas eram defeito
+**do teste**, não do aplicativo.
+
+`ctx.route()` do Playwright intercepta **HTTP**. O Realtime do Supabase é
+**WebSocket**, que o `route()` não toca. Nesta bancada o canal falhava sozinho
+por falta de rota até o `supabase.co`, e as provas do banner davam certo **por
+acidente de ambiente**. No runner, que tem internet de verdade, o WebSocket
+**abriu** — e o aplicativo, corretamente, passou a dizer *"📡 Canal aberto.
+Aguardando a embarcação transmitir."* em vez de *"servidor fora do ar"*.
+
+Duas consequências, e a segunda é a mais séria:
+
+- a prova **só valia numa máquina** — o pior tipo de prova, porque parece verde
+  e não mede nada em outro lugar;
+- a fumaça abria uma ligação **real com o Supabase de produção** a partir de um
+  runner de pull request. Nada vazou (a chave é a `publishable` e o token é
+  falso), mas era **dependência externa não declarada dentro de um teste**.
+
+Agora o bloqueio é explícito (`ctx.routeWebSocket`) e a prova **confere a
+própria premissa**: um passo novo exige que pelo menos um WebSocket tenha sido
+interceptado. Se o canal abrir, é **isso** que fica vermelho — não o banner.
+Uma prova que depende de uma condição sem conferi-la acusa o inocente.
+
+> Generalizando: **toda prova que depende do ambiente precisa declarar e medir
+> essa dependência.** Se não mede, não é prova — é coincidência com sorte.
+
 ### Também entregue direto para a `main`
 
 Este defeito estava **no ar em produção** (v2.5.0), com espelho ativo. A mesma
@@ -118,7 +146,7 @@ sentido a correção ficar refém do merge dos seis Sprints.
 | | v2.14.0 | v2.15.0 |
 |---|---:|---:|
 | Provas do banco | 258 | **259** |
-| Passos da fumaça | 68 | **70** |
+| Passos da fumaça | 68 | **71** |
 | Defeitos achados pelo CI | — | **1, em produção** |
 
 ---
