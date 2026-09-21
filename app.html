@@ -5,7 +5,7 @@
   COASTAL NAVIGATOR BRASIL — Sistema de Planejamento de Viagem Costeira
 ════════════════════════════════════════════════════════════════════════════════
 
-  Versão: 2.5.0
+  Versão: 2.5.1
   Autor: Jossian Brito (Charlie Bravo)
   LinkedIn: https://www.linkedin.com/in/jossianbrito/
   X: https://x.com/jossiancosta  ·  Medium: https://medium.com/@jossiancosta
@@ -44,7 +44,7 @@
   <meta name="keywords"
     content="navegação costeira, planejamento de viagem, faróis, Brasil, OpenSeaMap, GPX, rebocadores">
 
-  <title>Coastal Navigator Brasil v2.5.0 - Planejamento de Viagem</title>
+  <title>Coastal Navigator Brasil v2.5.1 - Planejamento de Viagem</title>
 
   <!-- Leaflet CSS -->
   <!-- Subresource Integrity: o navegador recusa o arquivo se o conteúdo servido
@@ -75,7 +75,7 @@
     <header class="app-header">
       <div class="header-content">
         <div class="logo">
-          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.5.0</span></h1>
+          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.5.1</span></h1>
         </div>
 
         <div class="controls">
@@ -2959,7 +2959,26 @@
       viewerRecheckTimer = setInterval(async () => {
         const supa = getSupa(); if (!supa) return;
         try {
-          const { data } = await supa.rpc('check_nav_share', { p_token: token });
+          /*
+          FALHA DE REDE NÃO É VEREDITO SOBRE O LINK.                 (v2.5.1)
+
+          `supa.rpc()` NÃO lança exceção quando a chamada falha: ela RESOLVE
+          com `{ data: null, error }` — a armadilha já documentada na §6.1 do
+          `docs/tecnica.md` e já guardada na revogação. Esta revalidação, que
+          roda a cada 30 s enquanto alguém acompanha em terra, era a cópia que
+          tinha perdido a guarda.
+
+          Sem `if (error) return`, 30 segundos de instabilidade faziam o
+          aplicativo declarar "❌ Link inválido" a quem estava com o link
+          CERTO — e o bloqueio é definitivo: `showMirrorBlocked()` limpa os
+          três temporizadores e derruba o canal, matando a reconexão
+          automática. O banner ao lado seguia dizendo "servidor fora do ar",
+          e o aplicativo se contradizia na mesma tela.
+
+          Só uma resposta BEM-SUCEDIDA e vazia significa link inválido.
+          */
+          const { data, error } = await supa.rpc('check_nav_share', { p_token: token });
+          if (error) return;
           if (!data || !data.length) return showMirrorBlocked('invalido');
           if (!data[0].valid) showMirrorBlocked(data[0].revoked ? 'revogado' : 'expirado');
         } catch (e) { /* ignora falha transitória */ }
@@ -3090,7 +3109,7 @@
       updateShareButtons();
 
       console.log('═══════════════════════════════════════════════════════════════');
-      console.log('  Coastal Navigator Brasil v2.5.0 - Inicializado ⚓');
+      console.log('  Coastal Navigator Brasil v2.5.1 - Inicializado ⚓');
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('Autor: Jossian Brito (Charlie Bravo)');
       console.log('58 Faróis curados carregados 💡 (52 DHN + 6 Validados)');
