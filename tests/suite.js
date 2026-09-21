@@ -903,6 +903,52 @@ t(S13, '13.12', 'Estado de registro sobrevive ao recarregar a página', () => {
   ok(/dbOk: !!x\.dbOk/.test(SRC), 'loadShares precisa restaurar o estado de registro');
   ok(/dbOk: !!s\.dbOk/.test(SRC), 'persistShares precisa gravar o estado de registro');
 });
+t(S13, '13.13', 'Falha de rede na revalidação NÃO acusa o link do observador', () => {
+  /*
+  O DEFEITO, e por que ele durou tanto.                             (v2.15.0)
+
+  `startViewerRecheck` roda a cada 30 s enquanto alguém acompanha em terra.
+  Ela lia só `data` e descartava `error`. Como `supa.rpc()` RESOLVE com
+  `{ data: null, error }` em vez de lançar (§6.1 do tecnica.md), qualquer
+  instabilidade de 30 segundos fazia o aplicativo declarar "Link inválido"
+  para quem estava com o link certo — e `showMirrorBlocked` é definitivo:
+  limpa os três temporizadores e derruba o canal, de modo que a reconexão
+  automática morria. Enquanto isso o banner ao lado dizia "servidor fora do
+  ar": o aplicativo se contradizia na mesma tela.
+
+  A lição já estava codificada na prova 13.11, para a revogação. O recheck
+  era a cópia que tinha perdido a guarda — o padrão clássico de consertar
+  onde doeu e não onde o defeito mora.
+
+  VARREDURA DE CÓDIGO LÊ CÓDIGO: o comentário da emenda cita `error` e
+  `supa.rpc` de propósito, para explicar. Sem recortar, esta prova ficaria
+  verde lendo a minha prosa.
+  */
+  const LIMPO = semComentarios(SRC);
+  const i = LIMPO.indexOf('function startViewerRecheck');
+  ok(i > 0, 'não há revalidação periódica do link');
+  const bloco = LIMPO.slice(i, i + 700);
+
+  ok(/const \{ data, error \} = await supa\.rpc\('check_nav_share'/.test(bloco),
+     'a revalidação não captura `error` — falha de rede vira "link inválido" ' +
+     'para quem está com o link certo, e a reconexão morre junto');
+
+  /* A ordem importa: a guarda tem de vir ANTES de olhar `data`, senão
+     `data` nulo já decidiu o bloqueio antes de alguém perguntar por quê. */
+  const posErro = bloco.indexOf('if (error) return');
+  const posData = bloco.indexOf('if (!data || !data.length)');
+  ok(posErro > 0, 'sem guarda de erro na revalidação');
+  ok(posData > 0, 'a revalidação não trata resposta vazia');
+  ok(posErro < posData, 'a guarda de erro vem DEPOIS de decidir por `data` — não guarda nada');
+
+  /* E o bloqueio continua existindo para o caso legítimo: servidor respondeu,
+     e respondeu que o link não vale. Uma "correção" que nunca mais bloqueia
+     seria trocar um defeito por outro — link revogado seguiria funcionando. */
+  ok(/showMirrorBlocked\('invalido'\)/.test(bloco),
+     'resposta bem-sucedida e vazia precisa continuar bloqueando');
+  ok(/revoked \? 'revogado' : 'expirado'/.test(bloco),
+     'link revogado ou expirado precisa continuar bloqueando');
+});
 
 
 

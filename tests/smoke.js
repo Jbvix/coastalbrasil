@@ -295,6 +295,44 @@ const srv = http.createServer((req, res) => {
   ok('Texto do canal não vira marcação', relEsp.existe && !relEsp.temTag,
      relEsp.temTag ? 'a <img> foi interpretada — injeção' : 'escapado');
 
+  /* ═══════════════════════════════════════════════════════════════════════
+     O ESPELHO SOBREVIVE À REVALIDAÇÃO DOS 30 s.                  (v2.15.0)
+
+     Este passo custa ~32 segundos de relógio, e o custo é deliberado.
+
+     O defeito que ele guarda não existe no primeiro segundo: ele NASCE aos
+     30, quando `startViewerRecheck` dispara pela primeira vez. Com o backend
+     inalcançável, a revalidação lia só `data` — e `supa.rpc()` resolve com
+     `{ data: null, error }` em vez de lançar — e concluía "link inválido"
+     para quem estava com o link CERTO. O bloqueio é definitivo: mata os três
+     temporizadores e derruba o canal, então a reconexão automática morria.
+
+     Por que passou despercebido até a v2.14.0: esta bancada media o painel
+     ANTES dos 30 s. Quem o pegou foi o runner da integração contínua, mais
+     lento, que cruzou a marca na PRIMEIRA execução do workflow novo.
+
+     É exatamente por isso que o passo espera o relógio de verdade em vez de
+     encurtar o intervalo para testar depressa: encurtar mediria um intervalo
+     que não existe em produção. O defeito era de CORRIDA, e prova de corrida
+     que não deixa a corrida acontecer não prova nada.
+     ═══════════════════════════════════════════════════════════════════════ */
+  await espelho.waitForTimeout(32000);
+  const pos30 = await espelho.evaluate(() => ({
+    hudAtivo:  document.getElementById('navHud').classList.contains('active'),
+    bloqueado: document.getElementById('mirrorBlocked').classList.contains('active'),
+    titulo:    (document.getElementById('mbTitle') || {}).textContent || '',
+    banner:    (document.getElementById('mirrorBannerStatus') || {}).textContent || ''
+  }));
+  ok('Revalidação dos 30 s não acusa o link de quem está em terra',
+     !pos30.bloqueado && pos30.hudAtivo,
+     pos30.bloqueado ? `acusou "${pos30.titulo}" enquanto o banner dizia "${pos30.banner}"`
+                     : 'painel de pé após a revalidação');
+  /* E a contradição na mesma tela, que era o sintoma mais revelador: o banner
+     dizendo "servidor fora do ar" e a página dizendo que o link estava errado. */
+  ok('O espelho não se contradiz na mesma tela',
+     !(pos30.bloqueado && /servidor fora do ar|sem internet|reconectando/.test(pos30.banner)),
+     pos30.bloqueado ? 'banner culpa o servidor, tela culpa o link' : 'coerente');
+
   /* A CONVERSA NO NAVEGADOR.                                       (v2.13.0)
      O banco de provas mede a gramática contra os dois corpora. O que só o
      navegador diz é se o caminho do microfone até a resposta está ligado —

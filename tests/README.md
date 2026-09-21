@@ -4,7 +4,7 @@
 npm test
 ```
 
-258 provas em 26 suítes, executadas sobre as **funções reais** extraídas do
+259 provas em 26 suítes, executadas sobre as **funções reais** extraídas do
 `app.html` e dos módulos por contagem de chaves — não sobre uma
 reimplementação. Sem dependências: Node puro.
 
@@ -46,7 +46,12 @@ v2.2.0 isso deixou de ser hipotético.
 
 `npm run smoke` abre o app de verdade e percorre o fluxo completo — configurar
 viagem, criar waypoints, apagar o primeiro, exportar GPX, gerar relatório — e
-falha se aparecer **um único** erro de console. São 68 passos.
+falha se aparecer **um único** erro de console. São 70 passos.
+
+Dois deles esperam **32 segundos de relógio** de propósito: o defeito que
+guardam (a revalidação do espelho acusando o link de quem está em terra) só
+nasce aos 30 s. Encurtar o intervalo mediria um intervalo que não existe em
+produção — prova de corrida que não deixa a corrida acontecer não prova nada.
 
 **Sem saída para a internet?** Coloque `leaflet.js`, `leaflet.css` e
 `supabase.js` em `tests/fixtures/` e eles serão servidos no lugar das CDNs.

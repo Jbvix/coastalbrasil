@@ -11,6 +11,118 @@ executável.
 
 ```
 
+## v2.15.0 (21/09/2026) — O ESPELHO PARA DE ACUSAR O LINK DE QUEM ESTÁ EM TERRA
+
+Autor: Jossian Brito (Charlie Bravo)
+
+**O CI da v2.14.0 encontrou um defeito real na primeira execução.** Não um
+defeito novo: um defeito que estava em produção desde a v2.3.x, que sobreviveu
+a 253 provas e a 68 passos de fumaça rodados à mão, e que nenhuma delas podia
+pegar — porque só aparece depois de **30 segundos**.
+
+### O que acontecia
+
+`startViewerRecheck()` revalida o link a cada 30 s enquanto alguém acompanha a
+viagem em terra. Ela lia só `data` e **descartava `error`**:
+
+```js
+const { data } = await supa.rpc('check_nav_share', { p_token: token });
+if (!data || !data.length) return showMirrorBlocked('invalido');
+```
+
+E `supa.rpc()` **não lança exceção** quando a chamada falha — ela RESOLVE com
+`{ data: null, error }`. É a armadilha já documentada em `docs/tecnica.md` §6.1
+e já guardada na revogação pela prova 13.11. O recheck era a cópia que tinha
+perdido a guarda: consertaram onde doeu, não onde o defeito morava.
+
+Sonda no navegador, com o backend inalcançável:
+
+```
+t= 5s  HUD ativo: SIM  bloqueado: não   banner: "servidor fora do ar · nova tentativa em …"
+t=15s  HUD ativo: SIM  bloqueado: não   banner: "servidor fora do ar · nova tentativa em …"
+t=25s  HUD ativo: SIM  bloqueado: não   banner: "servidor fora do ar · nova tentativa em …"
+t=32s  HUD ativo: NÃO  bloqueado: SIM   "❌ Link inválido"
+```
+
+### A consequência a bordo
+
+Quem estava em terra, **com o link certo**, perdia a tela aos 30 segundos de
+instabilidade — ou com o projeto Supabase dormindo, como em 07/09 — e lia que
+o **link dele** era inválido.
+
+Pior: `showMirrorBlocked()` é definitivo. Limpa `mirrorRetryTimer`,
+`mirrorCountdownTimer`, `mirrorStaleTimer` e derruba o canal. **A reconexão
+automática morria**, e só voltava recarregando a página. Enquanto isso o banner
+ao lado continuava dizendo "servidor fora do ar": o aplicativo **se contradizia
+na mesma tela**.
+
+> É a regressão do princípio da §6.2 — *"erro de conexão" não é diagnóstico*.
+> Aqui era pior que não-diagnóstico: era diagnóstico **errado**, que manda a
+> pessoa conferir um link que está perfeito enquanto o navio segue transmitindo.
+
+### A emenda
+
+```js
+const { data, error } = await supa.rpc('check_nav_share', { p_token: token });
+if (error) return;                 // falha de rede não é veredito sobre o link
+if (!data || !data.length) return showMirrorBlocked('invalido');
+```
+
+Só uma resposta **bem-sucedida e vazia** significa link inválido. Falha de
+transporte é transitória, e a máquina de reconexão já sabia tratá-la.
+
+Comportamento por retorno:
+
+| Retorno | Decisão |
+|---|---|
+| `{ error: <qualquer> }` | não decide, espera a próxima revalidação |
+| `{ data: null }` sem erro | link inválido |
+| `{ data: [] }` sem erro | link inválido |
+| `{ data: [{valid:true}] }` | segue |
+| `{ data: [{valid:false, revoked:true}] }` | revogado |
+| `{ data: [{valid:false, revoked:false}] }` | expirado |
+
+### Por que o passo de fumaça custa 32 segundos, e por que vale
+
+O defeito **não existe no primeiro segundo — nasce aos 30**. Esta bancada media
+o painel antes disso; o runner da integração contínua, mais lento, cruzou a
+marca. Foi ele quem pegou.
+
+O passo novo espera o **relógio de verdade** em vez de encurtar o intervalo
+para testar depressa. Encurtar mediria um intervalo que não existe em produção:
+prova de corrida que não deixa a corrida acontecer não prova nada.
+
+### Quatro mutações, quatro acusações
+
+| Mutação | Acusou |
+|---|---|
+| A guarda de erro some (o defeito original) | 13.13 **e** os 2 passos de fumaça |
+| A guarda existe, mas DEPOIS de decidir por `data` | 13.13 |
+| "Correção" preguiçosa: nunca mais bloqueia nada | 13.13 |
+| A guarda existe **só dentro do comentário** | 13.13 |
+
+A terceira é a que mais importa: uma emenda que simplesmente parasse de
+bloquear trocaria um defeito por outro — **link revogado continuaria
+funcionando**. A prova exige que o bloqueio legítimo continue de pé.
+
+A quarta é a armadilha da casa pela sexta vez. O comentário da emenda cita
+`error` e `supa.rpc` de propósito, para explicar; a prova recorta o texto com
+`semComentarios()` antes de varrer. **Varredura de código lê código.**
+
+### Também entregue direto para a `main`
+
+Este defeito estava **no ar em produção** (v2.5.0), com espelho ativo. A mesma
+emenda foi para a `main` num pull request próprio e mínimo, porque não fazia
+sentido a correção ficar refém do merge dos seis Sprints.
+
+| | v2.14.0 | v2.15.0 |
+|---|---:|---:|
+| Provas do banco | 258 | **259** |
+| Passos da fumaça | 68 | **70** |
+| Defeitos achados pelo CI | — | **1, em produção** |
+
+---
+
 ## v2.14.0 (21/09/2026) — AS PROVAS DEIXAM DE DEPENDER DE MEMÓRIA HUMANA
 
 Autor: Jossian Brito (Charlie Bravo)

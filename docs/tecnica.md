@@ -302,6 +302,42 @@ s.dbOk = !error;
 
 E jamais marcar como sincronizado **antes** de chamar.
 
+### 6.1.1 A guarda que faltou na revalidação  (v2.15.0)
+
+A lição da §6.1 foi aplicada onde o defeito doeu — a validação inicial
+(`validateAndStartViewer`, `if (error) throw error;`) e a revogação (prova
+13.11) — e **não** onde o mesmo defeito também morava: `startViewerRecheck()`,
+que revalida o link a cada 30 s enquanto alguém acompanha em terra.
+
+```js
+const { data } = await supa.rpc('check_nav_share', { p_token: token });   // ERRADO
+if (!data || !data.length) return showMirrorBlocked('invalido');
+```
+
+Como `supa.rpc()` resolve com `{ data: null, error }` em vez de lançar,
+**qualquer falha de rede virava veredito sobre o link**: o observador com o
+link certo lia "❌ Link inválido", e `showMirrorBlocked()` — que é definitivo —
+limpava os três temporizadores e derrubava o canal, matando a reconexão
+automática. O banner ao lado seguia dizendo "servidor fora do ar": o
+aplicativo se contradizia na mesma tela.
+
+```js
+const { data, error } = await supa.rpc('check_nav_share', { p_token: token });
+if (error) return;                 // falha de rede não é veredito sobre o link
+if (!data || !data.length) return showMirrorBlocked('invalido');
+```
+
+**Como foi encontrado.** Pela integração contínua da v2.14.0, na primeira
+execução. O defeito nasce aos 30 s e esta bancada media antes disso; o runner,
+mais lento, cruzou a marca. Nenhuma das 253 provas nem dos 68 passos de fumaça
+anteriores podia pegá-lo, porque todos rodavam numa única máquina com um único
+relógio.
+
+A generalização vale mais que o conserto: **consertar onde dói e não onde o
+defeito mora deixa cópias vivas**. Ao aplicar uma lição destas, procure as
+outras chamadas do mesmo padrão — aqui eram três, e só duas tinham sido
+tratadas.
+
 ### 6.2 "Erro de conexão" não é diagnóstico
 
 Três causas, três donos:

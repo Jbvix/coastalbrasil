@@ -5,7 +5,7 @@
   COASTAL NAVIGATOR BRASIL — Sistema de Planejamento de Viagem Costeira
 ════════════════════════════════════════════════════════════════════════════════
 
-  Versão: 2.14.0
+  Versão: 2.15.0
   Autor: Jossian Brito (Charlie Bravo)
   LinkedIn: https://www.linkedin.com/in/jossianbrito/
   X: https://x.com/jossiancosta  ·  Medium: https://medium.com/@jossiancosta
@@ -44,7 +44,7 @@
   <meta name="keywords"
     content="navegação costeira, planejamento de viagem, faróis, Brasil, OpenSeaMap, GPX, rebocadores">
 
-  <title>Coastal Navigator Brasil v2.14.0 - Planejamento de Viagem</title>
+  <title>Coastal Navigator Brasil v2.15.0 - Planejamento de Viagem</title>
 
   <!-- Leaflet CSS -->
   <!-- Subresource Integrity: o navegador recusa o arquivo se o conteúdo servido
@@ -75,7 +75,7 @@
     <header class="app-header">
       <div class="header-content">
         <div class="logo">
-          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.14.0</span></h1>
+          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.15.0</span></h1>
         </div>
 
         <div class="controls">
@@ -3050,7 +3050,40 @@
       viewerRecheckTimer = setInterval(async () => {
         const supa = getSupa(); if (!supa) return;
         try {
-          const { data } = await supa.rpc('check_nav_share', { p_token: token });
+          /*
+          FALHA DE REDE NÃO É VEREDITO SOBRE O LINK.                (v2.15.0)
+
+          Esta revalidação roda a cada 30 s enquanto alguém acompanha em terra.
+          Antes ela lia só `data` e descartava `error` — e `supa.rpc()` NÃO
+          lança exceção quando a chamada falha: ela RESOLVE com
+          `{ data: null, error }`. É a mesma armadilha já documentada em
+          `docs/tecnica.md` §6.1 e já guardada na revogação (prova 13.11); o
+          recheck era a cópia que tinha perdido a guarda.
+
+          Sem esta linha, 30 segundos de instabilidade — ou o projeto Supabase
+          dormindo, como em 07/09 — faziam o aplicativo declarar
+          "❌ Link inválido" a quem estava com o link CERTO. Pior: o bloqueio é
+          definitivo (showMirrorBlocked limpa os três temporizadores e derruba
+          o canal), então a reconexão automática morria e só voltava
+          recarregando a página. O banner, ao lado, continuava dizendo
+          "servidor fora do ar" — o aplicativo se contradizia na mesma tela.
+
+          Encontrado pela integração contínua da v2.14.0 na PRIMEIRA execução:
+          o runner é mais lento que a bancada e cruzou os 30 s, que aqui
+          passavam despercebidos.
+
+          Comportamento por retorno:
+            · { error: <qualquer> }        → não decide nada, espera o próximo
+            · { data: null }   sem error   → link inválido (servidor respondeu vazio)
+            · { data: [] }     sem error   → link inválido
+            · { data: [{valid:true}] }     → segue
+            · { data: [{valid:false, revoked:true}] }  → revogado
+            · { data: [{valid:false, revoked:false}] } → expirado
+
+          Só uma resposta BEM-SUCEDIDA e vazia significa link inválido.
+          */
+          const { data, error } = await supa.rpc('check_nav_share', { p_token: token });
+          if (error) return;
           if (!data || !data.length) return showMirrorBlocked('invalido');
           if (!data[0].valid) showMirrorBlocked(data[0].revoked ? 'revogado' : 'expirado');
         } catch (e) { /* ignora falha transitória */ }
@@ -3218,7 +3251,7 @@
       updateShareButtons();
 
       console.log('═══════════════════════════════════════════════════════════════');
-      console.log('  Coastal Navigator Brasil v2.14.0 - Inicializado ⚓');
+      console.log('  Coastal Navigator Brasil v2.15.0 - Inicializado ⚓');
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('Autor: Jossian Brito (Charlie Bravo)');
       console.log('58 Faróis curados carregados 💡 (52 DHN + 6 Validados)');
