@@ -524,10 +524,18 @@ A gramática de intenções entra no Sprint 6; a moldura já está pronta para e
 function iaraResponder(transcricao) {
   iaraMudarEstado('processando');
   const t = String(transcricao || '').trim();
+  /*
+  A GRAMÁTICA DE INTENÇÕES ASSUMIU AQUI.                            (v2.13.0)
+
+  Até a v2.12 esta função repetia o que ouviu e admitia que ainda não sabia
+  responder — que era a verdade daquele momento e valia mais que fingir. Agora
+  ela encaminha para conversa.js, que reconhece a intenção e monta a resposta
+  a partir do MESMO estado que alimenta o relatório horário. Resposta e
+  relatório saírem da mesma fonte é o que impede a Iara de se contradizer.
+  */
+  if (typeof conversar === 'function') { conversar(t); return; }
   if (!t) { iaraMudarEstado('off'); return; }
-  iaraDizer(`Ouvi você dizer: ${t}. Ainda tô aprendendo a responder perguntas — ` +
-            `por enquanto eu cuido dos relatórios de hora em hora e dos waypoints. ` +
-            `Logo, logo a gente conversa de verdade!`, 'resposta');
+  iaraDizer('Não consegui processar sua pergunta agora.', 'resposta');
 }
 
 /* Apresentação — uma vez só, e com jeito de voltar a ouvir se quiser. */

@@ -19,7 +19,8 @@ const MODULOS = ['assets/js/lighthouses.js', 'assets/js/coastline.js',
                  'assets/js/report.js', 'assets/js/mirror.js',
                  'assets/js/ship3d.js', 'assets/js/iara.js',
                  'assets/js/relatorio_voz.js', 'assets/js/tempo.js',
-                 'assets/js/consumo.js', 'assets/js/ondas.js'];
+                 'assets/js/consumo.js', 'assets/js/ondas.js',
+                 'assets/js/conversa.js'];
 const SRC = [path.join(ROOT, 'app.html'), ...MODULOS.map(m => path.join(ROOT, m))]
   .map(f => fs.readFileSync(f, 'utf8')).join('\n');
 module.exports = module.exports || {};
@@ -121,6 +122,11 @@ const FNS = ['calculateDistance','calculateBearing','eyeHeight','calculateVisibi
              'confiabilidadeDaOnda','coeficienteC','gmDoPeriodo',
              'periodoDeBalanco','periodoDeEncontro','alertaDeRessonancia',
              'qualidadeDoBalanco','recortePotenciaDe2',
+             // Sprint 6a: a gramática. Determinística e auditável — e por isso
+             // provável contra um corpus de frases reais de passadiço.
+             'normalizar','reconhecerIntencao','responder','respostaDeFalha',
+             '_semDado','_estado','_nomeAmigavel','conversar',
+             'textoDeAjuda',
              'aceleracaoVerticalDoModulo','alimentarSensorDeMar','tendenciaDoGm','estadoDoMarMedido','cascoAtual'];
 
 const sandboxSrc = extractLighthouses() + '\n' +
@@ -186,6 +192,13 @@ const sandboxSrc = extractLighthouses() + '\n' +
   extractDecl('ONDA_MIN_JANELA') + '\n' +
   extractDecl('ONDA_GM_QUEDA_ALERTA') + '\n' +
   extractDecl('ONDA_TE_MAX') + '\n' +
+  extractDecl('INTENCOES') + '\n' +
+  extractDecl('CONVERSA_LIMIAR') + '\n' +
+  extractDecl('CONVERSA_MARGEM') + '\n' +
+  extractDecl('CONVERSA_NOMES') + '\n' +
+  extractDecl('CONVERSA_CONTRACOES') + '\n' +
+  extractDecl('INTENCOES_PRONTAS') + '\n' +
+  'let relUltimoTexto = "";\n' +
   // As variáveis de estado do coletor de mar. Sem elas a caixa de areia não
   // consegue simular 17 minutos de sensor, que é a única prova de ponta a
   // ponta possível sem ir ao mar.
@@ -200,9 +213,9 @@ const sandboxSrc = extractLighthouses() + '\n' +
   'const RESYNC_NM = ' + (SRC.match(/const RESYNC_NM = (\\d+)/) || [,'10'])[1] + ';\n' +
   FNS.map(extractFn).join('\n\n') + '\n' +
   'module.exports = { lighthouses, COSTA_BRASIL, DEFAULT_EYE_HEIGHT_M, RESYNC_NM,\n'
-  + '  IARA_NOME, IARA_PRIORIDADE, IARA_VALIDADE_MS, IARA_ROT_LIMITE, IARA_IMPERATIVOS_PROIBIDOS, IARA_TETO_S, REFERENCIAS_TERRA, REF_MESMO_LUGAR_NM, REF_ALCANCE_MAX_NM, MOTOR_PADRAO,\n'
+  + '  IARA_NOME, IARA_PRIORIDADE, IARA_VALIDADE_MS, IARA_ROT_LIMITE, IARA_PRIORIDADE, IARA_IMPERATIVOS_PROIBIDOS, IARA_TETO_S, REFERENCIAS_TERRA, REF_MESMO_LUGAR_NM, REF_ALCANCE_MAX_NM, MOTOR_PADRAO,\n'
   + '  CONSUMO_MCR_BAIXA, CONSUMO_TOLERANCIA, REL_RPM_ECONOMIA_PCT,\n'
-  + '  ONDA_F_MIN, ONDA_F_MAX, ONDA_G, ONDA_RESSONANCIA_TOL, ONDA_BALANCO_MIN_GRAUS, ONDA_TAXA_HZ, ONDA_JANELA, ONDA_MIN_JANELA, ONDA_GM_QUEDA_ALERTA, ONDA_TE_MAX, CONSUMO_CARGA_DESVIO, CONSUMO_MIN_AMOSTRAS, CONSUMO_MIN_ESPALHAMENTO_RPM,\n'
+  + '  ONDA_F_MIN, ONDA_F_MAX, ONDA_G, ONDA_RESSONANCIA_TOL, ONDA_BALANCO_MIN_GRAUS, ONDA_TAXA_HZ, ONDA_JANELA, ONDA_MIN_JANELA, ONDA_GM_QUEDA_ALERTA, ONDA_TE_MAX, INTENCOES, CONVERSA_LIMIAR, CONVERSA_MARGEM, CONSUMO_CARGA_DESVIO, CONSUMO_MIN_AMOSTRAS, CONSUMO_MIN_ESPALHAMENTO_RPM,\n'
   + '  REL_XTE_MENCIONA_NM, REL_XTE_PREOCUPA_NM, REL_COMBUSTIVEL_A_CADA, REL_TETO_S, REL_PRIORIDADE,\n'
   + '  TEMPO_FRESCO_MIN, TEMPO_VELHO_MIN, TEMPO_RAJADA_DELTA, TEMPO_MAR_NM, TEMPO_CORRENTE_NOS,\n'
   + '  setTrip: t => { tripData = t; },\n'

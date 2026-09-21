@@ -295,6 +295,27 @@ const srv = http.createServer((req, res) => {
   ok('Texto do canal não vira marcação', relEsp.existe && !relEsp.temTag,
      relEsp.temTag ? 'a <img> foi interpretada — injeção' : 'escapado');
 
+  /* A CONVERSA NO NAVEGADOR.                                       (v2.13.0)
+     O banco de provas mede a gramática contra os dois corpora. O que só o
+     navegador diz é se o caminho do microfone até a resposta está ligado —
+     iaraResponder -> conversar -> fila da Iara. */
+  const conv = await page.evaluate(() => {
+    const saidas = [];
+    // Intercepta a fala para ver o que ela DIRIA, sem alto-falante.
+    const orig = window.iaraDizer;
+    window.iaraDizer = (t, p) => { saidas.push({ t, p }); };
+    ['quanto falta', 'como tá o tempo', 'me fala uma piada'].forEach(q => iaraResponder(q));
+    window.iaraDizer = orig;
+    return saidas;
+  });
+  ok('O microfone chega à gramática e volta com resposta', conv.length === 3,
+     `${conv.length} resposta(s) de 3 perguntas`);
+  ok('Resposta entra na fila com prioridade de resposta',
+     conv.every(x => x.p === 'resposta'), conv.map(x => x.p).join(','));
+  ok('Pergunta fora do escopo é recusada, não improvisada',
+     /não sei responder/i.test(conv[2] ? conv[2].t : ''),
+     (conv[2] ? conv[2].t : '').slice(0, 70));
+
   /* SENSORES DE MAR NO NAVEGADOR.                                  (v2.12.0)
      O banco de provas mede o espectro contra mar sintetizado. O que só o
      navegador diz é se o `devicemotion` é escutado de verdade e se a linha do

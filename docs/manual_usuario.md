@@ -739,13 +739,81 @@ estica: a 10 nós numa onda de 8 s, o encontro vai a **13,6 segundos**.
 Os dois falam com **prioridade de segurança** — à frente de qualquer conselho
 de economia, e sem esperar a vez.
 
-### 9.8 O que ela ainda NÃO faz
+### 9.7.12 🎤 Agora ela responde
 
-A v2.12.0 entregou o **Sprint 5**: ondas, GM e ressonância pelos sensores.
+Toque no 🎙️, faça a pergunta, solte. Ela entende **20 assuntos**:
 
-Falta o último: a **conversa livre**, em que ela passa a responder perguntas.
-Até lá, se o senhor perguntar alguma coisa, ela repete o que ouviu e admite que
-ainda está aprendendo.
+| Pergunte | Ela responde |
+|---|---|
+| *"quanto falta"* | distância e hora de chegada |
+| *"onde a gente tá"* | posição e a referência de terra |
+| *"tô no rumo?"* | o desvio, e se ele é ruído de GPS ou não |
+| *"como tá o tempo"* · *"qual o vento"* · *"como tá o mar"* | do modelo e dos sensores |
+| *"a corrente tá contra?"* | direção, força e efeito no seu avanço |
+| *"quanto a gente gastou"* | consumido, saldo e se fecha a rota |
+| *"dá pra economizar?"* | a rotação econômica, com o custo em tempo |
+| *"como tá o motor"* | carga lida contra a esperada |
+| *"que farol é aquele"* | nome, característica e se está no alcance |
+| *"como tá o balanço"* · *"qual o GM"* | amplitude, período e estabilidade |
+| *"repete"* | o último relatório |
+| *"o que você sabe fazer"* | a lista inteira |
+
+Fala como se fala na ponte: *"tá"*, *"tô"*, *"pra"* — tudo entendido.
+
+#### Ela prefere calar a chutar
+
+Se não entender, **diz**. E diz de três formas diferentes, porque são três
+situações diferentes:
+
+> *"Não consegui ouvir nada. Tenta de novo?"* — o microfone abriu e não veio nada
+> *"Não sei se você quer saber o vento ou o mar. Pode repetir?"* — ficou ambíguo
+> *"Essa eu não sei responder"* + a lista — está fora do que ela sabe
+
+**Perguntas fora do escopo ela recusa**, em vez de improvisar. Preço do diesel,
+previsão para depois de amanhã, quem ganhou o jogo — nada disso. Ela responde
+sobre **a sua viagem**, e só.
+
+#### Por que não é "inteligência artificial que responde qualquer coisa"
+
+Essa foi a única parte da sua especificação em que eu discordei, e mantive a
+discordância. O motivo:
+
+> **Numa ponte, um assistente limitado que está sempre certo vale mais que um
+> ilimitado que às vezes erra com confiança.**
+
+Um modelo de linguagem na nuvem responderia qualquer coisa — e às três da manhã,
+a 40 milhas da costa, responderia **nada**, porque não há sinal. Pior: poderia
+responder algo plausível e **errado** sobre a sua viagem. E a voz dela é
+convincente; quem está de quarto há seis horas não confere.
+
+O que existe aqui é **gramática**: determinística (a mesma pergunta dá sempre a
+mesma resposta), **auditável** (dá para ler a lista inteira do que ela sabe) e
+**de custo zero**. Nenhuma chave, nenhuma conta, nenhuma chamada.
+
+### 9.8 O que ela ainda NÃO faz — e o que ficou proposto
+
+Os seis sprints estão entregues. O que existe de fora do plano original:
+
+**Conversa aberta por modelo de linguagem.** Ficou como proposta, não como
+falta. Ela exige três decisões que são suas, não minhas: uma **chave de API**,
+um **custo por pergunta** e um **servidor** para guardar a chave. E resolve um
+problema que só existe no porto, com sinal — que é onde o senhor pode
+simplesmente olhar a tela. Se um dia entrar, entra **desligada por padrão** e
+claramente marcada como "modo conversa".
+
+**Os 13 portos que faltam na base de referências** (Suape, Itaqui, Sepetiba,
+São Sebastião, Angra, Itajaí e outros). Não inventei coordenada; a emenda está
+pronta em `tools/terra/gerar_referencias.mjs`, esperando as posições e a
+procedência delas.
+
+**Direção da onda pelos sensores.** O acelerômetro vertical não sabe de onde a
+onda vem — para isso seria preciso o par de inclinações, e a fusão de atitude
+do aplicativo não é boa o bastante para bancar essa afirmação. A direção
+continua vindo do modelo.
+
+A v2.13.0 entregou o **Sprint 6a**: a conversa.
+
+
 
 > Se você tinha lido aqui que viria "cidade, **abrigo** e farol": a palavra
 > *abrigo* saiu, e saiu por decisão técnica. Ver §9.7.6 — o aplicativo não tem

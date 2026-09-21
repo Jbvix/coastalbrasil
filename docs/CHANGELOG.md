@@ -11,6 +11,147 @@ executável.
 
 ```
 
+## v2.13.0 (21/09/2026) — A IARA PASSA A RESPONDER · SPRINT 6a
+
+Autor: Jossian Brito (Charlie Bravo)
+
+A conversa. Gramática de intenções **local, determinística e auditável** — não
+um modelo de linguagem, e a discordância registrada na proposta continua
+valendo:
+
+> **Numa ponte, um assistente limitado que está sempre certo vale mais que um
+> ilimitado que às vezes erra com confiança.**
+
+Um modelo na nuvem responde qualquer coisa — e às três da manhã, a 40 milhas
+da costa, responde exatamente **nada**, porque não há sinal. Pior: pode
+responder algo plausível e errado sobre a viagem, e uma voz feminina, simpática
+e segura é muito convincente. Quem está de quarto há seis horas não confere.
+
+**20 intenções, 145 gatilhos**, custo zero, nenhuma chave, nenhuma conta — e
+quando não entende, **diz que não entendeu**.
+
+### Como se prova uma gramática: com dois corpora
+
+**O corpus.** Cada intenção declara frases **como se fala numa ponte**, e cada
+uma é exigida a rotear certo. Não é documentação: é a prova.
+
+**O contra-corpus.** Doze perguntas que ela **não deve** responder — preço do
+diesel, previsão para amanhã, quem ganhou o jogo, uma piada. Exigidas a serem
+**recusadas**, porque um assistente que improvisa é pior que um que cala.
+
+| | |
+|---|---|
+| corpus | **61 frases, 0 erros** |
+| contra-corpus | **12 perguntas, 0 improvisadas** |
+
+### 🔴 O corpus derrubou 17 de 61 na primeira rodada
+
+E todas pelo mesmo motivo: **eu escrevi os gatilhos em português correto**.
+"Como está o tempo", "estou no rumo". **Ninguém fala assim numa ponte.**
+Fala-se *"como tá o tempo"*, *"tô no rumo"*, *"pra onde a gente vai"*.
+
+Dava para enumerar as duas formas em cada gatilho — e alguma ficaria de fora,
+sempre. A saída foi normalizar a fala para a forma escrita **uma vez só**, na
+entrada: `ta→esta`, `to→estou`, `pra→para`. Por **palavra inteira**, porque sem
+a fronteira o "ta" dentro de *estabilidade* viraria outra coisa e a intenção do
+GM sumiria.
+
+### E três defeitos que só apareceram com o corpus rodando
+
+1. **Eu normalizava a entrada e não os gatilhos.** O gatilho `'pra onde a gente
+   vai'` nunca casava, porque a entrada já tinha virado *"para onde"*. Escrever
+   "pra" no gatilho, que parecia esperto, era justamente o que o desligava.
+   Agora os dois lados passam pela mesma normalização.
+2. **"Repete" ficava abaixo do limiar.** Uma palavra só vale um ponto, o limiar
+   é dois — e a Iara respondia *"não entendi"* a um pedido perfeitamente claro.
+   Entrou o **bônus de casamento exato**: quando a frase inteira é o gatilho,
+   não há contexto que desvie o sentido.
+3. **"Quem ganhou o jogo" respondia a amplitude de balanço.** O gatilho
+   `'o jogo'` valia dois pontos e passava o limiar. **Gatilho curto e genérico
+   é falso positivo esperando acontecer** — saiu, e as outras expressões já
+   cobriam a intenção sem roubar uma frase que não é dela.
+
+### Empate é pergunta, não sorteio
+
+Com casamento por primeira regra, **a ordem da lista decidiria a resposta** — e
+a ordem da lista não é conhecimento sobre a pergunta, é acidente de quem
+escreveu. Aqui cada gatilho soma o **número de palavras**: *"estou no rumo"* (3)
+vence *"rumo"* (1), porque a expressão longa é específica e a curta aparece em
+meia dúzia de perguntas.
+
+E quando duas intenções ficam a um ponto de distância, ela **pergunta**:
+
+> *"Não sei se você quer saber o vento ou o mar. Pode repetir?"*
+
+Responder a mais bem colocada por um ponto seria chutar com cara de certeza —
+exatamente o defeito que esta gramática existe para não ter.
+
+### As três formas de não entender são três
+
+| motivo | resposta |
+|---|---|
+| **vazio** | *"Não consegui ouvir nada. Tenta de novo?"* |
+| **ambíguo** | *"Não sei se você quer saber X ou Y. Pode repetir?"* |
+| **não entendi** | *"Essa eu não sei responder"* + o cardápio |
+
+*"Não te ouvi"* e *"não sei responder isso"* pedem reações diferentes do
+comandante. Tratar as duas como a mesma coisa perde informação que ele tem como
+usar.
+
+### A resposta sai da MESMA fonte que o relatório
+
+`estadoAtualParaRelatorio()` alimenta as duas. É o que impede a Iara de se
+contradizer: perguntar *"quanto falta"* e ouvir 12 milhas, e um minuto depois o
+relatório dizer 8, destruiria a confiança de uma vez.
+
+E sai com prioridade **'resposta'**, que a fila põe na frente do relatório de
+rotina — o comandante acabou de perguntar.
+
+### O que ela sabe, e por que dá para ler a lista
+
+Quanto falta · próximo waypoint · posição · referência de terra · desvio de
+rumo · tempo · vento · mar · corrente · consumo · rotação econômica · carga do
+motor · farol · balanço · estabilidade · velocidade · hora · repetir · relatório
+· ajuda.
+
+**Se alguém precisar saber o que a Iara responde, lê a lista.** É exatamente
+isso que um modelo de linguagem não permite fazer, e é a razão de a gramática
+vir primeiro.
+
+### O que NÃO foi construído, e por quê
+
+O **6b** — conversa aberta por modelo de linguagem — **não foi feito**, e não
+por falta de tempo. Ele exige três decisões que não são minhas: uma **chave**,
+um **custo por pergunta** e um **servidor**. E resolve um problema que só
+existe no porto, com sinal — que é onde o comandante pode simplesmente olhar a
+tela.
+
+Fica como proposta, desligada por padrão se um dia entrar. Ver
+`docs/manual_usuario.md` §9.8.
+
+### Provas
+
+**Suíte 25 (12 provas), validada por mutação: 13 defeitos, 13 apanhados.** Uma
+só foi pega depois de consertar a prova: eu provava a **constante** do
+desempate (`CONVERSA_MARGEM >= 1`) e não o **comportamento** — desligar o
+desempate inteiro passava limpo. Entrou uma frase construída para empatar.
+
+E `conversa.js` entrou na varredura da **regra 6** (a Iara sugere, não manda),
+que desde o Sprint 4 cobre todos os módulos de fala. Plantar *"Reduza para
+1.200 rotações"* numa resposta é apanhado pela 19.11.
+
+### Números
+
+| | v2.12.0 | v2.13.0 |
+|---|---|---|
+| Provas do banco | 241 | **253** |
+| Passos da prova de fumaça | 65 | **68** |
+| Módulos | 14 | **15** (`conversa.js`) |
+| Intenções · gatilhos | — | **20 · 145** |
+| `app.html` | 3.287 linhas | **3.288** (teto: 3.500) |
+
+---
+
 ## v2.12.0 (21/09/2026) — O REBOCADOR VIRA INSTRUMENTO · SPRINT 5
 
 Autor: Jossian Brito (Charlie Bravo)

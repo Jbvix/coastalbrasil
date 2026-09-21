@@ -1847,7 +1847,8 @@ t(S19, '19.11', 'REGRA 6 — a Iara SUGERE, nunca manda no navio', () => {
      A lição é a mesma do orçamento de fala: o que vale para a Iara vale para
      TUDO que sai pela boca dela, venha do módulo que vier. */
   const FONTES_DE_FALA = ['assets/js/iara.js', 'assets/js/relatorio_voz.js',
-                          'assets/js/tempo.js', 'assets/js/consumo.js'];
+                          'assets/js/tempo.js', 'assets/js/consumo.js',
+                          'assets/js/conversa.js'];
   const bruto = FONTES_DE_FALA.map(f => fs19.readFileSync(ROOT + '/' + f, 'utf8')).join('\n');
   const semComentario = bruto.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
   const semLista = semComentario.replace(/const IARA_IMPERATIVOS_PROIBIDOS = \[[\s\S]*?\];/, ' ');
@@ -3564,6 +3565,248 @@ t(S24, '24.13', 'Os sensores rodam a navegação inteira, não só com o 3D aber
   // E a linha do mar medido aparece no painel.
   ok(/id="navMarMedido"/.test(fs24.readFileSync(ROOT + '/app.html', 'utf8')), 'o mar medido não tem onde aparecer');
   ok(/atualizarPainelMar\(\)/.test(APP24), 'a linha do mar nunca é preenchida');
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SUÍTE 25 · A conversa — gramática de intenções (Sprint 6a)      (v2.13.0)
+
+   Registrei esta discordância na proposta e ela continua valendo: NUMA PONTE,
+   UM ASSISTENTE LIMITADO QUE ESTÁ SEMPRE CERTO VALE MAIS QUE UM ILIMITADO QUE
+   ÀS VEZES ERRA COM CONFIANÇA.
+
+   E é justamente por ser gramática, e não modelo de linguagem, que ela PODE
+   ser provada assim: com um corpus de frases reais de passadiço, cada uma
+   exigida a rotear para a intenção certa — e um segundo corpus, de perguntas
+   que ela NÃO deve responder, exigida a recusar.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const S25 = '25 · Conversa';
+const { normalizar, reconhecerIntencao, responder, respostaDeFalha, textoDeAjuda,
+        INTENCOES, CONVERSA_LIMIAR, CONVERSA_MARGEM } = A;
+const fs25 = require('fs');
+const CONV25 = semComentarios(fs25.readFileSync(ROOT + '/assets/js/conversa.js', 'utf8'));
+const IARA25 = semComentarios(fs25.readFileSync(ROOT + '/assets/js/iara.js', 'utf8'));
+
+/* Estado cheio, para as respostas terem de onde sair. */
+const CHEIO = () => ({
+  quando: new Date(2026, 8, 21, 14, 0), lat: -23.0917, lng: -41.8833, cog: 48, sog: 9.5,
+  proxWp: { nome: 'Cabo Frio', distNM: 12.4, brg: 52, eta: new Date(2026, 8, 21, 15, 20) },
+  xteNM: -0.42, xteLado: 'bombordo', referencia: 'Cabo Frio a 12,3 milhas para noroeste',
+  farol: { nome: 'de Cabo Frio', distNM: 14.2, caracteristica: 'Fl(3) W 15s', alcanceNM: 22 },
+  combustivel: { usadoL: 1340, restanteL: 2100, insuficiente: false },
+  tempo: { ar: { wind_speed_10m: 23.5, wind_direction_10m: 42, wind_gusts_10m: 31 },
+           mar: { wave_height: 2.1, wave_direction: 71 },
+           correnteEfeito: { driftNos: 1, setGraus: 233, ganhoNos: -0.85 } }
+});
+
+t(S25, '25.1', 'O CORPUS: toda frase real de passadiço roteia certo', () => {
+  /* Cada intenção declara exemplos que são frases como se fala numa ponte, e
+     não como se escreve. É o corpus da prova, não documentação — e foi ele
+     que denunciou, de uma vez, 17 de 61 erros na primeira versão. */
+  const erros = [];
+  let total = 0;
+  for (const i of INTENCOES) {
+    ok(i.exemplos && i.exemplos.length >= 2, `a intenção "${i.chave}" tem menos de 2 exemplos`);
+    for (const f of i.exemplos) {
+      total++;
+      const r = reconhecerIntencao(f);
+      if (r.chave !== i.chave) erros.push(`"${f}" -> ${r.chave || r.motivo} (esperado ${i.chave})`);
+    }
+  }
+  ok(erros.length === 0, `${erros.length} de ${total}: ${erros.slice(0, 4).join(' | ')}`);
+  ok(total >= 50, `só ${total} frases no corpus — cobertura fina demais para confiar`);
+  return { detail: `${total} frases, ${INTENCOES.length} intenções` };
+});
+
+t(S25, '25.2', 'O CONTRA-CORPUS: o que ela não sabe, ela RECUSA', () => {
+  /* Um assistente que improvisa é pior que um que cala. "Quem ganhou o jogo"
+     respondia a amplitude de balanço na primeira versão, porque o gatilho
+     "o jogo" tinha dois pontos e passava o limiar. GATILHO CURTO E GENÉRICO É
+     FALSO POSITIVO ESPERANDO ACONTECER. */
+  const FORA = ['qual o preco do diesel', 'vai chover amanha em Santos',
+    'quem ganhou o jogo', 'qual o resultado do jogo', 'me fala uma piada',
+    'qual a capital da Franca', 'abre o guincho', 'liga o radar',
+    'manda mensagem pro armador', 'quanto custa o reboque',
+    'quem e o comandante', 'toca uma musica'];
+  const falsos = FORA.filter(f => reconhecerIntencao(f).chave);
+  ok(falsos.length === 0, `${falsos.length} falso(s) positivo(s): ${falsos.map(f =>
+    `"${f}" -> ${reconhecerIntencao(f).chave}`).slice(0, 3)}`);
+  // E a recusa devolve o cardápio, em vez de só "não entendi".
+  const r = respostaDeFalha({ motivo: 'nao-entendi' });
+  ok(/nao sei responder|não sei responder/i.test(r), r);
+  ok(r.length > 60, 'a recusa não oferece caminho: ' + r);
+  return { detail: `${FORA.length} perguntas fora do escopo, ${falsos.length} improvisadas` };
+});
+
+t(S25, '25.3', 'Fala de passadiço: "tá", "tô", "pra" — e não o português escrito', () => {
+  /* Escrevi os gatilhos em português correto e 17 de 61 frases falharam de
+     uma vez. Ninguém fala "como está o tempo" numa ponte. As contrações são
+     normalizadas na entrada E nos gatilhos, para a comparação acontecer num
+     dialeto só. */
+  ok(normalizar('Como tá o tempo?') === 'como esta o tempo', normalizar('Como tá o tempo?'));
+  ok(normalizar('Tô no rumo') === 'estou no rumo', normalizar('Tô no rumo'));
+  ok(normalizar('pra onde a gente vai') === 'para onde a gente vai', normalizar('pra onde a gente vai'));
+  // A troca é por PALAVRA INTEIRA: sem isso, o "ta" de "estabilidade" quebraria.
+  ok(normalizar('a estabilidade') === 'a estabilidade', normalizar('a estabilidade'));
+  ok(reconhecerIntencao('qual a estabilidade').chave === 'estabilidade',
+     'a normalização das contrações comeu a palavra "estabilidade"');
+  // Acento e pontuação somem; caixa também.
+  ok(normalizar('QUANTO FALTA???') === 'quanto falta', normalizar('QUANTO FALTA???'));
+  ok(normalizar('') === '' && normalizar(null) === '', 'entrada vazia quebrou');
+});
+
+t(S25, '25.4', 'Os gatilhos passam pela MESMA normalização que a fala', () => {
+  /* Era um defeito: eu normalizava só a entrada, e o gatilho 'pra onde a
+     gente vai' nunca casava porque a entrada já tinha virado 'para onde'.
+     Escrever "pra" no gatilho, que parecia esperto, era o que o desligava. */
+  const cru = INTENCOES.flatMap(i => i.gatilhos);
+  const naoNormais = cru.filter(g => normalizar(g) !== g);
+  // Não se exige que estejam escritos normalizados — exige-se que FUNCIONEM.
+  for (const g of naoNormais.slice(0, 8)) {
+    const dono = INTENCOES.find(i => i.gatilhos.includes(g));
+    const r = reconhecerIntencao(g);
+    ok(r.chave === dono.chave || r.motivo === 'ambiguo',
+       `o gatilho "${g}" de ${dono.chave} não dispara a própria intenção (deu ${r.chave || r.motivo})`);
+  }
+  return { detail: `${cru.length} gatilhos, ${naoNormais.length} escritos como se fala` };
+});
+
+t(S25, '25.5', 'Pontuação por especificidade, e empate vira PERGUNTA', () => {
+  /* Com casamento por primeira regra, a ORDEM DA LISTA decidiria a resposta —
+     e a ordem da lista não é conhecimento sobre a pergunta, é acidente de
+     quem escreveu. Aqui a expressão longa vence a curta, porque a longa é
+     específica e a curta aparece em meia dúzia de perguntas. */
+  ok(reconhecerIntencao('estou no rumo').chave === 'rumo-certo',
+     'a expressão longa não venceu a palavra solta');
+  ok(reconhecerIntencao('qual o proximo waypoint').chave === 'proximo-wp', 'especificidade falhou');
+  // Palavra solta abaixo do limiar não vira resposta.
+  ok(!reconhecerIntencao('rumo').chave, '"rumo" sozinho virou resposta — é ambíguo demais');
+  ok(CONVERSA_LIMIAR >= 2, 'o limiar caiu para 1: qualquer palavra solta viraria intenção');
+  /* EMPATE É PERGUNTA, NÃO SORTEIO. Responder a mais bem colocada por um
+     ponto é chutar com cara de certeza — o defeito que esta gramática existe
+     justamente para não ter. */
+  ok(CONVERSA_MARGEM >= 1, 'sem margem de desempate, um ponto de diferença vira certeza');
+  /* E o COMPORTAMENTO, não só a constante. A mutação mostrou que provar o
+     valor de CONVERSA_MARGEM não prova que ele é usado: desligar o desempate
+     inteiro passava limpo. A frase abaixo é construída de propósito para
+     empatar — "qual o vento" e "qual a corrente" valem três pontos cada. */
+  const empatada = reconhecerIntencao('qual o vento qual a corrente');
+  ok(empatada.motivo === 'ambiguo',
+     `empate devia virar pergunta, deu "${empatada.chave || empatada.motivo}"`);
+  ok(empatada.candidatos && empatada.candidatos.length === 2, 'o empate não devolve os dois candidatos');
+  const amb = respostaDeFalha({ motivo: 'ambiguo',
+    candidatos: [{ chave: 'vento' }, { chave: 'mar' }] });
+  ok(/vento/.test(amb) && /mar/.test(amb), 'o desempate não oferece as duas opções: ' + amb);
+  ok(/repetir|repita/i.test(amb), 'não pede para repetir: ' + amb);
+});
+
+t(S25, '25.6', 'As três formas de não entender são TRÊS, e não uma', () => {
+  /* "não te ouvi" e "não sei responder isso" pedem reações diferentes do
+     comandante. Tratar as duas como a mesma coisa perde informação que ele
+     tem como usar. */
+  const vazio = respostaDeFalha({ motivo: 'vazio' });
+  const naoSei = respostaDeFalha({ motivo: 'nao-entendi' });
+  const amb = respostaDeFalha({ motivo: 'ambiguo', candidatos: [{ chave: 'vento' }, { chave: 'mar' }] });
+  ok(vazio !== naoSei && naoSei !== amb && vazio !== amb, 'as três falhas dão a mesma resposta');
+  ok(/ouvir|ouvi/i.test(vazio), 'a falha de áudio não menciona ter ouvido: ' + vazio);
+  ok(reconhecerIntencao('').motivo === 'vazio', 'entrada vazia não foi classificada');
+  ok(reconhecerIntencao('   ').motivo === 'vazio', 'só espaços não foi classificado');
+});
+
+t(S25, '25.7', 'Toda intenção declarada TEM resposta — nenhuma cai no vazio', () => {
+  /* Uma intenção reconhecida sem resposta seria o pior dos mundos: a Iara
+     entende a pergunta e devolve silêncio. */
+  const est = CHEIO();
+  const mudas = INTENCOES.filter(i => {
+    const r = responder(i.chave, est);
+    return !r || typeof r !== 'string' || r.trim().length < 5;
+  }).map(i => i.chave);
+  ok(mudas.length === 0, `intenção(ões) sem resposta: ${mudas}`);
+  // E nenhuma resposta vaza valor cru.
+  const sujas = INTENCOES.map(i => [i.chave, responder(i.chave, est)])
+    .filter(([, r]) => /undefined|NaN|\[object|null/.test(r));
+  ok(sujas.length === 0, `vazou valor cru em: ${sujas.map(x => x[0])}`);
+  return { detail: `${INTENCOES.length} intenções, todas respondem` };
+});
+
+t(S25, '25.8', 'Sem dado ela diz que não tem — e diz POR QUÊ', () => {
+  /* "Não sei" sem motivo faz o comandante achar que o aplicativo quebrou, e
+     aí ele para de confiar também no que estava certo. */
+  const vazio = { quando: new Date(2026, 8, 21, 14, 0) };
+  const mudas = [];
+  for (const i of INTENCOES) {
+    const r = responder(i.chave, vazio);
+    if (!r || /undefined|NaN|\[object/.test(r)) mudas.push(i.chave);
+  }
+  ok(mudas.length === 0, `com estado vazio quebrou em: ${mudas}`);
+  ok(/rota planejada/.test(responder('falta', vazio)), responder('falta', vazio));
+  ok(/GPS/.test(responder('posicao', vazio)), responder('posicao', vazio));
+  // A hora funciona mesmo sem navegação nenhuma — não depende de estado.
+  ok(/14 horas/.test(responder('hora', vazio)), responder('hora', vazio));
+  // E "ajuda" também: é o caminho de volta de quem se perdeu.
+  ok(textoDeAjuda().length > 80 && /perguntar/.test(textoDeAjuda()), 'a ajuda não lista o que dá para perguntar');
+});
+
+t(S25, '25.9', 'As respostas obedecem à REGRA 6 — sugerem, não mandam', () => {
+  /* A varredura da prova 19.11 já cobre os quatro módulos de fala, e
+     conversa.js entrou neles. Aqui se confere o caminho inverso: as respostas
+     GERADAS, com estado real, também não podem sair mandando. */
+  const est = CHEIO();
+  const sujas = INTENCOES.map(i => [i.chave, responder(i.chave, est)])
+    .filter(([, r]) => violaRegra6(r).length > 0);
+  ok(sujas.length === 0, `resposta(s) mandando no navio: ${sujas.map(x => x[0])}`);
+  // E o módulo está na lista de fontes de fala da prova 19.11.
+  const SUITE = fs25.readFileSync(ROOT + '/tests/suite.js', 'utf8');
+  ok(/assets\/js\/conversa\.js/.test(SUITE.slice(SUITE.indexOf('FONTES_DE_FALA'),
+     SUITE.indexOf('FONTES_DE_FALA') + 400)),
+     'conversa.js ficou de fora da varredura da regra 6 — regra que vigia um arquivo não é regra');
+});
+
+t(S25, '25.10', 'A resposta sai da MESMA fonte que o relatório', () => {
+  /* Resposta e relatório saírem do mesmo estado é o que impede a Iara de se
+     contradizer: perguntar "quanto falta" e ouvir 12 milhas, e um minuto
+     depois o relatório dizer 8, destruiria a confiança de uma vez. */
+  ok(/estadoAtualParaRelatorio/.test(CONV25),
+     'a conversa monta estado próprio em vez de usar o do relatório');
+  ok(/montarRelatorioHora/.test(CONV25), 'o pedido de relatório não usa o relatório real');
+  const est = CHEIO();
+  const rel = montarRelatorioHora(est);
+  const resp = responder('falta', est);
+  const milhas = /(\d+),(\d+) milhas/.exec(resp);
+  ok(milhas && rel.texto.includes(milhas[0]),
+     `a resposta diz "${milhas && milhas[0]}" e o relatório não confirma`);
+});
+
+t(S25, '25.11', 'A gramática substituiu o improviso do Sprint 0', () => {
+  /* Até a v2.12 a Iara repetia o que ouvia e admitia não saber responder —
+     era a verdade daquele momento e valia mais que fingir. Agora encaminha
+     para a gramática. */
+  ok(/conversar\(/.test(IARA25), 'iaraResponder não chama a conversa');
+  ok(!/Ainda tô aprendendo a responder/.test(IARA25), 'o texto provisório do Sprint 0 ficou para trás');
+  ok(/<script src="assets\/js\/conversa\.js">/.test(fs25.readFileSync(ROOT + '/app.html', 'utf8')),
+     'o módulo da conversa não é carregado');
+  /* Toda resposta sai com prioridade 'resposta', que a fila põe na frente do
+     relatório de rotina: o comandante acabou de perguntar. */
+  ok(/iaraDizer\(texto, 'resposta'\)/.test(CONV25), 'a resposta não entra na fila com prioridade de resposta');
+  ok(A.IARA_PRIORIDADE.resposta < A.IARA_PRIORIDADE.rotina,
+     'resposta não vem antes de relatório de rotina na fila');
+});
+
+t(S25, '25.12', 'A lista do que ela sabe é LEGÍVEL — e é o ponto', () => {
+  /* Se alguém precisar saber o que a Iara responde, lê a lista. É
+     exatamente isso que um modelo de linguagem não permite fazer, e é a razão
+     de a gramática vir primeiro. */
+  ok(INTENCOES.length >= 15, `só ${INTENCOES.length} intenções — cobertura fina demais`);
+  const chaves = INTENCOES.map(i => i.chave);
+  ok(new Set(chaves).size === chaves.length, 'há intenções com a mesma chave');
+  // As perguntas de bordo mais óbvias estão cobertas.
+  ['falta', 'posicao', 'tempo', 'vento', 'mar', 'consumo', 'rotacao',
+   'farol', 'estabilidade', 'ajuda'].forEach(k =>
+    ok(chaves.includes(k), `falta a intenção essencial "${k}"`));
+  // E nenhuma intenção fica sem gatilho.
+  const semGatilho = INTENCOES.filter(i => !i.gatilhos || i.gatilhos.length < 2).map(i => i.chave);
+  ok(semGatilho.length === 0, `intenção(ões) com menos de 2 gatilhos: ${semGatilho}`);
+  const totalGat = INTENCOES.reduce((s, i) => s + i.gatilhos.length, 0);
+  return { detail: `${INTENCOES.length} intenções, ${totalGat} gatilhos` };
 });
 
 /* ═══ RELATÓRIO ═══ */
