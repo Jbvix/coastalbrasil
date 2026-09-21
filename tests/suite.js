@@ -3809,6 +3809,111 @@ t(S25, '25.12', 'A lista do que ela sabe é LEGÍVEL — e é o ponto', () => {
   return { detail: `${INTENCOES.length} intenções, ${totalGat} gatilhos` };
 });
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   SUÍTE 26 · INTEGRAÇÃO CONTÍNUA
+   ═══════════════════════════════════════════════════════════════════════════
+
+   POR QUE ESTA SUÍTE EXISTE
+
+   Em 21/09/2026, ao ligar o banco de provas a um workflow de pull request,
+   descobriu-se que `node tests/suite.js` SEMPRE saía com código 0 — inclusive
+   com FAIL na tela. O relatório imprimia a falha em vermelho, escrevia o
+   results.json e terminava dizendo "tudo bem".
+
+   Isso nunca doeu enquanto um humano lia a saída: o olho vê o ✘. Mas uma
+   máquina de integração não lê, ela consulta o código de saída. Ligado assim,
+   o CI seria um alarme com a lâmpada desligada do circuito: acende verde
+   sempre, e ensina a tripulação a confiar numa luz que não mede nada. Pior
+   que não ter alarme nenhum, porque substitui a desconfiança por certeza
+   falsa.
+
+   A correção separa a DECISÃO do EFEITO — a mesma disciplina que permitiu
+   provar `podeFalar()` sem alto-falante:
+
+     · `codigoDeSaida(resultados)` decide, é pura e é provada aqui;
+     · `process.exitCode = ...` no relatório executa, e é só um efeito.
+
+   E a regra que a decisão implementa tem razão de bordo: só FAIL derruba a
+   obra. Os WARN são defeitos conhecidos e documentados. Derrubar o CI por
+   eles seria acender a luz vermelha todo dia por um motivo que ninguém pode
+   resolver hoje — e uma luz que acende todo dia deixa de ser vista. Alarme
+   que toca sempre é alarme desligado.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const S26 = '26 · Integração contínua';
+const fs26 = require('fs');
+const WF26_CAMINHO = ROOT + '/.github/workflows/provas.yml';
+const WF26_BRUTO = fs26.existsSync(WF26_CAMINHO) ? fs26.readFileSync(WF26_CAMINHO, 'utf8') : '';
+/* YAML comenta com '#', igual ao TOML — o mesmo removedor serve, e serve pelo
+   mesmo motivo: este arquivo de workflow é longo e MUITO comentado. Sem
+   recortar, qualquer varredura aqui estaria lendo a minha prosa em vez de
+   ler a configuração. */
+const WF26 = semComentariosToml(WF26_BRUTO);
+
+t(S26, '26.1', 'O workflow de provas existe e dispara em pull request', () => {
+  ok(WF26_BRUTO, 'não há .github/workflows/provas.yml — as provas voltaram a depender de memória humana');
+  ok(/^on:/m.test(WF26), 'o workflow não declara gatilho');
+  ok(/pull_request:/.test(WF26), 'não dispara em pull request — que é o ponto inteiro');
+  ok(/branches:\s*\[\s*main\s*\]/.test(WF26), 'o gatilho de pull request não aponta para a main');
+  ok(/workflow_dispatch:/.test(WF26), 'não dá para disparar à mão pela aba Actions');
+  return { detail: `${WF26_BRUTO.split('\n').length} linhas` };
+});
+
+t(S26, '26.2', 'O workflow roda O BANCO E A FUMAÇA — são provas diferentes', () => {
+  /* As duas pegam coisas distintas e nenhuma substitui a outra. O banco roda
+     as funções fora do navegador: pega erro de CÁLCULO. A fumaça abre o app
+     num Chromium de verdade: pega erro de CARREGAMENTO — ordem de <script>,
+     caminho de módulo, hash SRI, CSS que não chega. Ligar só o banco daria a
+     impressão de cobertura com metade do casco fora d'água. */
+  ok(/node tests\/suite\.js/.test(WF26), 'o workflow não executa o banco de provas');
+  ok(/npm run smoke|node tests\/smoke\.js/.test(WF26), 'o workflow não executa a fumaça em navegador');
+  ok(/playwright install/.test(WF26), 'a fumaça precisa de Chromium e o workflow não o instala');
+});
+
+t(S26, '26.3', 'FAIL derruba a obra — o defeito que quase passou despercebido', () => {
+  /* Esta é a prova que não existia em 21/09/2026 e cuja ausência deixou o
+     banco de provas sair com código 0 mesmo falhando. */
+  eq(codigoDeSaida([{ status: 'FAIL' }]), 1, 0, 'uma falha isolada não derrubou');
+  eq(codigoDeSaida([{ status: 'PASS' }, { status: 'FAIL' }, { status: 'PASS' }]), 1, 0,
+     'falha no meio de aprovações não derrubou');
+  eq(codigoDeSaida([{ status: 'WARN' }, { status: 'FAIL' }]), 1, 0, 'falha junto de aviso não derrubou');
+  /* E o efeito: o relatório tem de USAR a decisão. Uma função pura correta que
+     ninguém chama é exatamente o defeito original com nome novo. */
+  const EU = semComentarios(fs26.readFileSync(ROOT + '/tests/suite.js', 'utf8'));
+  ok(/process\.exitCode\s*=\s*codigoDeSaida\(/.test(EU),
+     'o relatório não liga a decisão ao código de saída — a função pura ficaria decorativa');
+});
+
+t(S26, '26.4', 'Aviso conhecido NÃO derruba a obra', () => {
+  /* Os três WARN de hoje (3.9, 9.4, 9.7) são defeitos documentados que
+     dependem de decisão do autor, não de correção pendente. Se derrubassem o
+     CI, todo pull request nasceria vermelho e a cor perderia o significado. */
+  eq(codigoDeSaida([{ status: 'PASS' }]), 0, 0, 'aprovação pura derrubou a obra');
+  eq(codigoDeSaida([{ status: 'WARN' }]), 0, 0, 'aviso derrubou a obra — alarme que toca sempre é alarme desligado');
+  eq(codigoDeSaida([{ status: 'PASS' }, { status: 'WARN' }, { status: 'WARN' }]), 0, 0,
+     'aprovações com avisos derrubaram a obra');
+  eq(codigoDeSaida([]), 0, 0, 'lista vazia derrubou a obra');
+  const w = results.filter(r => r.status === 'WARN').length;
+  return { detail: `${w} aviso(s) conhecido(s) nesta execução` };
+});
+
+t(S26, '26.5', 'O workflow não pede segredo e usa a menor permissão', () => {
+  /* Um workflow que dispara em pull_request pode ser acionado por código que
+     ainda não foi revisado. Se tivesse acesso a `secrets`, bastaria um pull
+     request para extrair a chave paga do Open-Meteo. Ele não tem — e as provas
+     rodam inteiras sem nenhum segredo, o que é a razão de isto ser seguro e
+     não apenas prudente. */
+  ok(!/\bsecrets\./.test(WF26), 'o workflow referencia secrets — em pull_request isso expõe a chave a qualquer um');
+  ok(/permissions:/.test(WF26), 'o workflow não declara permissões, herdando as amplas do repositório');
+  ok(/contents:\s*read/.test(WF26), 'a permissão de conteúdo não está limitada a leitura');
+  ok(!/contents:\s*write|packages:\s*write|id-token:/.test(WF26), 'o workflow pede permissão de escrita sem precisar');
+  /* E a fumaça tem de continuar podendo rodar sem o token Cesium: ela serve um
+     cesium-config.js vazio de propósito. Se isso sumir, o CI passa a exigir
+     segredo e a prova 26.5 vira mentira. */
+  const SMOKE = semComentarios(fs26.readFileSync(ROOT + '/tests/smoke.js', 'utf8'));
+  ok(/CESIUM_ION_TOKEN\s*=\s*""/.test(SMOKE),
+     'a fumaça não serve mais um token Cesium vazio — passaria a depender de segredo');
+});
+
 /* ═══ RELATÓRIO ═══ */
 const byStatus = s => results.filter(r=>r.status===s).length;
 const ICON = { PASS:'\x1b[32m✔\x1b[0m', FAIL:'\x1b[31m✘\x1b[0m', WARN:'\x1b[33m▲\x1b[0m' };
@@ -3822,3 +3927,36 @@ console.log('\n' + '═'.repeat(74));
 console.log(`TOTAL: ${results.length}   \x1b[32mPASS ${byStatus('PASS')}\x1b[0m   \x1b[31mFAIL ${byStatus('FAIL')}\x1b[0m   \x1b[33mWARN ${byStatus('WARN')}\x1b[0m`);
 console.log('═'.repeat(74));
 require('fs').writeFileSync(__dirname+'/results.json', JSON.stringify(results,null,2));
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CÓDIGO DE SAÍDA — a decisão, separada do efeito
+
+   Quem lê a saída na tela enxerga o ✘ vermelho. Quem NÃO lê — a máquina de
+   integração, um `&&` num script, um gancho de commit — só consulta o código
+   de saída do processo. Até 21/09/2026 esse código era sempre 0, e portanto
+   o banco de provas mentia para todo mundo que não tivesse olhos.
+
+   A regra, em uma frase: só FAIL derruba a obra.
+
+   Comportamento da função conforme a lista recebida:
+     ·  []                              → 0   (nada a reprovar)
+     ·  [PASS, PASS]                    → 0
+     ·  [PASS, WARN, WARN]              → 0   (avisos são conhecidos e documentados)
+     ·  [FAIL]                          → 1
+     ·  [PASS, FAIL, WARN]              → 1   (basta uma falha)
+
+   `some` e não `filter().length` porque a pergunta é "existe alguma?", e a
+   primeira falha já responde — a contagem interessa ao relatório, não à
+   decisão.
+
+   Provada na suíte 26 (26.3 e 26.4), que é também onde está registrado por
+   que um alarme que toca todo dia deixa de ser um alarme. */
+function codigoDeSaida(resultados) {
+  return (resultados || []).some(r => r && r.status === 'FAIL') ? 1 : 0;
+}
+
+/* `process.exitCode` e não `process.exit()`: atribuir deixa o Node terminar de
+   escoar stdout e o results.json antes de encerrar. `process.exit()` corta a
+   saída no meio quando o terminal está lento — e um relatório truncado é
+   exatamente o que ninguém quer ler depois de um CI vermelho. */
+process.exitCode = codigoDeSaida(results);

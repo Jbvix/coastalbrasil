@@ -11,6 +11,149 @@ executável.
 
 ```
 
+## v2.14.0 (21/09/2026) — AS PROVAS DEIXAM DE DEPENDER DE MEMÓRIA HUMANA
+
+Autor: Jossian Brito (Charlie Bravo)
+
+Integração contínua em cada pull request — e o defeito que a ligação revelou,
+que é a parte que interessa.
+
+### O alarme com a lâmpada fora do circuito
+
+Até esta versão, `node tests/suite.js` **sempre saía com código 0**. Inclusive
+com falha na tela: ele imprimia o `✘` em vermelho, escrevia o `results.json` e
+encerrava dizendo "tudo bem".
+
+Isso nunca doeu, porque quem lia a saída era um humano — e o olho vê o
+vermelho. Mas uma máquina de integração **não lê**: ela consulta o código de
+saída do processo. Ligado do jeito que estava, o CI teria acendido verde em
+todo pull request, para sempre, com qualquer defeito dentro.
+
+> **Um alarme que nunca toca é pior que nenhum alarme**, porque substitui
+> desconfiança por certeza falsa. É o detector de incêndio da praça de máquinas
+> com a bateria removida: enquanto ninguém testa, ele tranquiliza.
+
+A correção segue a disciplina da casa, **separar a decisão do efeito** — a
+mesma que permitiu provar `podeFalar()` sem alto-falante e `espectroDeHeave()`
+sem acelerômetro:
+
+```js
+function codigoDeSaida(resultados) {
+  return (resultados || []).some(r => r && r.status === 'FAIL') ? 1 : 0;
+}
+process.exitCode = codigoDeSaida(results);
+```
+
+Comportamento da função conforme a lista recebida:
+
+| Entrada | Saída | Por quê |
+|---|:---:|---|
+| `[]` | 0 | nada a reprovar |
+| `[PASS, PASS]` | 0 | — |
+| `[PASS, WARN, WARN]` | 0 | avisos são conhecidos e documentados |
+| `[FAIL]` | 1 | — |
+| `[PASS, FAIL, WARN]` | 1 | basta uma falha |
+
+`some` e não `filter().length` porque a pergunta é *"existe alguma?"* e a
+primeira falha já responde. A contagem interessa ao relatório, não à decisão.
+
+`process.exitCode` e não `process.exit()`: atribuir deixa o Node escoar o
+stdout e o `results.json` antes de encerrar. `process.exit()` corta a saída no
+meio quando o terminal está lento — e relatório truncado é exatamente o que
+ninguém quer ler depois de um CI vermelho.
+
+### Só FAIL derruba a obra
+
+Os três `WARN` (3.9 registros fora da LF-40ED, 9.4 portão administrativo no
+cliente, 9.7 `unsafe-inline` por `onclick=`) são defeitos **conhecidos e
+documentados**, que dependem de decisão do autor e não de correção pendente.
+
+Se derrubassem o CI, todo pull request nasceria vermelho. E **luz que acende
+todo dia deixa de ser vista** — é assim que uma tripulação aprende a ignorar
+alarme, e é o pior vício que um sistema de alarme pode criar.
+
+### Duas provas, porque uma não cobre a outra
+
+| Job | Comando | Pega | Não pega |
+|---|---|---|---|
+| Banco de provas | `node tests/suite.js` | erro de **cálculo** | erro de carregamento |
+| Fumaça | `npm run smoke` | erro de **carregamento**: ordem de `<script>`, caminho de módulo, hash SRI, CSS ausente, erro de console | erro de cálculo puro |
+
+Ligar só o banco daria impressão de cobertura com metade do casco fora d'água.
+
+### A tabela, não a lâmpada
+
+Cada execução escreve a contagem no resumo do próprio job. Quem abre o pull
+request lê `258 provas · 255 PASS · 0 FAIL · 3 WARN` sem abrir log nenhum — e,
+havendo falha, uma tabela com a prova, o que se quebrou e **a consequência a
+bordo**. Verificado com defeito real injetado (`2,08 → 2,50` no alcance
+geográfico):
+
+| Prova | O que se quebrou | Consequência a bordo |
+|---|---|---|
+| `2.1` | Fórmula d = 2,08·(√h1 + √h2) com olho padrão de 5 m | esperado 17,806 ±1e-9, obtido 21,402 |
+| `2.2` | Exemplos numéricos do docstring conferem com o código | docstring diz 24,1 e 28,7 NM; código devolve 28,9 e 34,5 |
+| `2.4` | Altitude 0 m = horizonte do próprio observador ≈ 4,65 NM | esperado 4,65 ±0,02, obtido 5,590 |
+
+Lâmpada binária informa que algo quebrou; a tabela informa **o quê**.
+
+### Segurança: um workflow de pull request não pode ter segredo
+
+Ele dispara em `pull_request`, que pode vir de código ainda não revisado. Se
+tivesse acesso a `secrets`, bastaria abrir um pull request para extrair a chave
+paga do Open-Meteo — a mesma chave que o Sprint 2 se deu ao trabalho de manter
+fora do navegador com uma função de servidor.
+
+Portanto: `permissions: contents: read` e **nenhum segredo**. Isso é seguro, e
+não apenas prudente, porque as provas rodam **inteiras** sem segredo algum — a
+fumaça serve um `cesium-config.js` vazio de propósito. A prova 26.5 guarda as
+duas condições.
+
+### Suíte 26 · Integração contínua — 5 provas, 8 mutações
+
+| Mutação | Acusou |
+|---|---|
+| `codigoDeSaida` devolve 0 sempre (o defeito original, de volta) | 26.3 |
+| `WARN` passa a derrubar a obra | 26.4 |
+| A função pura fica correta, mas ninguém a chama | 26.3 |
+| O gatilho `pull_request` some | 26.1 |
+| O workflow deixa de rodar a fumaça | 26.2 |
+| O workflow passa a pedir um segredo | 26.5 |
+| `contents: read` vira `contents: write` | 26.5 |
+| **`pull_request` existe SÓ dentro de um comentário** | 26.1 |
+
+A última é a armadilha que já enganou esta bancada **cinco vezes** — comentário
+respondendo por código. O YAML comenta com `#`, igual ao TOML, e o
+`semComentariosToml()` criado na v2.9.0 serviu sem alteração. **Varredura de
+código lê código.**
+
+### Limites registrados, não resolvidos
+
+**As CDNs são as de verdade no CI.** `tests/fixtures/` não é versionado, então
+lá os hashes SRI são conferidos contra os bytes reais do unpkg e do jsdelivr —
+mais severo que na bancada. O preço é uma dependência externa: CDN fora do ar
+deixa a fumaça vermelha sem culpa do código. Um passo de conferência prévia
+**dá nome** a essa falha antes que ela se disfarce de regressão; não afrouxa
+nada.
+
+**Não há `package-lock.json`.** O job usa `npm install` e não `npm ci`. Sem
+trava de versões, uma atualização do Playwright entra sozinha e pode quebrar a
+fumaça por conta própria. Dívida registrada.
+
+**O que nenhuma máquina de integração vê.** Voz, microfone, GPS, acelerômetro
+e o Cesium ion continuam fora de alcance. As pendências de confirmação de bordo
+da v2.13.0 seguem valendo inteiras.
+
+| | v2.13.0 | v2.14.0 |
+|---|---:|---:|
+| Provas do banco | 253 | **258** |
+| Suítes | 25 | **26** |
+| Workflows | 1 (manutenção) | **2** |
+| Código de saída com falha | **0** (mentia) | **1** |
+| Segredos exigidos pelo CI | — | **nenhum** |
+
+---
+
 ## v2.13.0 (21/09/2026) — A IARA PASSA A RESPONDER · SPRINT 6a
 
 Autor: Jossian Brito (Charlie Bravo)

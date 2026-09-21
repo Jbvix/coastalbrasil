@@ -1,0 +1,233 @@
+# ══════════════════════════════════════════════════════════════════════════════
+#  Banco de provas e fumaça em cada pull request
+#  Autor: Jossian Brito (Charlie Bravo)
+#  Versão 1.0.0 — 21/09/2026
+# ══════════════════════════════════════════════════════════════════════════════
+#
+#  POR QUE ISTO EXISTE
+#  Até aqui, as 253 provas e os 68 passos de fumaça só rodavam quando alguém
+#  lembrava de rodá-los. A disciplina inteira dependia de memória humana — e
+#  memória humana é o componente que primeiro falha numa singradura longa.
+#
+#  A analogia de bordo é exata: o banco de provas é o teste de mar. Ninguém
+#  larga o cais confiando que a máquina vai pegar porque pegou da última vez.
+#  Dá-se partida ANTES de largar, toda vez, mesmo que a última tenha sido
+#  ontem. Este arquivo é o que obriga a dar partida.
+#
+#  O QUE ELE VIGIA, E O QUE NÃO VIGIA
+#  Vigia duas coisas diferentes, e é importante não confundi-las:
+#
+#    · BANCO DE PROVAS (node tests/suite.js) — executa as funções REAIS,
+#      extraídas do app.html e dos módulos, fora do navegador. Pega erro de
+#      cálculo: uma fórmula trocada, uma tolerância que escapou, uma varredura
+#      de código que parou de casar. Não pega erro de carregamento.
+#
+#    · FUMAÇA (node tests/smoke.js) — abre o app num Chromium de verdade e
+#      percorre o fluxo. Pega o que o banco não vê: ordem errada de <script>,
+#      caminho de módulo quebrado, hash SRI inválido, CSS que não chega,
+#      qualquer erro de console. Depois da modularização da v2.2.0, isso
+#      deixou de ser hipotético.
+#
+#  NÃO vigia: o que exige ouvido, olho e mar. Voz sintetizada, microfone,
+#  GPS, acelerômetro e o Cesium ion continuam fora do alcance de qualquer
+#  máquina de integração. Isso está dito no PR e continua valendo.
+#
+#  SOBRE FALHAR
+#  Só FAIL derruba a obra. Os WARN são defeitos CONHECIDOS e documentados
+#  (portão administrativo no cliente, unsafe-inline por onclick=, registros
+#  fora da LF-40ED) — derrubar o CI por eles ensinaria a tripulação a ignorar
+#  a luz vermelha, que é o pior vício que um alarme pode criar.
+#
+#  A CONTAGEM VAI PARA O RESUMO
+#  Cada execução escreve a tabela de resultados no resumo do próprio job.
+#  Quem abre o pull request lê "253 provas · 250 PASS · 0 FAIL · 3 WARN" sem
+#  precisar abrir log nenhum. Lâmpada binária informa que algo quebrou; a
+#  tabela informa O QUE quebrou.
+#
+#  SEGREDOS
+#  Nenhum. Nem a chave paga do Open-Meteo, nem o token Cesium, nem o hash do
+#  portão administrativo. O banco de provas e a fumaça rodam inteiros sem um
+#  único segredo — a fumaça serve `cesium-config.js` vazio de propósito. Um
+#  workflow que dispara em pull_request de qualquer origem NÃO pode ter acesso
+#  a segredo, e a permissão declarada é a mínima: contents: read.
+# ══════════════════════════════════════════════════════════════════════════════
+
+name: Provas
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:        # permite disparar à mão pela aba Actions
+
+permissions:
+  contents: read
+
+# Empurrão novo no mesmo ramo cancela a execução anterior: o que interessa é o
+# estado do topo, não a arqueologia dos commits intermediários.
+concurrency:
+  group: provas-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ════════════════════════════════════════════════════════════════════════
+  #  1 · BANCO DE PROVAS — Node puro, sem dependência, segundos de duração
+  # ════════════════════════════════════════════════════════════════════════
+  banco:
+    name: Banco de provas
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Obter o código
+        uses: actions/checkout@v5
+
+      - name: Preparar o Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          # Sem `cache: npm` de propósito: não há package-lock.json no
+          # repositório, e a ação falha ao procurar por ele. Este job também
+          # não instala nada — a suíte é Node puro.
+
+      - name: Executar as provas
+        id: provas
+        run: node tests/suite.js
+
+      - name: Escrever a contagem no resumo do job
+        # `always()` porque o passo anterior sai com código 1 quando há FAIL, e
+        # é justamente aí que a tabela mais importa.
+        if: always()
+        run: |
+          set -uo pipefail
+          if [ ! -f tests/results.json ]; then
+            echo "### ⚠️ A suíte não chegou a escrever tests/results.json" >> "$GITHUB_STEP_SUMMARY"
+            echo "Ela abortou antes do relatório — veja o log do passo anterior." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          node -e '
+            const r = require("./tests/results.json");
+            const n = s => r.filter(x => x.status === s).length;
+            const L = [];
+            L.push("## Banco de provas");
+            L.push("");
+            L.push("| Total | PASS | FAIL | WARN |");
+            L.push("|---:|---:|---:|---:|");
+            L.push(`| ${r.length} | ${n("PASS")} | ${n("FAIL")} | ${n("WARN")} |`);
+            L.push("");
+            const ruins = r.filter(x => x.status === "FAIL");
+            if (ruins.length) {
+              L.push("### ✘ Falhas");
+              L.push("");
+              L.push("| Prova | O que se quebrou | Consequência a bordo |");
+              L.push("|---|---|---|");
+              ruins.forEach(x => L.push(`| \`${x.id}\` | ${x.desc} | ${(x.detail || "—").replace(/\|/g, "\\|")} |`));
+              L.push("");
+            }
+            const avisos = r.filter(x => x.status === "WARN");
+            if (avisos.length) {
+              L.push("<details><summary>▲ " + avisos.length + " aviso(s) — defeitos conhecidos, não derrubam a obra</summary>");
+              L.push("");
+              avisos.forEach(x => L.push(`- \`${x.id}\` ${x.desc}`));
+              L.push("");
+              L.push("</details>");
+            }
+            require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, L.join("\n") + "\n");
+          '
+
+      - name: Guardar o relatório completo
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultados-do-banco
+          path: tests/results.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  # ════════════════════════════════════════════════════════════════════════
+  #  2 · FUMAÇA — Chromium de verdade, o app inteiro, zero erro de console
+  # ════════════════════════════════════════════════════════════════════════
+  fumaca:
+    name: Fumaça em navegador real
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Obter o código
+        uses: actions/checkout@v5
+
+      - name: Preparar o Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Descobrir a versão do Playwright
+        id: pw
+        # A chave do cache tem de casar com a VERSÃO, não com a data: um
+        # Chromium guardado para outra versão do Playwright é pior que nenhum,
+        # porque ele carrega e falha de um jeito difícil de ler.
+        run: |
+          set -euo pipefail
+          V=$(node -p "require('./package.json').devDependencies.playwright.replace(/[^0-9.]/g,'')")
+          echo "versao=$V" >> "$GITHUB_OUTPUT"
+          echo "Playwright declarado: $V"
+
+      - name: Reaproveitar o Chromium já baixado
+        id: cache-chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: chromium-${{ runner.os }}-pw${{ steps.pw.outputs.versao }}
+
+      - name: Instalar as dependências
+        # `npm install` e não `npm ci`: este repositório não versiona
+        # package-lock.json, e `npm ci` exige um. Fica registrado como dívida —
+        # sem trava de versões, uma atualização do Playwright entra sozinha.
+        run: npm install --no-audit --no-fund
+
+      - name: Instalar o Chromium
+        # Mesmo com cache acertado, este comando é barato e garante as
+        # bibliotecas de sistema (--with-deps), que não moram no cache.
+        run: npx playwright install --with-deps chromium
+
+      - name: Conferir as CDNs antes de acusar o código
+        # A fumaça valida os hashes SRI contra os bytes REAIS do unpkg e do
+        # jsdelivr — o que a torna mais severa aqui do que na bancada local,
+        # onde há cópias em tests/fixtures/ (não versionadas).
+        #
+        # O preço é uma dependência externa. Se uma CDN cair, a fumaça fica
+        # vermelha por motivo que não é do código. Este passo NÃO afrouxa nada:
+        # ele apenas dá nome à falha antes que ela apareça disfarçada de
+        # regressão, para ninguém perder meia hora caçando defeito próprio.
+        run: |
+          set -uo pipefail
+          FALTOU=0
+          for U in \
+            "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" \
+            "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" \
+            "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.115.0/dist/umd/supabase.js"
+          do
+            C=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 --retry 2 --retry-delay 3 "$U" || echo "000")
+            echo "HTTP $C  $U"
+            [ "$C" = "200" ] || FALTOU=1
+          done
+          if [ "$FALTOU" = "1" ]; then
+            echo "::warning::Uma das CDNs não respondeu. Se a fumaça falhar por SRI ou por biblioteca ausente, a causa é esta — não é regressão do código."
+          fi
+
+      - name: Executar a fumaça
+        run: npm run smoke
+
+      - name: Guardar as capturas de tela
+        # As capturas valem mais que o log quando algo some da tela: o passo diz
+        # "não encontrei o botão", a imagem mostra o porquê.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capturas-da-fumaca
+          path: |
+            tests/smoke.png
+            tests/smoke-espelho.png
+          if-no-files-found: ignore
+          retention-days: 14
