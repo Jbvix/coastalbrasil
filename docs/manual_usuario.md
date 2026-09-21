@@ -545,13 +545,114 @@ linha de costa errada da v2.4. Quem trabalha nesses portos tem a posição na
 ponta da língua: a emenda está pronta para ser preenchida em
 `tools/terra/gerar_referencias.mjs`, com a **procedência obrigatória**.
 
+### 9.7.7 ⚙️ Faixa econômica de rotação
+
+A partir da **v2.11.0** o painel tem dois campos: **rotação** e **carga**. São
+os dois números que você lê de relance no painel da praça, e com eles a Iara
+passa a calcular a faixa econômica.
+
+#### A conta, em uma linha
+
+Hélice de passo fixo: a potência vai com o **cubo** da rotação e a velocidade
+com a primeira potência. Logo o consumo **por milha** vai com o quadrado.
+Cair de **1250 para 1125 rotações**:
+
+| | |
+|---|---|
+| por hora | **−27%** |
+| por milha | **−19%** |
+| tempo de viagem | **+11%** |
+
+> **Seu rebocador cruza a 33% da MCR — e isso não é defeito.** O motor foi
+> dimensionado para o tiro à poste: 100% acontece com o navio quase parado,
+> puxando. Em trânsito ele vive na faixa baixa, e é por isso que a regra de
+> "manter 70-85% da MCR", que vale para um cargueiro, **não vale aqui**.
+
+#### O fundo que existe contra corrente
+
+Contra corrente há uma velocidade abaixo da qual reduzir rotação passa a
+**gastar mais** por milha percorrida — e tende ao infinito quando você iguala
+a corrente, porque aí não chega nunca. O ponto é **1,5 × a velocidade da
+corrente**.
+
+A Iara não usa essa regra de bolso: ela **minimiza o combustível de verdade**,
+com o triângulo da corrente dentro da conta. A regra sai sozinha do resultado —
+e sai certa também com corrente de través, que nenhuma regra de bolso cobre.
+
+#### Além da velocidade de casco, é queimar óleo para fazer onda
+
+```
+V_casco = 1,34 × √(comprimento de flutuação em pés) ≈ 12,7 nós no 2810
+```
+
+Acima disso o navio sobe na própria onda de proa. A conta reflete isso: de
+1650 para 1800 rotações a **velocidade não muda** e o consumo por milha salta
+de 29,7 para 38,6 L/NM.
+
+#### O conselho vem sempre com o motivo
+
+> ⚙️ *"Dá pra fazer o horário com 1.105 rpm: economiza 240 litros, chegando
+> 35 minutos mais tarde."*
+
+E pode ser o contrário:
+
+> ⚙️ *"A 1.250 rpm você não fecha o horário. 1.405 fecham, custando 485 L a mais."*
+
+Ela não cutuca por menos de **4%** de diferença — assistente que pede para
+mexer na máquina por 30 rotações vira o alarme que todo mundo aprende a ignorar.
+
+#### ⚠️ Marcha lenta prolongada é decisão sua, não da conta
+
+A conta do consumo empurra sempre para baixo. Mas o senhor sabe o que carga
+muito baixa por horas faz com turbo, camisa e escape — e **isso não aparece no
+totalizador de combustível**.
+
+A Iara não vê a cor do escape, não sente o cheiro da praça e não sabe há quanto
+tempo o motor não abre. Por isso ela **avisa** quando a sugestão cai em carga
+baixa, e não impõe piso nenhum. A decisão é de máquinas.
+
+#### 🔧 O campo de carga: o que o ponteiro diz e a curva não esperava
+
+Informando a carga, ela compara com o que a curva livre previa:
+
+> *"Carga de 52 por cento onde a curva esperaria 33 — 55 por cento a mais.
+> Reboque, casco sujo ou mar de proa."*
+
+**Ela não escolhe entre as causas.** Não vê o cabo nem o fundo. Mede a
+diferença, diz o tamanho e entrega a lista — porque medir e nomear a
+discrepância já é a metade cara do diagnóstico.
+
+#### A curva aprende o SEU casco
+
+O modelo nasce ancorado na velocidade e no consumo que você declarou na viagem.
+Depois de algumas horas com a rotação informada, ele passa a usar a curva
+**medida**: deste casco, neste calado, com este reboque, neste mar. Não a de um
+navio novo em água parada.
+
+### 9.7.8 Quando tudo merece ser dito ao mesmo tempo
+
+Com todos os recursos ligados, o relatório passou a ter **quinze** motivos
+possíveis para falar. Medido: no pior caso, **58 segundos** de monólogo.
+
+Um relatório de um minuto no passadiço não é informação — é ruído com
+autoridade. Então ela passou a ter **orçamento**:
+
+- a **espinha** (hora, posição, rumo, waypoint) nunca é cortada;
+- o resto sai do menos urgente para cima até caber em 30 segundos;
+- **se cortou, ela avisa**: *"Tem mais 7 no painel."*
+
+E a ordem é **de passadiço**: o conselho de rotação fica em penúltimo lugar.
+Economia de combustível é valiosa e **nunca é urgente** — *"você está fora de
+rumo"* e *"o barômetro está caindo"* são. O conselho continua inteiro no
+painel, onde se lê com calma.
+
 ### 9.8 O que ela ainda NÃO faz
 
-A v2.10.0 entregou o **Sprint 3**: referências de terra. Se você perguntar alguma
+A v2.11.0 entregou o **Sprint 4**: a faixa econômica de rotação. Se você perguntar alguma
 coisa, ela repete o que ouviu e admite que ainda está aprendendo a responder.
 
-Está previsto, nesta ordem: **faixa econômica de RPM** que não estraga o ETA;
-**ondas e estabilidade** pelos sensores do tablet; e por último a **conversa
+Está previsto, nesta ordem: **ondas e estabilidade** pelos sensores do tablet —
+inclusive o GM estimado pelo período de balanço; e por último a **conversa
 livre**, em que ela passa a responder perguntas.
 
 > Se você tinha lido aqui que viria "cidade, **abrigo** e farol": a palavra

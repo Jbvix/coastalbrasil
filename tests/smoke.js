@@ -295,6 +295,29 @@ const srv = http.createServer((req, res) => {
   ok('Texto do canal não vira marcação', relEsp.existe && !relEsp.temTag,
      relEsp.temTag ? 'a <img> foi interpretada — injeção' : 'escapado');
 
+  /* MÁQUINAS NO PAINEL.                                            (v2.11.0)
+     O banco de provas mede a conta; o navegador diz se os campos existem, se
+     aceitam número e se o conselho aparece. */
+  const maq = await page.evaluate(() => {
+    const hud = document.getElementById('navHud'); hud.classList.add('active');
+    const r = document.getElementById('navRpm'), cg = document.getElementById('navCarga');
+    if (!r || !cg) return { existe: false };
+    const alt = Math.round(r.getBoundingClientRect().height);
+    r.value = '1250'; cg.value = '52';
+    r.dispatchEvent(new Event('change', { bubbles: true }));
+    const eco = document.getElementById('navEco');
+    return { existe: true, alt, tipo: r.type, modo: r.getAttribute('inputmode'),
+             lido: typeof maqRpm !== 'undefined' ? maqRpm : null,
+             cargaLida: typeof maqCarga !== 'undefined' ? maqCarga : null,
+             temEco: !!eco };
+  });
+  ok('Campos de máquinas existem e são numéricos',
+     maq.existe && maq.tipo === 'number' && maq.modo === 'numeric',
+     maq.existe ? `${maq.tipo}/${maq.modo}, ${maq.alt} px` : 'não existem');
+  ok('O que o chefe digita é lido', maq.lido === 1250 && maq.cargaLida === 52,
+     `rpm=${maq.lido} carga=${maq.cargaLida}`);
+  ok('Há linha de conselho e de tempo no painel', maq.temEco, 'presentes');
+
   /* A REFERÊNCIA DE TERRA NO PAINEL DE WAYPOINTS.                  (v2.10.0)
      O banco de provas garante a conta e o escape; o que só o navegador diz é
      se a linha aparece de fato no painel que o comandante abre no 🔷 ℹ️. */

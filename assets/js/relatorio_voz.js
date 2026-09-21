@@ -289,6 +289,19 @@ const REL_COMBUSTIVEL_A_CADA = 4;
    próprio modelo — anunciá-la seria dar ares de precisão a um palpite. */
 const REL_ETA_MENCIONA_MIN = 10;
 
+/*
+QUANDO O CONSELHO DE ROTAÇÃO VIRA FALA.
+
+Economia abaixo de 3% do que se gastaria na rotação atual não merece
+interromper ninguém: está dentro da incerteza do próprio modelo, e assistente
+que pede para mexer na máquina por 2% vira o alarme que se aprende a ignorar.
+
+A exceção é o sentido CONTRÁRIO: quando o relógio exige MAIS rotação, ela fala
+sempre — porque aí não é economia, é o ETA escapando, e isso o comandante
+precisa ouvir mesmo que a diferença seja pequena.
+*/
+const REL_RPM_ECONOMIA_PCT = 0.03;
+
 function deveDizerCombustivel(sequencia, saldoInsuficiente) {
   if (saldoInsuficiente) return true;
   const n = Number(sequencia);
@@ -313,6 +326,92 @@ function prefixoSimulacao(simulando) {
 }
 
 /*
+════════════════════════════════════════════════════════════════════════════════
+  ORÇAMENTO DE FALA — o que fazer quando TUDO merece ser dito
+════════════════════════════════════════════════════════════════════════════════
+  Este mecanismo nasceu de uma medição, não de uma ideia. Com o Sprint 4 o
+  relatório passou a ter QUINZE fontes de exceção — fora de rumo, farol,
+  combustível, vento, rajada, mar, corrente, barômetro, rotação, carga do
+  motor, referência de terra, ETA da rota… No pior caso realista, todas
+  dispararam juntas e o resultado foram 58 SEGUNDOS de monólogo. O teto era 30.
+
+  Cortar frase por frase não resolveria: o problema não é uma frase longa, é a
+  soma de quinze coisas legítimas. E a saída errada seria subir o teto — um
+  relatório de um minuto no passadiço não é informação, é ruído com autoridade.
+
+  A saída é ORÇAMENTO COM PRIORIDADE:
+
+    1. cada trecho nasce com uma prioridade de BORDO, não de sprint;
+    2. o que não couber no teto é cortado, do menos urgente para cima;
+    3. a espinha (hora, posição, rumo, waypoint) NUNCA é cortada;
+    4. se algo foi cortado, ela DIZ — porque calar sem avisar é pior que
+       falar demais: o comandante precisa saber que há mais no painel.
+
+  A ORDEM DE PRIORIDADE É DE PASSADIÇO, e por isso o conselho de rotação —
+  que é a entrega deste sprint — fica em penúltimo. Economia de combustível é
+  valiosa e nunca é urgente; "você está fora de rumo" e "o barômetro está
+  caindo" são. E o conselho continua inteiro no painel, onde se lê com calma.
+*/
+const REL_PRIORIDADE = {
+  // Espinha — nunca cortada (prioridade 0).
+  simulacao: 0, hora: 0, posicao: 0, rumo: 0, 'sem-gps': 0,
+  'proximo-wp': 0, eta: 0, 'sem-rota': 0, chegada: 0, 'nova-perna': 0, 'fim-de-rota': 0,
+  // Segurança.
+  'xte-preocupa': 1, 'corrente-impossivel': 1, 'perna-impossivel': 1, 'rpm-aviso': 1,
+  // Máquinas: o chefe quer saber, e ninguém mais vai lhe contar.
+  'carga-pesado': 2, 'carga-leve': 4,
+  // Tempo piorando.
+  // Barômetro caindo sobe para 2: vidro descendo é deterioração de verdade,
+  // e vale mais que o número de uma rajada isolada.
+  'barometro-atencao': 2, rajada: 3,
+  // Situação.
+  farol: 5, 'corrente-atrapalha': 5, 'corrente-ajuda': 7, xte: 6,
+  vento: 6, mar: 6,
+  // Economia e contexto: valiosos, nunca urgentes.
+  'rpm-reduzir': 8, 'rpm-aumentar': 3, 'eta-rota-perde': 8, 'eta-rota-ganha': 9,
+  combustivel: 7, 'combustivel-alerta': 2,
+  referencia: 6, 'referencia-mudou': 8, barometro: 9, idade: 9
+};
+
+/*
+Monta a fala respeitando o teto. Corta por prioridade, mas EMITE NA ORDEM DE
+LEITURA — um relatório que embaralha a ordem para caber fica incompreensível
+mesmo cabendo.
+*/
+function montarFalaComOrcamento(segmentos, tetoS) {
+  const segs = (segmentos || []).filter(x => x && x.texto);
+  const teto = Number(tetoS) || REL_TETO_S.excecional;
+  const prio = k => REL_PRIORIDADE[k] == null ? 5 : REL_PRIORIDADE[k];
+
+  let vivos = segs.slice();
+  let cortados = [];
+  const junta = lista => lista.map(x => x.texto).join(' ');
+
+  while (vivos.length && duracaoFaladaS(junta(vivos)) > teto) {
+    // Acha o de MENOR urgência (maior número). Empate: o mais longo primeiro,
+    // porque cortar o longo libera mais segundos por corte e preserva mais
+    // itens no total.
+    let pior = -1, piorPrio = -1, piorTam = -1;
+    for (let i = 0; i < vivos.length; i++) {
+      const pp = prio(vivos[i].chave);
+      if (pp === 0) continue;                       // espinha não se corta
+      if (pp > piorPrio || (pp === piorPrio && vivos[i].texto.length > piorTam)) {
+        pior = i; piorPrio = pp; piorTam = vivos[i].texto.length;
+      }
+    }
+    if (pior < 0) break;                            // só sobrou espinha
+    cortados.push(vivos[pior].chave);
+    vivos.splice(pior, 1);
+  }
+
+  let texto = junta(vivos);
+  /* CORTAR EM SILÊNCIO SERIA PIOR QUE FALAR DEMAIS. Quem ouve precisa saber
+     que houve mais — senão confia num retrato incompleto sem saber que é. */
+  if (cortados.length) texto += ` Tem mais ${cortados.length} no painel.`;
+  return { texto: texto.trim(), partes: vivos.map(x => x.chave), cortados };
+}
+
+/*
 O RETRATO DE HORA EM HORA.
 
 Recebe um estado já montado (nada de globais aqui dentro — é função pura, e é
@@ -322,121 +421,111 @@ NÃO SÓ o que foi dito, mas o que foi deliberadamente omitido.
 */
 function montarRelatorioHora(e) {
   const s = e || {};
-  const partes = [];
-  let t = prefixoSimulacao(s.simulacao);
-  if (s.simulacao) partes.push('simulacao');
+  /*
+  SEGMENTOS, NÃO CONCATENAÇÃO. Cada trecho nasce identificado e separado para
+  que o orçamento possa cortar por prioridade. A versão anterior grudava tudo
+  numa string e, quando o Sprint 4 somou a décima quinta exceção, não havia
+  como remover uma frase sem remover todas.
+  */
+  const seg = [];
+  const pus = (chave, texto) => { if (texto) seg.push({ chave, texto: texto.trim() }); };
 
-  // 1. A hora. Ancora o relatório no tempo — quem estava distraído sabe se
-  //    perdeu o anterior.
-  t += `${falarHora(s.quando)}. `;
-  partes.push('hora');
+  if (s.simulacao) pus('simulacao', prefixoSimulacao(true));
 
-  // 2. Posição, rumo e velocidade: o tripé do retrato.
-  if (isFinite(s.lat) && isFinite(s.lng)) {
-    t += `Posição ${falarCoord(s.lat, s.lng)}. `;
-    partes.push('posicao');
-  }
-  if (isFinite(s.cog) && isFinite(s.sog)) {
-    t += `Rumo ${falarRumo(s.cog)}, ${falarNos(s.sog)}. `;
-    partes.push('rumo');
-  } else {
-    t += 'Ainda sem rumo e velocidade do GPS. ';
-    partes.push('sem-gps');
-  }
+  // 1. A hora, que ancora o retrato no tempo.
+  pus('hora', `${falarHora(s.quando)}.`);
 
-  // 3. Para onde vamos. É a pergunta que o comandante faz primeiro.
+  // 2. Posição, rumo e velocidade: o tripé.
+  if (isFinite(s.lat) && isFinite(s.lng)) pus('posicao', `Posição ${falarCoord(s.lat, s.lng)}.`);
+  if (isFinite(s.cog) && isFinite(s.sog)) pus('rumo', `Rumo ${falarRumo(s.cog)}, ${falarNos(s.sog)}.`);
+  else pus('sem-gps', 'Ainda sem rumo e velocidade do GPS.');
+
+  // 3. Para onde vamos — a pergunta que o comandante faz primeiro.
   const wp = s.proxWp;
   if (wp && wp.nome && isFinite(wp.distNM)) {
-    t += `Próximo waypoint ${wp.nome}, ${falarNum(wp.distNM)} milhas, marcação ${falarRumo(wp.brg)}. `;
-    partes.push('proximo-wp');
-    if (wp.eta instanceof Date && !isNaN(wp.eta)) {
-      t += `Chegada prevista ${falarHora(wp.eta)}. `;
-      partes.push('eta');
-    }
+    pus('proximo-wp', `Próximo waypoint ${wp.nome}, ${falarNum(wp.distNM)} milhas, marcação ${falarRumo(wp.brg)}.`);
+    if (wp.eta instanceof Date && !isNaN(wp.eta)) pus('eta', `Chegada prevista ${falarHora(wp.eta)}.`);
   } else {
-    t += 'Sem rota planejada no momento. ';
-    partes.push('sem-rota');
+    pus('sem-rota', 'Sem rota planejada no momento.');
   }
 
   // 4. EXCEÇÃO — fora de rumo.
   const x = deveDizerXte(s.xteNM);
   if (x.dizer) {
     const lado = s.xteLado || (Number(s.xteNM) < 0 ? 'bombordo' : 'boreste');
-    t += x.preocupa
-      ? `Atenção: ${falarNum(Math.abs(s.xteNM), 2)} milhas fora de rumo, pra ${lado}. `
-      : `Fora de rumo ${falarNum(Math.abs(s.xteNM), 2)} milhas pra ${lado}. `;
-    partes.push(x.preocupa ? 'xte-preocupa' : 'xte');
+    pus(x.preocupa ? 'xte-preocupa' : 'xte',
+        x.preocupa ? `Atenção: ${falarNum(Math.abs(s.xteNM), 2)} milhas fora de rumo, pra ${lado}.`
+                   : `Fora de rumo ${falarNum(Math.abs(s.xteNM), 2)} milhas pra ${lado}.`);
   }
 
   // 5. EXCEÇÃO — farol avistável daqui.
   if (deveDizerFarol(s.farol)) {
-    t += `Farol ${s.farol.nome} no alcance, ${falarNum(s.farol.distNM)} milhas`;
     const car = falarCaracteristica(s.farol.caracteristica);
-    t += car ? `, ${car}. ` : '. ';
-    partes.push('farol');
+    pus('farol', `Farol ${s.farol.nome} no alcance, ${falarNum(s.farol.distNM)} milhas` + (car ? `, ${car}.` : '.'));
   }
 
   // 6. EXCEÇÃO — combustível.
-  const c = s.combustivel;
-  if (c && deveDizerCombustivel(s.sequencia, c.insuficiente)) {
-    t += `Consumidos ${Math.round(c.usadoL)} litros`;
-    if (isFinite(c.restanteL)) t += `, restam ${Math.round(c.restanteL)}`;
-    t += '. ';
-    if (c.insuficiente) t += 'O saldo não fecha a rota que falta — vale conferir. ';
-    partes.push(c.insuficiente ? 'combustivel-alerta' : 'combustivel');
+  const cb = s.combustivel;
+  if (cb && deveDizerCombustivel(s.sequencia, cb.insuficiente)) {
+    let t6 = `Consumidos ${Math.round(cb.usadoL)} litros`;
+    if (isFinite(cb.restanteL)) t6 += `, restam ${Math.round(cb.restanteL)}`;
+    t6 += '.';
+    if (cb.insuficiente) t6 += ' O saldo não fecha a rota que falta — vale conferir.';
+    pus(cb.insuficiente ? 'combustivel-alerta' : 'combustivel', t6);
   }
 
-  /*
-  6.5. EXCEÇÃO — A CIDADE MAIS PRÓXIMA MUDOU.
-
-  Dizer "cidade mais próxima: Macaé" toda hora seria ruído: ela não muda de
-  hora em hora. Mas o INSTANTE em que ela muda é um marco de singradura — é o
-  equivalente falado de passar o través de um ponto notável, e é assim que se
-  conta uma viagem costeira: "passamos Cabo Frio às 14, Macaé às 17".
-  */
-  /* E cala-se quando o waypoint JÁ TEM o nome da cidade — que na costa
-     brasileira é a regra, não a exceção: a rota de Santos a Macaé tem
-     waypoints chamados Santos e Macaé. Dizer "próximo waypoint Macaé… agora a
-     referência mais próxima é Macaé" é a Iara conversando sozinha. */
+  // 6.5. EXCEÇÃO — a cidade mais próxima MUDOU: marco de singradura.
   const refRedundante = s.referencia && s.proxWp && s.proxWp.nome &&
     s.referencia.toLowerCase().startsWith(String(s.proxWp.nome).toLowerCase());
   if (s.referenciaMudou && s.referencia && !refRedundante) {
-    t += `Agora a referência mais próxima é ${s.referencia}. `;
-    partes.push('referencia-mudou');
+    pus('referencia-mudou', `Agora a referência mais próxima é ${s.referencia}.`);
   }
 
-  // 7. EXCEÇÃO — o tempo. O próprio falarTempo() já filtra o que não merece
-  //    frase (vento sempre; rajada, mar, corrente e barômetro só quando saem
-  //    do comum). Aqui só se costura o resultado.
+  // 7. EXCEÇÃO — o tempo. falarTempo() já filtra o que não merece frase.
   if (s.tempo) {
     const bt = falarTempo(s.tempo);
-    if (bt.texto) { t += bt.texto + ' '; partes.push(...bt.partes); }
-    if (s.tempo.correnteImpossivel) {
-      t += `Atenção: ${s.tempo.correnteImpossivel}. `;
-      partes.push('corrente-impossivel');
+    // Cada parte do tempo vira um segmento próprio, para o orçamento poder
+    // cortar a rajada e manter o vento, em vez de perder os dois juntos.
+    (bt.segmentos || (bt.texto ? [{ chave: 'vento', texto: bt.texto }] : []))
+      .forEach(x2 => pus(x2.chave, x2.texto));
+    if (s.tempo.correnteImpossivel) pus('corrente-impossivel', `Atenção: ${s.tempo.correnteImpossivel}.`);
+  }
+
+  // 7.5. EXCEÇÃO — o conselho de rotação (a conta vive em consumo.js).
+  if (s.rotacao && s.rotacao.faixa) {
+    const f = s.rotacao.faixa;
+    const gastoAtual = (f.atual && f.atual.litros) || 0;
+    const vale = f.recomendacao === 'aumentar' ||
+      (f.recomendacao === 'reduzir' && gastoAtual > 0 &&
+       f.economiaL / gastoAtual >= REL_RPM_ECONOMIA_PCT);
+    if (vale && f.recomendacao === 'reduzir') {
+      let t7 = `Dá pra fazer o horário com ${f.rpmSugerido} rotações: economiza ${Math.round(f.economiaL)} litros`;
+      t7 += f.atrasoMin > 1 ? `, chegando ${falarDuracao(f.atrasoMin / 60)} mais tarde.` : '.';
+      pus('rpm-reduzir', t7);
+    } else if (vale) {
+      pus('rpm-aumentar', `Com ${f.atual ? f.atual.rpm : 'essa'} rotação você não fecha o horário. ${f.rpmSugerido} fecham.`);
+    }
+    const aviso = f.avisos && f.avisos[0];
+    if (aviso && aviso.tipo !== 'carga-baixa') pus('rpm-aviso', `${aviso.texto}.`);
+    if (s.rotacao.carga && s.rotacao.carga.texto) {
+      pus('carga-' + s.rotacao.carga.situacao, `${s.rotacao.carga.texto}.`);
     }
   }
 
-  /*
-  8. EXCEÇÃO — o ETA da rota corrigido pela corrente.
-     Só entra quando a diferença vale a frase. Abaixo de 10 minutos sobre a
-     rota inteira, a correção está dentro da incerteza do próprio modelo e
-     anunciá-la seria dar ares de precisão a um palpite.
-  */
+  // 8. EXCEÇÃO — o ETA da rota corrigido pela corrente.
   if (s.etaRota && isFinite(s.etaRota.ganhoHoras) && Math.abs(s.etaRota.ganhoHoras) * 60 >= REL_ETA_MENCIONA_MIN) {
     const g = s.etaRota.ganhoHoras;
-    t += g > 0
-      ? `Com a corrente a favor, a rota inteira sai ${falarDuracao(g)} mais cedo do que o plano. `
-      : `A corrente cobra ${falarDuracao(-g)} a mais na rota inteira. `;
-    partes.push(g > 0 ? 'eta-rota-ganha' : 'eta-rota-perde');
+    pus(g > 0 ? 'eta-rota-ganha' : 'eta-rota-perde',
+        g > 0 ? `Com a corrente a favor, a rota inteira sai ${falarDuracao(g)} mais cedo do que o plano.`
+              : `A corrente cobra ${falarDuracao(-g)} a mais na rota inteira.`);
   }
   if (s.etaRota && s.etaRota.impossiveis && s.etaRota.impossiveis.length) {
     const im = s.etaRota.impossiveis[0];
-    t += `Atenção na perna para ${im.nome}: ${im.motivo}. `;
-    partes.push('perna-impossivel');
+    pus('perna-impossivel', `Atenção na perna para ${im.nome}: ${im.motivo}.`);
   }
 
-  return { texto: t.trim(), partes, prioridade: 'rotina' };
+  const r = montarFalaComOrcamento(seg, REL_TETO_S.excecional);
+  return { texto: r.texto, partes: r.partes, cortados: r.cortados, prioridade: 'rotina' };
 }
 
 /*
@@ -606,6 +695,17 @@ function estadoAtualParaRelatorio() {
       }
     }
 
+    /* O conselho de rotação e, de quebra, a amostra que ensina a curva deste
+       casco. Uma amostra POR RELATÓRIO, não por fixo: mil pontos do mesmo
+       minuto de máquina dariam à mediana uma confiança que ela não tem. */
+    if (typeof conselhoDeRotacao === 'function') {
+      e.rotacao = conselhoDeRotacao();
+      if (typeof colherAmostraDeMaquina === 'function' && fix &&
+          typeof tripData !== 'undefined' && tripData) {
+        colherAmostraDeMaquina(fix.sog, tripData.fuelConsumption);
+      }
+    }
+
     if (typeof tripData !== 'undefined' && tripData && typeof navAccumFuel !== 'undefined') {
       const restante = tripData.fuelInitial - navAccumFuel;
       const porNM = tripData.speedKnots > 0 ? tripData.fuelConsumption / tripData.speedKnots : 0;
@@ -636,6 +736,10 @@ function registrarRelatorio(e, r) {
     lat: e.lat, lng: e.lng, cog: e.cog, sog: e.sog,
     wp: e.proxWp ? e.proxWp.nome : null,
     ref: e.referencia || null,
+    // Rotação e carga informadas: é a série que, relida depois, permite
+    // reconstruir a curva real do casco fora do app.
+    rpm: (typeof maqRpm !== 'undefined') ? maqRpm : null,
+    carga: (typeof maqCarga !== 'undefined') ? maqCarga : null,
     xte: e.xteNM, sim: !!e.simulacao,
     partes: r.partes,
     onda: null,          // Sprint 5 — ver nota acima

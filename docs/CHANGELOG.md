@@ -11,6 +11,176 @@ executável.
 
 ```
 
+## v2.11.0 (21/09/2026) — FAIXA ECONÔMICA DE ROTAÇÃO · SPRINT 4
+
+Autor: Jossian Brito (Charlie Bravo)
+
+Conselho de rotação que chega errado custa combustível ou custa ETA — e a voz
+da Iara é convincente. Por isso este sprint confere a física contra casos que
+se resolvem na mesa, e não só a coerência do código consigo mesmo.
+
+### A lei da hélice, ancorada no cruzeiro declarado
+
+Com a faixa informada por Charlie Bravo (**lenta 650 · cruzeiro 1250 · máxima
+1800**) e o ponto de serviço da viagem:
+
+| rpm | nós | L/h | L/NM | carga MCR |
+|---:|---:|---:|---:|---:|
+| 650 | 5,7 | 25 | 4,4 | **5%** |
+| 1000 | 8,8 | 92 | 10,5 | 17% |
+| **1250** | **11,0** | **180** | **16,4** | **33%** |
+| 1500 | 13,2 | 311 | 23,6 | 58% |
+| 1800 | 13,9* | 537 | 38,6 | 100% |
+
+Cair de 1250 para 1125 (−10%): **−27% por hora, −19% por milha, +11% de tempo.**
+
+**Este rebocador cruza a 33% da MCR, e isso não é defeito.** O motor é
+dimensionado para o **tiro à poste**, não para o trânsito: 100% da MCR
+acontece com o navio quase parado, puxando. Por isso o "piso de SFOC em 70–85%
+da MCR", que vale para um cargueiro, **não se aplica aqui** — aplicá-lo
+proibiria o próprio regime de cruzeiro.
+
+### \* A velocidade de casco, que a primeira versão ignorava
+
+O modelo previa **15,8 nós a 1800 rotações**. Um ASD 2810 não faz isso. Num
+casco de deslocamento, a partir da velocidade de casco o navio sobe na própria
+onda de proa e a resistência vai ao céu:
+
+```
+V_casco = 1,34 · √(L_flutuação em pés)
+        = 1,34 · √89,4 = 12,7 nós     (LOA 28,67 m)
+```
+
+Com potência sobrando um rebocador ultrapassa isso um pouco — daí o teto
+prático de ~13,9 nós. Acima dele **a velocidade para de crescer e o consumo
+continua com n³**: o L/NM salta de 29,7 para 38,6 sem ganhar um nó. O
+otimizador passa a enxergar o que o mar já sabia: forçar rotação além da
+velocidade de casco é queimar óleo para fazer onda.
+
+### 🎯 O ótimo de 1,5×Vc não foi codificado — ele EMERGE
+
+Na proposta eu demonstrei que, contra corrente, existe uma velocidade abaixo
+da qual reduzir rotação passa a **gastar mais** por milha no fundo:
+
+```
+minimizar  n³/(c·n − Vc)   →   derivada zera em   V = 1,5 × Vc
+```
+
+**Poderia codificar isso como piso. Não codifiquei**, e a razão importa: um
+piso escrito à mão vale só para o caso que eu previ — corrente de proa. A
+corrente real vem de través, e aí o navio caranguejeia, o que muda a conta.
+
+Em vez disso, minimiza-se **numericamente** o combustível total, com o
+triângulo da corrente **dentro** da função objetivo. O 1,5×Vc emerge do
+resultado — e emerge certo também nos casos que eu não previ. Medido:
+**erro de 0,016 nó** com 4 nós de corrente, limitado só pelo passo de 5 rpm
+da varredura.
+
+E quando o ótimo cai **abaixo da marcha lenta** (corrente de 3 nós pediria 511
+rpm), a resposta é a marcha lenta — não uma rotação inventada.
+
+### O conselho pode ser ACELERAR
+
+A primeira versão só sabia mandar reduzir, e numa derrota apertada devolvia
+*"economia −485 L, atraso −140 min"*: tecnicamente correto e ilegível. Número
+negativo com rótulo positivo é a forma mais eficiente de fazer alguém entender
+o contrário do que está escrito. Agora o conselho tem nome — **reduzir,
+aumentar ou manter** — e não cutuca por menos de 4% de diferença.
+
+### Marcha lenta prolongada é decisão de MÁQUINAS
+
+A conta do consumo empurra sempre para baixo. Mas rodar horas em carga muito
+baixa suja turbo, molha camisa e enche o escape de óleo não queimado — e isso
+não aparece no totalizador de combustível.
+
+**A Iara não vê a cor do escape, não sente o cheiro da praça, não sabe há
+quanto tempo o motor não abre. O chefe sabe.** Por isso aqui não há piso: há
+um **aviso**, e a decisão fica com quem pode tomá-la.
+
+### Carga lida vs. esperada — a discrepância é medida e nomeada
+
+Com a carga informada, a curva livre prevê `(n/n_máx)³`. Mais que isso na mesma
+rotação significa que o navio trabalha mais do que trabalharia solto:
+
+> *"Carga de 52 por cento onde a curva esperaria 33 — 55 por cento a mais.
+> Reboque, casco sujo ou mar de proa."*
+
+**A Iara não escolhe entre as causas** — ela não vê o cabo nem o fundo. Mede a
+diferença, diz o tamanho e entrega a lista ao chefe. Medir e nomear a
+discrepância já é a metade cara do diagnóstico.
+
+### 🔴 58 SEGUNDOS DE MONÓLOGO — e o orçamento de fala
+
+O achado mais importante deste sprint, e veio de uma medição, não de uma ideia.
+
+Com o Sprint 4 o relatório passou a ter **quinze fontes de exceção**. No pior
+caso realista todas dispararam juntas: **58 segundos**. O teto era 30.
+
+Cortar frase por frase não resolveria — o problema não é uma frase longa, é a
+soma de quinze coisas legítimas. E subir o teto seria pior: um relatório de um
+minuto no passadiço não é informação, é **ruído com autoridade**.
+
+A saída foi **orçamento com prioridade de bordo**:
+
+1. cada trecho nasce com prioridade;
+2. o que não couber é cortado, do menos urgente para cima;
+3. a **espinha** (hora, posição, rumo, waypoint) nunca é cortada, nem com teto
+   impossível — retrato sem posição não é retrato curto, é outra coisa;
+4. se algo foi cortado, **ela diz**.
+
+Resultado: **58 s → 30 s**, mantendo posição, fora de rumo, rajada e carga do
+motor; cortando economia, combustível, mar, vento, farol, corrente e barômetro.
+
+**A ordem é de passadiço, não de sprint.** O conselho de rotação — entrega
+deste sprint — fica em penúltimo: economia de combustível é valiosa e **nunca
+é urgente**; "você está fora de rumo" e "o barômetro está caindo" são.
+
+### "Tem mais no painel" tinha de virar verdade
+
+O Sprint 2 pôs vento, mar e corrente **só na fala**. Quando o orçamento começou
+a cortar dizendo *"tem mais no painel"*, a frase virou **mentira**: não havia
+painel nenhum para essas coisas. Ou se apagava a frase, ou se tornava verdade —
+e é mais útil torná-la verdade. Entrou a linha `#navTempo`.
+
+### A curva deste casco, aprendida na própria viagem
+
+Uma amostra **por relatório**, não por fixo: mil pontos do mesmo minuto de
+máquina dariam à mediana uma confiança que ela não tem. Reancora-se o **ponto**,
+não o expoente — a lei da hélice é física e não se mede com meia dúzia de
+pontos ruidosos. Mediana, não média, porque um fixo de GPS ruim não pode mover
+a curva. E guardas: mínimo de 4 amostras e 80 rpm de espalhamento, porque
+quatro pontos na mesma rotação não dizem nada sobre a **curva**, só sobre o
+ponto.
+
+### Duas lacunas que a mutação encontrou nas provas
+
+**Suíte 23 (16 provas), validada por mutação: 16 defeitos, 16 apanhados** — mas
+duas só depois de consertar as provas:
+
+1. **A regra 6 só vigiava um arquivo.** Plantar *"reduza a rotação"* em
+   `consumo.js` passava limpo, porque a varredura olhava apenas `iara.js`, onde
+   a regra nasceu. A Iara hoje fala textos gerados em **quatro** módulos, e uma
+   regra que vigia um arquivo não é uma regra — é um hábito local.
+2. **O orçamento podia comer a espinha** com teto impossível, e nenhuma prova
+   reclamava porque o caso testado tinha folga.
+
+E a prova de fumaça pegou o que o banco não podia: **os campos de máquinas
+ficavam inertes** até alguém apertar "navegar", porque liguei os ouvintes
+dentro de `startNavigation` em vez do carregamento — e duas navegações seguidas
+empilhavam ouvintes duplicados.
+
+### Números
+
+| | v2.10.0 | v2.11.0 |
+|---|---|---|
+| Provas do banco | 211 | **227** |
+| Passos da prova de fumaça | 60 | **63** |
+| Módulos | 12 | **13** (`consumo.js`) |
+| Pior relatório falado | 58 s | **30 s** |
+| `app.html` | 3.247 linhas | **3.279** (teto: 3.500) |
+
+---
+
 ## v2.10.0 (20/09/2026) — CADA WAYPOINT GANHA UM NOME · SPRINT 3
 
 Autor: Jossian Brito (Charlie Bravo)

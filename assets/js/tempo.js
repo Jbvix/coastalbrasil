@@ -337,7 +337,12 @@ const TEMPO_CORRENTE_NOS = 0.3;   // efeito mínimo no avanço para virar frase
 function falarTempo(t) {
   const o = t || {};
   const partes = [];
+  /* SEGMENTOS SEPARADOS, para o orçamento de fala do relatório poder cortar a
+     rajada e manter o vento — em vez de perder os dois no mesmo bloco. */
+  const segmentos = [];
   let s = '';
+  const marcar = (chave, txt) => { if (txt) segmentos.push({ chave, texto: txt.trim() }); };
+  let antes = '';
 
   const ar = o.ar || {};
   const vento = Number(ar.wind_speed_10m);
@@ -347,11 +352,11 @@ function falarTempo(t) {
     // O nome Beaufort já começa com "vento" ("vento muito fresco"); repetir a
     // palavra depois de "Vento de nordeste, 24 nós" soa a máquina travada.
     s += b ? `, ${b.nome.replace(/^vento /, '')}, força ${b.f}. ` : '. ';
-    partes.push('vento');
+    partes.push('vento'); marcar('vento', s.slice(antes.length)); antes = s;
     const raj = Number(ar.wind_gusts_10m);
     if (isFinite(raj) && raj - vento >= TEMPO_RAJADA_DELTA) {
       s += `Rajadas de ${Math.round(raj)}. `;
-      partes.push('rajada');
+      partes.push('rajada'); marcar('rajada', s.slice(antes.length)); antes = s;
     }
   }
 
@@ -363,7 +368,7 @@ function falarTempo(t) {
     s += `Mar de ${rumoCardeal(mar.wave_direction)}, ${hs.toFixed(1).replace('.', ',')} metros`;
     const per = Number(mar.wave_period);
     s += isFinite(per) ? `, período de ${Math.round(per)} segundos. ` : '. ';
-    partes.push('mar');
+    partes.push('mar'); marcar('mar', s.slice(antes.length)); antes = s;
   }
 
   if (o.correnteEfeito && Math.abs(o.correnteEfeito.ganhoNos) >= TEMPO_CORRENTE_NOS) {
@@ -375,18 +380,20 @@ function falarTempo(t) {
       ? `ajudando ${falarNos(g.ganhoNos)}. `
       : `tirando ${falarNos(-g.ganhoNos)} do seu avanço. `;
     partes.push(g.ganhoNos > 0 ? 'corrente-ajuda' : 'corrente-atrapalha');
+    marcar(g.ganhoNos > 0 ? 'corrente-ajuda' : 'corrente-atrapalha', s.slice(antes.length)); antes = s;
   }
 
   if (o.barometro && o.barometro.sentido) {
     s += `Barômetro ${Math.round(o.barometro.hPa)}, ${o.barometro.texto}`;
     s += o.barometro.atencao ? ' — vale ficar de olho. ' : '. ';
     partes.push(o.barometro.atencao ? 'barometro-atencao' : 'barometro');
+    marcar(o.barometro.atencao ? 'barometro-atencao' : 'barometro', s.slice(antes.length)); antes = s;
   }
 
   const idade = o.idade;
-  if (idade && idade.rotulo) { s += `${idade.rotulo}. `; partes.push('idade'); }
+  if (idade && idade.rotulo) { s += `${idade.rotulo}. `; partes.push('idade'); marcar('idade', s.slice(antes.length)); }
 
-  return { texto: s.trim(), partes };
+  return { texto: s.trim(), partes, segmentos };
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -457,3 +464,53 @@ function iniciarTempo(obterPosicao) {
 }
 
 function pararTempo() { if (tempoTimer) { clearInterval(tempoTimer); tempoTimer = null; } }
+
+/*
+UMA LINHA DE TEMPO PARA O PAINEL — curta, e com a idade quando ela importa.
+
+Diferente do bloco falado: aqui não há orçamento de segundos, mas há largura de
+tela. Abreviações que na fala seriam ilegíveis ("NE 24 kt") no olho são o
+formato natural — é a mesma tese dos dois públicos, agora na direção inversa.
+*/
+function linhaDeTempoNoPainel() {
+  if (!tempoAtual) return '';
+  const ar = tempoAtual.ar || {}, mar = tempoAtual.mar || {};
+  const p = [];
+  const v = Number(ar.wind_speed_10m);
+  if (isFinite(v)) {
+    const b = beaufort(v);
+    let t = `💨 ${rumoCardeal(ar.wind_direction_10m)} ${Math.round(v)} kt`;
+    const raj = Number(ar.wind_gusts_10m);
+    if (isFinite(raj) && raj - v >= TEMPO_RAJADA_DELTA) t += ` (raj ${Math.round(raj)})`;
+    if (b) t += ` F${b.f}`;
+    p.push(t);
+  }
+  const hs = Number(mar.wave_height);
+  if (isFinite(hs)) {
+    let t = `🌊 ${hs.toFixed(1).replace('.', ',')} m`;
+    const per = Number(mar.wave_period);
+    if (isFinite(per)) t += `/${Math.round(per)} s`;
+    p.push(t);
+  }
+  const drift = nosDeKmh(mar.ocean_current_velocity);
+  if (isFinite(drift) && drift > 0.05) {
+    p.push(`🔃 ${drift.toFixed(1).replace('.', ',')} kt→${rumoCardeal(mar.ocean_current_direction)}`);
+  }
+  const pr = Number(ar.pressure_msl);
+  if (isFinite(pr)) {
+    const tend = tendenciaBarometrica(tempoBarometro);
+    p.push(`🌡️ ${Math.round(pr)} hPa${tend && tend.sentido ? ' ' + (tend.por3h < 0 ? '↓' : '↑') : ''}`);
+  }
+  const idade = idadeDoTempo(tempoAtual.emitidoEm);
+  if (idade && idade.rotulo) p.push(`⏳ ${idade.minutos} min`);
+  return p.join(' · ');
+}
+
+/* Pinta a linha. Chamada a cada fixo, junto do resto do HUD. */
+function atualizarPainelTempo() {
+  const el = document.getElementById('navTempo');
+  if (!el) return;
+  const t = linhaDeTempoNoPainel();
+  el.className = 'nav-line nav-tempo' + (t ? ' active' : '');
+  el.textContent = t;
+}

@@ -1837,7 +1837,19 @@ t(S19, '19.11', 'REGRA 6 — a Iara SUGERE, nunca manda no navio', () => {
      vermelha por motivo errado, que é pior que não existir. Agora tira os
      comentários, tira a declaração da lista, e varre só o que a Iara DIZ:
      os argumentos de iaraDizer() e o texto da apresentação. */
-  const semComentario = IARA19.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
+  /* TODOS OS MÓDULOS QUE PRODUZEM FALA, e não só este.
+
+     A mutação denunciou: plantar "reduza a rotação" em consumo.js passava
+     limpo, porque esta varredura só olhava iara.js — o arquivo onde a regra
+     nasceu. Mas a Iara hoje fala textos gerados em quatro módulos, e uma
+     regra que vigia um arquivo não é uma regra, é um hábito local.
+
+     A lição é a mesma do orçamento de fala: o que vale para a Iara vale para
+     TUDO que sai pela boca dela, venha do módulo que vier. */
+  const FONTES_DE_FALA = ['assets/js/iara.js', 'assets/js/relatorio_voz.js',
+                          'assets/js/tempo.js', 'assets/js/consumo.js'];
+  const bruto = FONTES_DE_FALA.map(f => fs19.readFileSync(ROOT + '/' + f, 'utf8')).join('\n');
+  const semComentario = bruto.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
   const semLista = semComentario.replace(/const IARA_IMPERATIVOS_PROIBIDOS = \[[\s\S]*?\];/, ' ');
   /* Casar só `iaraDizer(<literal>` perderia as falas dentro de um ternário —
      e é justamente lá que mora a mensagem de "estou sem internet". Então
@@ -1847,7 +1859,7 @@ t(S19, '19.11', 'REGRA 6 — a Iara SUGERE, nunca manda no navio', () => {
   const falas = (semLista.match(/(?:`[^`]*`|'[^']*')/g) || [])
     .filter(f => f.slice(1, -1).trim().split(/\s+/).length >= 4)
     .concat([textoApresentacao()]);
-  ok(falas.length >= 6, `só ${falas.length} fala(s) encontradas — a varredura não está achando o texto da Iara`);
+  ok(falas.length >= 25, `só ${falas.length} fala(s) nos ${FONTES_DE_FALA.length} módulos — a varredura encolheu`);
   const sujas = falas.filter(f => violaRegra6(f).length > 0);
   ok(sujas.length === 0, `${sujas.length} fala(s) mandam no navio: ${sujas.slice(0, 2)}`);
   ok(violaRegra6(textoApresentacao()).length === 0, 'a própria apresentação manda no navio');
@@ -2857,6 +2869,341 @@ t(S22, '22.12', 'Zero à direita some da fala: "28 milhas", não "28,0"', () => 
   const r = montarRelatorioHora({ quando: new Date(2026, 8, 20, 17, 0), cog: 35, sog: 9, sequencia: 2,
                                   proxWp: { nome: 'WP', distNM: 28, brg: 35 } });
   ok(!/,0\b/.test(r.texto), 'sobrou zero à direita no relatório: ' + r.texto);
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SUÍTE 23 · Faixa econômica de rotação (Sprint 4)                (v2.11.0)
+
+   Conselho de rotação que chega errado custa combustível ou custa ETA — e a
+   voz da Iara é convincente. Por isso esta suíte confere a física contra
+   casos que se resolvem na mesa, e não só a coerência do código consigo mesmo.
+
+   A prova 23.6 é a mais importante: o ótimo de 1,5×Vc contra corrente NÃO foi
+   codificado como piso. Ele EMERGE da minimização numérica — e emerge certo
+   também nos casos de corrente de través, que nenhuma regra de bolso cobre.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const S23 = '23 · Faixa econômica de RPM';
+const { fracaoMCR, curvaDoMotor, velocidadeDoRpm, rpmDaVelocidade, velocidadeDeCasco,
+        consumoHora, consumoPorMilha, combustivelAteDestino, faixaEconomica,
+        diagnosticoDeCarga, aprenderCurva, montarFalaComOrcamento,
+        MOTOR_PADRAO, CONSUMO_MCR_BAIXA, CONSUMO_TOLERANCIA,
+        CONSUMO_MIN_AMOSTRAS, REL_PRIORIDADE } = A;
+const fs23 = require('fs');
+const CONS23 = semComentarios(fs23.readFileSync(ROOT + '/assets/js/consumo.js', 'utf8'));
+const APP23 = semComentarios(fs23.readFileSync(ROOT + '/app.html', 'utf8'));
+
+/* O ASD 2810 de Charlie Bravo: lenta 650, cruzeiro 1250, máxima 1800.
+   Ancorado em 11 nós e 180 L/h no cruzeiro. */
+const CURVA = () => curvaDoMotor({ speedKnots: 11, fuelConsumption: 180, loa: 28.67 });
+
+t(S23, '23.1', 'A lei da hélice: −10% de rotação = −27% por hora, −19% por milha', () => {
+  /* P ∝ n³ e V ∝ n, logo L/h ∝ n³ e L/NM ∝ n². São os números que sustentam
+     o sprint inteiro; se eles saírem errados, todo conselho sai errado. */
+  const c = CURVA();
+  eq(consumoHora(1125, c) / consumoHora(1250, c), 0.729, 0.001, 'consumo por hora a −10% de rotação');
+  eq(consumoPorMilha(1125, c) / consumoPorMilha(1250, c), 0.810, 0.001, 'consumo por milha a −10%');
+  eq(velocidadeDoRpm(1125, c) / velocidadeDoRpm(1250, c), 0.9, 0.001, 'velocidade a −10%');
+  // A curva passa pelo ponto declarado — se não passar, tudo está deslocado.
+  eq(velocidadeDoRpm(1250, c), 11, 1e-9, 'a curva não passa pela velocidade declarada');
+  eq(consumoHora(1250, c), 180, 1e-9, 'a curva não passa pelo consumo declarado');
+  eq(rpmDaVelocidade(11, c), 1250, 1e-9, 'a inversa não fecha com a direta');
+});
+
+t(S23, '23.2', 'Este rebocador CRUZA a 33% da MCR — e isso não é defeito', () => {
+  /* O motor é dimensionado para o TIRO À POSTE, não para o trânsito: 100% da
+     MCR acontece com o navio quase parado, puxando. É por isso que o "piso de
+     SFOC em 70–85% da MCR", que vale para um cargueiro, NÃO se aplica aqui —
+     aplicá-lo proibiria o próprio regime de cruzeiro. */
+  eq(fracaoMCR(1800, MOTOR_PADRAO), 1, 1e-9, 'a máxima devia ser 100% da MCR');
+  eq(fracaoMCR(1250, MOTOR_PADRAO) * 100, 33.5, 0.5, 'carga no cruzeiro');
+  ok(fracaoMCR(650, MOTOR_PADRAO) < 0.06, 'carga na marcha lenta ficou alta demais');
+  // Monotônica e cúbica: dobrar a rotação multiplica a carga por oito.
+  eq(fracaoMCR(900, MOTOR_PADRAO) / fracaoMCR(450, MOTOR_PADRAO), 8, 1e-6, 'não é cúbica');
+});
+
+t(S23, '23.3', 'A velocidade de casco existe, e além dela o L/NM dispara', () => {
+  /* A primeira versão previa 15,8 nós a 1800 rotações. Um ASD 2810 não faz
+     isso: num casco de deslocamento, a partir da velocidade de casco o navio
+     sobe na própria onda de proa e a resistência vai ao céu. */
+  const vh = velocidadeDeCasco(28.67);
+  ok(vh > 12 && vh < 15, `velocidade de casco de um casco de 28,7 m deu ${vh.toFixed(1)} nós`);
+  const c = CURVA();
+  // A velocidade PARA de crescer, mas o consumo continua com n³.
+  eq(velocidadeDoRpm(1800, c), velocidadeDoRpm(1650, c), 0.05, 'a velocidade não travou no teto');
+  ok(consumoPorMilha(1800, c) > consumoPorMilha(1650, c) * 1.2,
+     'forçar rotação além da velocidade de casco devia disparar o L/NM');
+  // Sem LOA declarada não há teto — e essa é a consequência documentada.
+  ok(!isFinite(velocidadeDeCasco(null)), 'inventou teto sem comprimento declarado');
+  ok(velocidadeDoRpm(1800, curvaDoMotor({ speedKnots: 11, fuelConsumption: 180 })) > 15,
+     'sem LOA a curva devia extrapolar — o comportamento está documentado');
+  return { detail: `teto de ${vh.toFixed(1)} nós para 28,67 m de LOA` };
+});
+
+t(S23, '23.4', 'Sem pressa e sem corrente, o mais econômico é o mais devagar', () => {
+  const r = faixaEconomica({ curva: CURVA(), distNM: 100 });
+  ok(r.possivel, 'não achou solução');
+  eq(r.rpmSugerido, MOTOR_PADRAO.lenta, MOTOR_PADRAO.lenta * 0.02,
+     `sem restrição o ótimo devia ser a marcha lenta, deu ${r.rpmSugerido}`);
+  ok(r.pisoQueManda === 'consumo', `quem manda devia ser o consumo, deu "${r.pisoQueManda}"`);
+});
+
+t(S23, '23.5', 'O relógio manda quando manda, e ele DIZ que está mandando', () => {
+  /* Conselho sem motivo é ordem, e a regra 6 diz que a Iara sugere. Saber
+     QUEM manda no número é o que permite ao comandante discordar com base. */
+  const c = CURVA();
+  const r = faixaEconomica({ curva: c, distNM: 100, horasDisponiveis: 10, rpmAtual: 1250 });
+  ok(r.pisoQueManda === 'eta', `com 100 NM em 10 h quem manda é o relógio, deu "${r.pisoQueManda}"`);
+  ok(r.rpmSugerido > r.rpmOtimoSemEta, 'o ETA devia empurrar a rotação para cima do ótimo puro');
+  ok(r.litros > r.litrosOtimoSemEta, 'o relógio devia custar combustível');
+  // E quando nem a máxima chega, isso é AVISO, não conselho.
+  const imp = faixaEconomica({ curva: c, distNM: 100, horasDisponiveis: 4, rpmAtual: 1250 });
+  ok(imp.pisoQueManda === 'maxima', 'não reconheceu ETA inalcançável');
+  ok(imp.avisos.some(a => a.tipo === 'eta-inalcancavel'), 'não avisou que o horário é impossível');
+});
+
+t(S23, '23.6', 'O ótimo de 1,5×Vc EMERGE — não foi codificado como piso', () => {
+  /* Esta é a prova que justifica ter minimizado numericamente em vez de
+     colar um piso. Minimizando n³/(c·n − Vc) a derivada zera em V = 1,5·Vc.
+     Um piso escrito à mão valeria só para corrente de proa; o otimizador
+     acerta também de través, onde o navio caranguejeia e a conta muda. */
+  const c = CURVA();
+  /* Só onde o ótimo CABE na faixa do motor. Com 3 nós de corrente o ótimo
+     teórico seriam 4,5 nós, que pedem 511 rotações — abaixo da marcha lenta
+     de 650. Aí quem manda é o motor, não a conta, e exigir 1,5×Vc seria
+     cobrar da fórmula uma rotação que não existe. */
+  for (const vc of [4, 5]) {
+    const r = faixaEconomica({ curva: c, distNM: 200, rumo: 0, setCorrente: 180, driftNos: vc });
+    const vOtima = velocidadeDoRpm(r.rpmOtimoSemEta, c);
+    ok(rpmDaVelocidade(1.5 * vc, c) > MOTOR_PADRAO.lenta, `o caso de ${vc} nós saiu da faixa do motor`);
+    eq(vOtima, 1.5 * vc, 0.15, `corrente contrária de ${vc} nós: V ótima devia ser ${1.5 * vc}`);
+  }
+  /* E quando o ótimo fica abaixo da marcha lenta, a resposta correta é a
+     marcha lenta — não uma rotação inventada. */
+  const fraca = faixaEconomica({ curva: c, distNM: 200, rumo: 0, setCorrente: 180, driftNos: 3 });
+  ok(rpmDaVelocidade(4.5, c) < MOTOR_PADRAO.lenta, 'premissa do caso mudou');
+  eq(fraca.rpmOtimoSemEta, MOTOR_PADRAO.lenta, MOTOR_PADRAO.lenta * 0.02,
+     'com o ótimo abaixo da lenta, a resposta devia ser a própria marcha lenta');
+  // Corrente A FAVOR não tem fundo: mais devagar é sempre melhor.
+  const favor = faixaEconomica({ curva: c, distNM: 200, rumo: 0, setCorrente: 0, driftNos: 3 });
+  eq(favor.rpmOtimoSemEta, MOTOR_PADRAO.lenta, MOTOR_PADRAO.lenta * 0.02,
+     'com corrente a favor o ótimo devia ser a marcha lenta');
+  return { detail: '1,5×Vc reproduzido em 4 e 5 nós; em 3 nós manda a marcha lenta' };
+});
+
+t(S23, '23.7', 'Corrente que anula o avanço não vira divisão por zero', () => {
+  /* SOG nula não é "muito devagar": é NÃO CHEGAR NUNCA. A divisão explodiria
+     em silêncio e o ETA sairia como Infinity, que a fala leria como nada. */
+  const c = CURVA();
+  const r = faixaEconomica({ curva: c, distNM: 50, rumo: 0, setCorrente: 180, driftNos: 7, rpmAtual: 1250 });
+  ok(r.possivel, 'desistiu quando ainda havia rotações viáveis');
+  ok(isFinite(r.litros) && r.litros > 0, 'o combustível saiu infinito ou nulo');
+  ok(r.avisos.some(a => a.tipo === 'corrente-forte'), 'não avisou que abaixo de certa rotação não se avança');
+  // E o caso em que NENHUMA rotação vence a corrente.
+  const perdido = faixaEconomica({ curva: c, distNM: 50, rumo: 0, setCorrente: 180, driftNos: 20 });
+  ok(!perdido.possivel, 'disse que dá para vencer 20 nós de corrente com um navio de 11');
+  // Uma amostra isolada também precisa se defender.
+  const s = combustivelAteDestino(700, c, { distNM: 50, rumo: 0, setCorrente: 180, driftNos: 20 });
+  ok(s && !s.possivel, 'combustivelAteDestino devolveu conta com corrente invencível');
+});
+
+t(S23, '23.8', 'Marcha lenta prolongada é AVISO de máquinas, não piso de consumo', () => {
+  /* A conta do consumo empurra sempre para baixo. Mas rodar horas em carga
+     muito baixa suja turbo, molha camisa e enche o escape de óleo não
+     queimado — e isso não aparece no totalizador de combustível. A Iara não
+     vê a cor do escape nem sente o cheiro da praça. O chefe vê. Por isso aqui
+     não há PISO: há um aviso, e a decisão fica com quem pode tomá-la. */
+  const r = faixaEconomica({ curva: CURVA(), distNM: 100 });
+  ok(r.rpmSugerido === MOTOR_PADRAO.lenta,
+     'virou piso: a conta devia continuar podendo sugerir a marcha lenta');
+  ok(r.avisos.some(a => a.tipo === 'carga-baixa'), 'não avisou sobre carga baixa prolongada');
+  const aviso = r.avisos.find(a => a.tipo === 'carga-baixa');
+  ok(/máquinas/i.test(aviso.texto), 'o aviso não devolve a decisão a quem é dela: ' + aviso.texto);
+  ok(CONSUMO_MCR_BAIXA > 0.05 && CONSUMO_MCR_BAIXA < 0.33,
+     'o limiar de carga baixa invadiu o regime de cruzeiro deste rebocador');
+});
+
+t(S23, '23.9', 'O conselho pode ser ACELERAR, e os sinais são declarados', () => {
+  /* A primeira versão só sabia mandar reduzir e devolvia "economia −485 L,
+     atraso −140 min": correto e ilegível. Número negativo com rótulo positivo
+     é a forma mais eficiente de fazer alguém entender o contrário. */
+  const c = CURVA();
+  const acelera = faixaEconomica({ curva: c, distNM: 100, rumo: 0, setCorrente: 180,
+                                   driftNos: 4, horasDisponiveis: 12, rpmAtual: 1250 });
+  ok(acelera.recomendacao === 'aumentar', `devia mandar acelerar, deu "${acelera.recomendacao}"`);
+  ok(acelera.economiaL < 0, 'acelerar devia custar combustível (economia negativa)');
+  ok(acelera.atrasoMin < 0, 'acelerar devia chegar mais cedo (atraso negativo)');
+  const reduz = faixaEconomica({ curva: c, distNM: 100, horasDisponiveis: 14, rpmAtual: 1250 });
+  ok(reduz.recomendacao === 'reduzir' && reduz.economiaL > 0 && reduz.atrasoMin > 0, 'sinais trocados ao reduzir');
+  // E não cutuca por diferença pequena.
+  const perto = faixaEconomica({ curva: c, distNM: 100, horasDisponiveis: 9.2, rpmAtual: 1250 });
+  ok(perto.recomendacao === 'manter', `${perto.rpmSugerido} vs 1250 não devia virar conselho`);
+  ok(CONSUMO_TOLERANCIA > 0.01 && CONSUMO_TOLERANCIA < 0.15, 'tolerância fora da faixa defensável');
+});
+
+t(S23, '23.10', 'Carga lida vs. esperada: a discrepância é medida e nomeada', () => {
+  /* A curva livre prevê carga = (n/n_máx)³. Mais que isso na mesma rotação
+     significa que o navio trabalha mais do que trabalharia solto: reboque,
+     casco sujo, mar de proa, água rasa. A Iara NÃO escolhe entre elas — ela
+     mede a diferença e entrega a lista ao chefe. */
+  const d = diagnosticoDeCarga(1250, 52, MOTOR_PADRAO);
+  eq(d.esperadaPct, 33.5, 0.5, 'carga esperada no cruzeiro');
+  ok(d.situacao === 'pesado', `52% contra 33% esperados devia ser "pesado", deu "${d.situacao}"`);
+  ok(/reboque|casco|mar de proa/i.test(d.texto), 'não nomeia as causas possíveis');
+  ok(!/avaria grave|pare|reduza/i.test(d.texto), 'a Iara escolheu um diagnóstico em vez de listar');
+  ok(diagnosticoDeCarga(1250, 34, MOTOR_PADRAO).situacao === 'normal', '34% contra 33,5% virou anormal');
+  ok(diagnosticoDeCarga(1250, 20, MOTOR_PADRAO).situacao === 'leve', 'não reconheceu motor mais leve');
+  // Perto da marcha lenta a razão explode — e aí não se diz nada.
+  ok(diagnosticoDeCarga(200, 30, MOTOR_PADRAO) === null, 'produziu diagnóstico onde a razão é instável');
+  ok(diagnosticoDeCarga(1250, 0, MOTOR_PADRAO) === null, 'carga zero virou diagnóstico');
+});
+
+t(S23, '23.11', 'A curva se reancora no casco REAL, com guardas contra ruído', () => {
+  /* Reancora-se o PONTO, não o expoente: a lei da hélice é física e não se
+     mede com meia dúzia de pontos ruidosos. Ajustar expoente com poucos dados
+     é o caminho curto para uma curva que descreve lindamente o ruído de ontem
+     e erra o de amanhã. */
+  const base = CURVA();
+  // Um casco 10% mais lento que o plano, com espalhamento de rotação.
+  const am = [{ rpm: 1000, sog: 7.9, lh: 92 }, { rpm: 1150, sog: 9.1, lh: 140 },
+              { rpm: 1250, sog: 9.9, lh: 180 }, { rpm: 1400, sog: 11.1, lh: 253 }];
+  const nova = aprenderCurva(am, base);
+  ok(nova, 'não aprendeu com quatro amostras espalhadas');
+  ok(nova.origem === 'aprendida', 'a procedência não viaja junto');
+  eq(nova.vRef, 9.9, 0.15, 'a velocidade reancorada não bate com o medido');
+  ok(nova.desvioV < 0.95, 'não percebeu que o casco está mais lento que o plano');
+  // GUARDAS: poucas amostras, ou todas na mesma rotação, não ensinam nada.
+  ok(aprenderCurva(am.slice(0, CONSUMO_MIN_AMOSTRAS - 1), base) === null, 'aprendeu com amostras de menos');
+  ok(aprenderCurva([{ rpm: 1250, sog: 9.9, lh: 180 }, { rpm: 1252, sog: 9.9, lh: 181 },
+                    { rpm: 1248, sog: 9.8, lh: 179 }, { rpm: 1250, sog: 10, lh: 180 }], base) === null,
+     'quatro pontos na mesma rotação não dizem nada sobre a CURVA, só sobre o ponto');
+  // Mediana, não média: um fixo de GPS ruim não pode mover a curva.
+  const comRuido = am.concat([{ rpm: 1250, sog: 40, lh: 180 }]);
+  const r2 = aprenderCurva(comRuido, base);
+  ok(Math.abs(r2.vRef - nova.vRef) < 1.2, 'um único ponto absurdo deslocou a curva — não está usando mediana');
+});
+
+t(S23, '23.12', 'ORÇAMENTO DE FALA: 58 s de monólogo não acontecem duas vezes', () => {
+  /* Com o Sprint 4 o relatório passou a ter quinze fontes de exceção. No pior
+     caso realista todas dispararam e o resultado foram 58 SEGUNDOS — o teto
+     era 30. Cortar frase por frase não resolveria: o problema não é uma frase
+     longa, é a soma de quinze coisas legítimas. */
+  const segs = [
+    { chave: 'hora', texto: 'Quatorze horas em ponto.' },
+    { chave: 'posicao', texto: 'Posição vinte e três graus e cinco sul, quarenta e um graus e cinquenta e três oeste.' },
+    { chave: 'xte-preocupa', texto: 'Atenção: zero vírgula quatro dois milhas fora de rumo, pra bombordo.' },
+    { chave: 'rpm-reduzir', texto: 'Dá pra fazer o horário com oitocentas e quinze rotações economizando novecentos e quarenta e um litros e chegando quatro horas mais tarde.' },
+    { chave: 'mar', texto: 'Mar de lés-nordeste, dois vírgula um metros, período de seis segundos, com ondulação longa de sudeste vindo de muito longe.' },
+    { chave: 'barometro', texto: 'Barômetro mil e nove, estável, sem novidade nenhuma no horizonte por enquanto.' }
+  ];
+  /* 16 s, e não 12: com 12 nem a espinha cabia, e aí o corte chegava ao aviso
+     de fora de rumo por falta de alternativa — o que mediria a aperto do teto,
+     não a ordem de prioridade. A prova precisa de folga para provar a ORDEM. */
+  const r = montarFalaComOrcamento(segs, 16);
+  ok(duracaoFaladaS(r.texto) <= 16 + 2, `estourou o teto: ${duracaoFaladaS(r.texto).toFixed(0)} s`);
+  // A ESPINHA nunca cai.
+  ok(r.partes.includes('hora') && r.partes.includes('posicao'), 'cortou a espinha do relatório');
+  // Segurança sobrevive à economia.
+  ok(r.partes.includes('xte-preocupa'), 'cortou o aviso de fora de rumo e manteve coisa menos urgente');
+  ok(!r.partes.includes('rpm-reduzir'), 'manteve o conselho de economia em vez de algo mais urgente');
+  /* E CORTAR EM SILÊNCIO SERIA PIOR QUE FALAR DEMAIS: quem ouve precisa saber
+     que houve mais, senão confia num retrato incompleto sem saber que é. */
+  ok(r.cortados.length > 0 && /Tem mais \d+ no painel/.test(r.texto), 'cortou sem avisar: ' + r.texto);
+  /* E COM ORÇAMENTO IMPOSSÍVEL A ESPINHA RESISTE. Um teto de 3 s não cabe nem
+     a hora e a posição — e a resposta certa é entregar a espinha estourando o
+     teto, não devolver um relatório sem posição. Um retrato sem posição não é
+     um retrato curto: é outra coisa. */
+  const apertado = montarFalaComOrcamento(segs, 3);
+  ok(apertado.partes.includes('hora') && apertado.partes.includes('posicao'),
+     'com teto impossível o orçamento comeu a espinha: ' + apertado.partes);
+  ok(apertado.partes.every(k => REL_PRIORIDADE[k] === 0),
+     'sobrou algo fora da espinha num teto de 3 s: ' + apertado.partes);
+  // Ordem de LEITURA preservada: cortar não pode embaralhar.
+  const pos = r.partes.map(k => segs.findIndex(x => x.chave === k));
+  ok(pos.every((v, i) => i === 0 || v > pos[i - 1]), 'a ordem de leitura foi embaralhada pelo corte');
+  return { detail: `${r.partes.length} mantidos, ${r.cortados.length} cortados` };
+});
+
+t(S23, '23.13', 'A prioridade é de PASSADIÇO, não de sprint', () => {
+  /* O conselho de rotação é a entrega deste sprint e fica em penúltimo lugar.
+     Economia de combustível é valiosa e NUNCA é urgente; "você está fora de
+     rumo" e "o barômetro está caindo" são. E o conselho continua inteiro no
+     painel, onde se lê com calma. */
+  const p = k => REL_PRIORIDADE[k];
+  ok(p('hora') === 0 && p('posicao') === 0 && p('proximo-wp') === 0, 'a espinha não está protegida');
+  ok(p('xte-preocupa') < p('rpm-reduzir'), 'economia na frente de estar fora de rumo');
+  ok(p('carga-pesado') < p('rpm-reduzir'), 'economia na frente do diagnóstico de máquinas');
+  ok(p('barometro-atencao') < p('vento'), 'vento comum na frente de barômetro caindo');
+  ok(p('combustivel-alerta') < p('combustivel'), 'saldo insuficiente com a mesma urgência do consumo de rotina');
+  ok(p('rpm-aumentar') < p('rpm-reduzir'), 'perder o ETA tem a mesma urgência que economizar');
+  // Todas as chaves que o relatório produz têm prioridade declarada.
+  const REL = semComentarios(fs23.readFileSync(ROOT + '/assets/js/relatorio_voz.js', 'utf8'));
+  /* Descarta o prefixo computado `pus('carga-' + situacao, …)`, que o regex
+     enxerga como a chave "carga-". As duas chaves que ele produz de fato são
+     conferidas logo abaixo, uma a uma. */
+  const chaves = [...new Set((REL.match(/pus\('([a-z-]+)'/g) || []).map(m => m.slice(5, -1)))]
+    .filter(k => !k.endsWith('-'));
+  ['carga-pesado', 'carga-leve'].forEach(k =>
+    ok(REL_PRIORIDADE[k] != null, `a chave computada ${k} não tem prioridade declarada`));
+  const semPrio = chaves.filter(k => REL_PRIORIDADE[k] == null);
+  ok(semPrio.length === 0, `sem prioridade declarada: ${semPrio} — cairiam no padrão sem ninguém decidir`);
+  return { detail: `${chaves.length} chaves, todas com prioridade` };
+});
+
+t(S23, '23.14', '"Tem mais no painel" tem de ser VERDADE', () => {
+  /* O Sprint 2 pôs vento, mar e corrente só na FALA. Quando o orçamento
+     começou a cortar dizendo "tem mais no painel", a frase virou mentira: não
+     havia painel nenhum para essas coisas. Ou se apagava a frase, ou se
+     tornava verdade — e é mais útil torná-la verdade. */
+  ok(/id="navTempo"/.test(fs23.readFileSync(ROOT + '/app.html', 'utf8')),
+     'não há linha de tempo no painel, mas a fala promete que há');
+  ok(/id="navEco"/.test(fs23.readFileSync(ROOT + '/app.html', 'utf8')), 'não há linha de conselho no painel');
+  ok(/atualizarPainelTempo\(\)/.test(APP23), 'a linha de tempo nunca é preenchida');
+  ok(/atualizarPainelEco\(\)/.test(APP23), 'a linha de conselho nunca é preenchida');
+  // E a linha do painel traz o que a fala cortaria: vento, mar, corrente, pressão.
+  const fn = semComentarios(fs23.readFileSync(ROOT + '/assets/js/tempo.js', 'utf8'));
+  const i = fn.indexOf('function linhaDeTempoNoPainel');
+  const corpo = fn.slice(i, fn.indexOf('\n}', i));
+  ['wind_speed_10m', 'wave_height', 'ocean_current_velocity', 'pressure_msl'].forEach(v =>
+    ok(corpo.includes(v), `a linha do painel não mostra ${v}`));
+});
+
+t(S23, '23.15', 'Os campos de máquinas existem e rejeitam dedo escorregado', () => {
+  const app = fs23.readFileSync(ROOT + '/app.html', 'utf8');
+  for (const id of ['navRpm', 'navCarga']) {
+    const m = new RegExp('<input[^>]*id="' + id + '"[^>]*>').exec(app);
+    ok(m, `o campo ${id} não existe`);
+    ok(/inputmode="numeric"/.test(m[0]), `${id} não abre o teclado numérico no tablete`);
+    ok(/aria-label="/.test(m[0]), `${id} sem rótulo para leitor de tela`);
+    ok(!/onchange=|oninput=/.test(m[0]), `${id} usa manipulador inline e piora a CSP (aviso 9.7)`);
+  }
+  ok(/addEventListener\('change', lerMaquinas\)/.test(CONS23), 'os campos não estão ligados por evento');
+  /* E a ligação acontece no CARREGAMENTO, não no arranque da navegação. A
+     prova de fumaça pegou os campos inertes até alguém apertar "navegar", e
+     duas navegações seguidas empilhavam ouvintes no mesmo campo. */
+  const arranque = APP23.slice(APP23.indexOf("pintarBotoesNav();"));
+  ok(/ligarCamposDeMaquinas\(\)/.test(arranque), 'os campos só são ligados ao iniciar a navegação');
+  ok(arranque.indexOf('ligarCamposDeMaquinas()') < arranque.indexOf('initMap()'),
+     'os campos são ligados depois do mapa — somem se a CDN falhar');
+  // Valor absurdo é ignorado em silêncio: não pode virar conselho de rotação.
+  const i = CONS23.indexOf('function lerMaquinas');
+  const corpo = CONS23.slice(i, CONS23.indexOf('\n}', i));
+  ok(/<= 3000/.test(corpo) && /<= 110/.test(corpo), 'não há faixa de validade para rotação e carga');
+  ok(/localStorage\.setItem/.test(corpo), 'o que o chefe anotou não sobrevive ao recarregar');
+});
+
+t(S23, '23.16', 'Uma amostra por RELATÓRIO, não por fixo de GPS', () => {
+  /* Colher a cada atualização de posição daria milhares de pontos
+     correlacionados, todos do mesmo minuto de máquina, e a mediana ganharia
+     uma confiança que ela não tem. */
+  const REL = semComentarios(fs23.readFileSync(ROOT + '/assets/js/relatorio_voz.js', 'utf8'));
+  ok(/colherAmostraDeMaquina\(/.test(REL), 'a amostra nunca é colhida');
+  const iProc = APP23.indexOf('function processFix');
+  const corpoFix = APP23.slice(iProc, iProc + 4000);
+  ok(!/colherAmostraDeMaquina/.test(corpoFix), 'está colhendo amostra a cada fixo de GPS');
+  // E sem rotação informada não há par (rpm, velocidade): o ponto não serve.
+  const i = CONS23.indexOf('function colherAmostraDeMaquina');
+  const corpo = CONS23.slice(i, CONS23.indexOf('\n}', i));
+  ok(/if \(!maqRpm/.test(corpo), 'colheria amostra sem rotação informada');
 });
 
 /* ═══ RELATÓRIO ═══ */

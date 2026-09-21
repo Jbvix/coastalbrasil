@@ -5,7 +5,7 @@
   COASTAL NAVIGATOR BRASIL — Sistema de Planejamento de Viagem Costeira
 ════════════════════════════════════════════════════════════════════════════════
 
-  Versão: 2.10.0
+  Versão: 2.11.0
   Autor: Jossian Brito (Charlie Bravo)
   LinkedIn: https://www.linkedin.com/in/jossianbrito/
   X: https://x.com/jossiancosta  ·  Medium: https://medium.com/@jossiancosta
@@ -44,7 +44,7 @@
   <meta name="keywords"
     content="navegação costeira, planejamento de viagem, faróis, Brasil, OpenSeaMap, GPX, rebocadores">
 
-  <title>Coastal Navigator Brasil v2.10.0 - Planejamento de Viagem</title>
+  <title>Coastal Navigator Brasil v2.11.0 - Planejamento de Viagem</title>
 
   <!-- Leaflet CSS -->
   <!-- Subresource Integrity: o navegador recusa o arquivo se o conteúdo servido
@@ -75,7 +75,7 @@
     <header class="app-header">
       <div class="header-content">
         <div class="logo">
-          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.10.0</span></h1>
+          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.11.0</span></h1>
         </div>
 
         <div class="controls">
@@ -226,6 +226,27 @@
         <div class="nav-line"><span>⛽ Consumido:</span> <strong id="navFuelUsed">0 L</strong></div>
         <div class="nav-line"><span>🛢️ Saldo:</span> <strong id="navFuelLeft">--</strong></div>
         <div class="nav-line"><span>↪️ Perda p/ desvio:</span> <strong id="navFuelDev">0 L</strong></div>
+        <div class="nav-divider"></div>
+        <!-- MÁQUINAS. Dois campos, e só dois: rotação e carga, que é o que o
+             chefe lê de relance no painel da praça. Entrada numérica com
+             inputmode="numeric" para o teclado do tablete abrir no numérico —
+             num passadiço, cada toque a mais é um toque errado. -->
+        <div class="nav-line nav-maq">
+          <span>⚙️ Rotação</span>
+          <input id="navRpm" class="nav-maq-in" type="number" inputmode="numeric"
+                 min="0" max="3000" step="10" placeholder="rpm" aria-label="Rotação do motor em RPM">
+          <span>Carga</span>
+          <input id="navCarga" class="nav-maq-in" type="number" inputmode="numeric"
+                 min="0" max="110" step="1" placeholder="%" aria-label="Carga do motor em porcento da MCR">
+        </div>
+        <div class="nav-line nav-eco" id="navEco"></div>
+        <!-- TEMPO NO PAINEL.                                        (v2.11.0)
+             O Sprint 2 pôs vento, mar e corrente só na FALA. Quando o
+             orçamento de fala começou a cortar exceções dizendo "tem mais no
+             painel", a frase virou mentira: não havia painel nenhum para
+             essas coisas. Ou se apagava a frase, ou se tornava verdade. É
+             mais útil torná-la verdade. -->
+        <div class="nav-line nav-tempo" id="navTempo"></div>
         <div class="nav-divider"></div>
         <div class="nav-line nav-lh" id="navLighthouse">💡 Nenhum farol no alcance</div>
         <div class="nav-line nav-status" id="navGpsStatus">Aguardando GPS…</div>
@@ -509,6 +530,7 @@
   <script src="assets/js/ship3d.js"></script>
   <script src="assets/js/iara.js"></script>
   <script src="assets/js/tempo.js"></script>
+  <script src="assets/js/consumo.js"></script>
   <script src="assets/js/relatorio_voz.js"></script>
 
   <!-- three.js (carregado sob demanda ao abrir o painel 3D de atitude do rebocador) -->
@@ -1929,6 +1951,8 @@
       // próprio modelo; entre uma e outra o relatório usa o último valor
       // conhecido, rotulado com a idade.
       iniciarTempo(() => navLastFix);
+      // Máquinas: restaura rotação e carga anotadas e liga os campos do HUD.
+      iniciarMaquinas();
       // Pré-carrega o consumo já feito se a viagem partiu antes de agora (em andamento)
       navAccumFuel = elapsedFuel(tripData, Date.now());
       if (tripData) tripData.fuelAlreadyUsed = navAccumFuel;
@@ -2145,6 +2169,11 @@
         document.getElementById('navNextWp').textContent = 'Próximo WP: (sem rota planejada)';
         document.getElementById('navEta').textContent = 'ETA destino: --';
       }
+
+      // Conselho de rotação: recalculado a cada fixo porque a distância que
+      // falta e o tempo disponível mudam a cada minuto.
+      atualizarPainelEco();
+      atualizarPainelTempo();
 
       // --- Alertas de faróis ---
       checkLighthouseAlerts(lat, lng, cog);
@@ -3163,6 +3192,9 @@
       que já aconteceu neste arquivo, com outro botão.
       */
       iaraInit();
+      // Campos de máquinas: DOM puro, ligado ANTES do mapa pela mesma razão
+      // da prova 17.10 — CDN que falha leva embora o resto do arranque.
+      ligarCamposDeMaquinas();
       initMap();
       startClock();        // relógio de data/hora (embarcação e observador)
 
@@ -3177,7 +3209,7 @@
       updateShareButtons();
 
       console.log('═══════════════════════════════════════════════════════════════');
-      console.log('  Coastal Navigator Brasil v2.10.0 - Inicializado ⚓');
+      console.log('  Coastal Navigator Brasil v2.11.0 - Inicializado ⚓');
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('Autor: Jossian Brito (Charlie Bravo)');
       console.log('58 Faróis curados carregados 💡 (52 DHN + 6 Validados)');

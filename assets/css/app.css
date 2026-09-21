@@ -888,6 +888,34 @@
     .mirror-rel-cab { font-size: 0.72rem; font-weight: 700; color: #81D4FA; letter-spacing: 0.4px; }
     .mirror-rel-txt { font-size: 0.82rem; line-height: 1.35; color: #E3F2FD; margin-top: 3px; }
 
+    /*
+    ENTRADA DE MÁQUINAS.                                            (v2.11.0)
+    Campo numérico de passadiço: alto o bastante para o polegar molhado (36 px
+    de altura, que é menos que os 44 px de um botão porque aqui o alvo é largo
+    e não se toca por engano), e `inputmode` numérico para o tablete abrir o
+    teclado certo. O fundo escuro e a borda azul seguem o resto do HUD.
+    */
+    .nav-maq { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .nav-maq-in {
+      flex: 1 1 64px; min-width: 56px; max-width: 92px; height: 36px;
+      background: rgba(255, 255, 255, 0.10); color: #fff;
+      border: 1px solid var(--navigation-blue); border-radius: 6px;
+      font-family: var(--font-body); font-size: 0.95rem; font-weight: 700;
+      text-align: center; padding: 2px 4px;
+    }
+    .nav-maq-in::placeholder { color: rgba(227, 242, 253, 0.45); font-weight: 400; }
+    /* Tempo no painel: uma linha, aparece só quando há dado. */
+    .nav-tempo { display: none; }
+    .nav-tempo.active { display: block; font-size: 0.78rem; line-height: 1.3; color: #B3E5FC; }
+
+    /* O conselho de rotação. Vazio por padrão: só ocupa espaço quando tem o
+       que dizer — mesma disciplina do relatório por exceção. */
+    .nav-eco { display: none; }
+    .nav-eco.active { display: block; font-size: 0.8rem; line-height: 1.3; }
+    .nav-eco.reduzir { color: #A5D6A7; }
+    .nav-eco.aumentar { color: #FFCC80; }
+    .nav-eco.alerta { color: #EF9A9A; }
+
     .nav-hud-body {
       padding: 10px;
     }

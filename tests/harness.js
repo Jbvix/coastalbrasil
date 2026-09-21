@@ -18,7 +18,8 @@ const MODULOS = ['assets/js/lighthouses.js', 'assets/js/coastline.js',
                  'assets/js/nautical.js',
                  'assets/js/report.js', 'assets/js/mirror.js',
                  'assets/js/ship3d.js', 'assets/js/iara.js',
-                 'assets/js/relatorio_voz.js', 'assets/js/tempo.js'];
+                 'assets/js/relatorio_voz.js', 'assets/js/tempo.js',
+                 'assets/js/consumo.js'];
 const SRC = [path.join(ROOT, 'app.html'), ...MODULOS.map(m => path.join(ROOT, m))]
   .map(f => fs.readFileSync(f, 'utf8')).join('\n');
 module.exports = module.exports || {};
@@ -97,7 +98,7 @@ const FNS = ['calculateDistance','calculateBearing','eyeHeight','calculateVisibi
              // porque a bancada não tem GPS, rota, nem alto-falante.
              'falarRumo','falarNum','falarHora','falarCoord','falarDuracao',
              'deveDizerXte','deveDizerFarol','deveDizerCombustivel',
-             'prefixoSimulacao','montarRelatorioHora','montarRelatorioWaypoint',
+             'prefixoSimulacao','montarRelatorioHora','montarRelatorioWaypoint','montarFalaComOrcamento',
              'falarCaracteristica','falarNos',
              // Colhe o estado das globais. Não é pura — mas é ONDE MORA o erro
              // de índice que anunciaria o waypoint já ultrapassado, e erro que
@@ -107,7 +108,11 @@ const FNS = ['calculateDistance','calculateBearing','eyeHeight','calculateVisibi
              // Tudo puro — a bancada não chama o proxy, chama a conta.
              'referenciaMaisProxima','referenciasDoPonto','fraseDeReferencia',
              'nosDeKmh','rumoCardeal','beaufort','trianguloDaCorrente',
-             'etaComCorrente','tendenciaBarometrica','idadeDoTempo','falarTempo'];
+             'etaComCorrente','tendenciaBarometrica','idadeDoTempo','falarTempo','linhaDeTempoNoPainel',
+             // Sprint 4: a lei da hélice e a minimização com restrição de ETA.
+             'fracaoMCR','curvaDoMotor','velocidadeDoRpm','rpmDaVelocidade',
+             'consumoHora','consumoPorMilha','combustivelAteDestino','velocidadeDeCasco',
+             'faixaEconomica','diagnosticoDeCarga','aprenderCurva'];
 
 const sandboxSrc = extractLighthouses() + '\n' +
   'let _coastline = null;\n' +
@@ -150,14 +155,25 @@ const sandboxSrc = extractLighthouses() + '\n' +
   extractDecl('TEMPO_MAR_NM') + '\n' +
   extractDecl('TEMPO_CORRENTE_NOS') + '\n' +
   extractDecl('REL_ETA_MENCIONA_MIN') + '\n' +
+  extractDecl('REL_RPM_ECONOMIA_PCT') + '\n' +
+  extractDecl('REL_PRIORIDADE') + '\n' +
   extractDecl('REF_MESMO_LUGAR_NM') + '\n' +
   extractDecl('REF_ALCANCE_MAX_NM') + '\n' +
+  extractDecl('MOTOR_PADRAO') + '\n' +
+  extractDecl('CONSUMO_PASSO_RPM') + '\n' +
+  extractDecl('CONSUMO_FATOR_ACIMA_CASCO') + '\n' +
+  extractDecl('CONSUMO_MCR_BAIXA') + '\n' +
+  extractDecl('CONSUMO_TOLERANCIA') + '\n' +
+  extractDecl('CONSUMO_CARGA_DESVIO') + '\n' +
+  extractDecl('CONSUMO_MIN_AMOSTRAS') + '\n' +
+  extractDecl('CONSUMO_MIN_ESPALHAMENTO_RPM') + '\n' +
   extractDecl('REFERENCIAS_TERRA') + '\n' +
   'const RESYNC_NM = ' + (SRC.match(/const RESYNC_NM = (\\d+)/) || [,'10'])[1] + ';\n' +
   FNS.map(extractFn).join('\n\n') + '\n' +
   'module.exports = { lighthouses, COSTA_BRASIL, DEFAULT_EYE_HEIGHT_M, RESYNC_NM,\n'
-  + '  IARA_NOME, IARA_PRIORIDADE, IARA_VALIDADE_MS, IARA_ROT_LIMITE, IARA_IMPERATIVOS_PROIBIDOS, IARA_TETO_S, REFERENCIAS_TERRA, REF_MESMO_LUGAR_NM, REF_ALCANCE_MAX_NM,\n'
-  + '  REL_XTE_MENCIONA_NM, REL_XTE_PREOCUPA_NM, REL_COMBUSTIVEL_A_CADA, REL_TETO_S,\n'
+  + '  IARA_NOME, IARA_PRIORIDADE, IARA_VALIDADE_MS, IARA_ROT_LIMITE, IARA_IMPERATIVOS_PROIBIDOS, IARA_TETO_S, REFERENCIAS_TERRA, REF_MESMO_LUGAR_NM, REF_ALCANCE_MAX_NM, MOTOR_PADRAO,\n'
+  + '  CONSUMO_MCR_BAIXA, CONSUMO_TOLERANCIA, REL_RPM_ECONOMIA_PCT, CONSUMO_CARGA_DESVIO, CONSUMO_MIN_AMOSTRAS, CONSUMO_MIN_ESPALHAMENTO_RPM,\n'
+  + '  REL_XTE_MENCIONA_NM, REL_XTE_PREOCUPA_NM, REL_COMBUSTIVEL_A_CADA, REL_TETO_S, REL_PRIORIDADE,\n'
   + '  TEMPO_FRESCO_MIN, TEMPO_VELHO_MIN, TEMPO_RAJADA_DELTA, TEMPO_MAR_NM, TEMPO_CORRENTE_NOS,\n'
   + '  setTrip: t => { tripData = t; },\n'
   + '  setRota: (r, leg) => { waypoints = r; navActiveLeg = leg || 0; },\n'
