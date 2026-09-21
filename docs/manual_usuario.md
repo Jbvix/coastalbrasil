@@ -646,14 +646,106 @@ Economia de combustível é valiosa e **nunca é urgente** — *"você está for
 rumo"* e *"o barômetro está caindo"* são. O conselho continua inteiro no
 painel, onde se lê com calma.
 
+### 9.7.9 🌊 O rebocador como instrumento de onda
+
+A partir da **v2.12.0** o acelerômetro do tablete mede o mar. Depois de **17
+minutos** de navegação aparece no painel:
+
+> 📈 sentido **2,5 m / 9 s** · modelo 2,4 m · jogo **11° / 6,3 s** · GM~**1,8 m**
+
+**Por que 17 minutos.** Menos que isso e a medida erra 13% para baixo — foi
+medido. Num registro curto, a deriva lenta do mar não se distingue de onda
+longa, e a filtragem que protege contra o viés do sensor acaba comendo onda de
+verdade. Boia de onda profissional usa 20 a 30 minutos pela mesma razão. Até
+encher, ela diz *"medindo o mar… faltam X min"* em vez de inventar número.
+
+#### ⚠️ Ela mede o NAVIO, não o mar
+
+Isto precisa ficar claro antes de qualquer uso. Entre o mar e o tablete existe
+um filtro: **o seu rebocador**. E o comprimento da onda decide tudo:
+
+| período | comprimento | vs. seu casco | o que a medida vale |
+|---|---|---|---|
+| 10 s | 156 m | 5,5× | ✅ confiável — o barco sobe junto |
+| 7 s | 76 m | 2,7× | razoável |
+| 4 s | 25 m | 0,9× | ❌ **subestima muito** — o casco atravessa |
+
+Um rebocador de 28 m é uma boia sensível à **vaga longa** e surda à
+**marulhada**. Quando a onda for curta para o casco, ela avisa: *⚠️ onda curta
+p/ este casco*.
+
+Ao lado do medido aparece o **previsto pelo modelo**. É conferência de
+realidade sobre a previsão — e ela só comenta em voz alta quando os dois
+**discordam em mais de 30%**, porque repetir de hora em hora que o modelo
+acertou é o tipo de ruído que faz parar de escutar.
+
+### 9.7.10 ⚠️ GM PELO PERÍODO DE BALANÇO — leia inteiro
+
+Esta é a parte mais valiosa do aplicativo, e a que exige mais cuidado.
+
+O período natural de balanço carrega a estabilidade transversal:
+
+```
+GM = (2 · C · B / T_balanço)²        C = 0,41 no ASD 2810
+```
+
+| seu balanço | GM estimado | leitura |
+|---:|---:|---|
+| 5,0 s | 2,94 m | duro, seco, quebra coisa |
+| 6,0 s | 2,04 m | confortável |
+| 7,0 s | 1,50 m | atenção |
+| **8,0 s** | **1,15 m** | 🔴 **o barco está amolecendo** |
+
+**O senhor sabe melhor que eu o que derruba rebocador.** Não é a onda grande:
+é o GM que baixou sem ninguém notar — superfície livre em tanque parcialmente
+cheio, água no convés que não escoou, peso que subiu, e sobretudo **o puxão do
+cabo na cintura**. Um rebocador que emborca raramente avisa. O período de
+balanço avisa, e ninguém escuta.
+
+Por isso a Iara fala **sem esperar a vez** quando o balanço alonga:
+
+> *"Atenção: o balanço alongou nas últimas 2 horas: o GM estimado caiu de 2,0
+> para 1,3 metros. Vale conferir tanques e convés."*
+
+#### 🔴 As três ressalvas — não pule
+
+**1. É indicador de TENDÊNCIA, não cálculo de estabilidade.**
+A sensibilidade é quadrática: **10% de erro no período vira 20% de erro no
+GM**. Por isso o painel mostra `GM~` com o til, e a faixa de incerteza anda
+junto do número. **A sua prancha de estabilidade continua mandando.**
+
+**2. Só vale com balanço LIVRE.**
+Se o período de encontro das ondas estiver perto do balanço natural, o navio
+balança **forçado** — e o que se mede é o mar, não o navio. Nesse caso ela
+**recusa a medida** e diz *"GM: sem medida confiável"*, em vez de mostrar um
+número errado com cara de certo. Balanço de menos de 1,5° também é recusado:
+não há sinal para medir.
+
+**3. O coeficiente é empírico.**
+A fórmula é uma aproximação para cascos convencionais. Um ASD com dutos e skeg
+não é exatamente isso. O **valor absoluto** pode estar deslocado; a
+**tendência**, não — e é a tendência que salva.
+
+### 9.7.11 Ressonância: os dois caminhos que derrubam navio
+
+O período de **encontro** não é o período da onda. Em mar de **popa** ele
+estica: a 10 nós numa onda de 8 s, o encontro vai a **13,6 segundos**.
+
+| alerta | quando | por quê |
+|---|---|---|
+| **Balanço síncrono** | encontro ≈ balanço natural | cada onda chega empurrando no mesmo tempo; a amplitude cresce a cada ciclo |
+| **Balanço paramétrico** | encontro ≈ metade do balanço | a estabilidade varia duas vezes por ciclo; cresce rápido e **pega de surpresa porque o mar não parece perigoso** |
+
+Os dois falam com **prioridade de segurança** — à frente de qualquer conselho
+de economia, e sem esperar a vez.
+
 ### 9.8 O que ela ainda NÃO faz
 
-A v2.11.0 entregou o **Sprint 4**: a faixa econômica de rotação. Se você perguntar alguma
-coisa, ela repete o que ouviu e admite que ainda está aprendendo a responder.
+A v2.12.0 entregou o **Sprint 5**: ondas, GM e ressonância pelos sensores.
 
-Está previsto, nesta ordem: **ondas e estabilidade** pelos sensores do tablet —
-inclusive o GM estimado pelo período de balanço; e por último a **conversa
-livre**, em que ela passa a responder perguntas.
+Falta o último: a **conversa livre**, em que ela passa a responder perguntas.
+Até lá, se o senhor perguntar alguma coisa, ela repete o que ouviu e admite que
+ainda está aprendendo.
 
 > Se você tinha lido aqui que viria "cidade, **abrigo** e farol": a palavra
 > *abrigo* saiu, e saiu por decisão técnica. Ver §9.7.6 — o aplicativo não tem

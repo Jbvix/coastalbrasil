@@ -358,6 +358,14 @@ const REL_PRIORIDADE = {
   'proximo-wp': 0, eta: 0, 'sem-rota': 0, chegada: 0, 'nova-perna': 0, 'fim-de-rota': 0,
   // Segurança.
   'xte-preocupa': 1, 'corrente-impossivel': 1, 'perna-impossivel': 1, 'rpm-aviso': 1,
+  /*
+  RESSONÂNCIA E GM CAINDO SÃO SEGURANÇA, e vêm na frente de tudo que não é a
+  espinha. Balanço síncrono e paramétrico derrubam navio; GM que baixou sem
+  ninguém notar é o que emborca rebocador. Nenhum dos dois espera a vez atrás
+  de um relatório de consumo.
+  */
+  'ressonancia': 1, 'gm-caindo': 1,
+  'mar-medido': 6, 'gm': 7,
   // Máquinas: o chefe quer saber, e ninguém mais vai lhe contar.
   'carga-pesado': 2, 'carga-leve': 4,
   // Tempo piorando.
@@ -509,6 +517,30 @@ function montarRelatorioHora(e) {
     if (aviso && aviso.tipo !== 'carga-baixa') pus('rpm-aviso', `${aviso.texto}.`);
     if (s.rotacao.carga && s.rotacao.carga.texto) {
       pus('carga-' + s.rotacao.carga.situacao, `${s.rotacao.carga.texto}.`);
+    }
+  }
+
+  /*
+  7.8. EXCEÇÃO — o que os sensores mediram.
+
+  Ressonância e queda de GM falam SEMPRE: são os dois caminhos pelos quais um
+  rebocador emborca, e nenhum deles avisa duas vezes. O estado de mar medido e
+  o GM de rotina falam só quando saem do comum — mar que o modelo não previu,
+  ou GM fora da faixa confortável.
+  */
+  if (s.mar && s.mar.pronto) {
+    const m = s.mar;
+    if (m.ressonancia) pus('ressonancia', `Atenção: ${m.ressonancia.texto}.`);
+    if (m.tendenciaGm && m.tendenciaGm.caindo) pus('gm-caindo', `Atenção: ${m.tendenciaGm.texto}.`);
+    /* O mar medido só vira frase quando DISCORDA do modelo em mais de 30%.
+       Repetir de hora em hora um número que confirma a previsão é exatamente
+       o tipo de ruído que faz parar de escutar. */
+    if (isFinite(m.HsPrevisto) && m.HsPrevisto > 0.3) {
+      const razao = m.Hs / m.HsPrevisto;
+      if (razao < 0.7 || razao > 1.3) {
+        pus('mar-medido', `O modelo diz ${falarNum(m.HsPrevisto)} metros e o barco está sentindo ` +
+                          `${falarNum(m.Hs)}.`);
+      }
     }
   }
 
@@ -698,6 +730,10 @@ function estadoAtualParaRelatorio() {
     /* O conselho de rotação e, de quebra, a amostra que ensina a curva deste
        casco. Uma amostra POR RELATÓRIO, não por fixo: mil pontos do mesmo
        minuto de máquina dariam à mediana uma confiança que ela não tem. */
+    if (typeof estadoDoMarMedido === 'function') {
+      e.mar = estadoDoMarMedido(fix && fix.sog, e.proxWp && e.proxWp.brg);
+    }
+
     if (typeof conselhoDeRotacao === 'function') {
       e.rotacao = conselhoDeRotacao();
       if (typeof colherAmostraDeMaquina === 'function' && fix &&
@@ -742,7 +778,17 @@ function registrarRelatorio(e, r) {
     carga: (typeof maqCarga !== 'undefined') ? maqCarga : null,
     xte: e.xteNM, sim: !!e.simulacao,
     partes: r.partes,
-    onda: null,          // Sprint 5 — ver nota acima
+    /* O CAMPO RESERVADO NO SPRINT 1 SE PREENCHE AQUI. A nota de lá dizia que
+       a comparação entre onda medida e prevista só tem valor com série
+       temporal, e que dado não gravado hoje não volta amanhã. Três sprints
+       depois, o `null` virou observação. */
+    onda: (e.mar && e.mar.pronto)
+      ? { Hs: e.mar.Hs, Tz: e.mar.Tz, Tp: e.mar.Tp,
+          jogo: e.mar.balanco ? e.mar.balanco.amplitudeGraus : null,
+          Troll: e.mar.balanco ? e.mar.balanco.periodoS : null,
+          gm: e.mar.gm ? e.mar.gm.gm : null,
+          HsPrevisto: e.mar.HsPrevisto }
+      : null,
     // O campo reservado no Sprint 1 agora é preenchido. Guarda-se o dado
     // BRUTO do modelo, não a frase: a frase se regenera, a observação não.
     tempo: e.tempo ? { ar: e.tempo.ar, mar: e.tempo.mar,

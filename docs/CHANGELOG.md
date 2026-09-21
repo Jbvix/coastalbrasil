@@ -11,6 +11,182 @@ executável.
 
 ```
 
+## v2.12.0 (21/09/2026) — O REBOCADOR VIRA INSTRUMENTO · SPRINT 5
+
+Autor: Jossian Brito (Charlie Bravo)
+
+Ondas e estabilidade pelos sensores do tablete. É o sprint mais exigente do
+projeto e o único cuja falha pode contribuir para emborcar um navio.
+
+### Como se prova um espectro de ondas sem ir ao mar
+
+Fabricando o mar. `tests/mar_sintetico.js` gera um espectro Pierson-Moskowitz
+de **Hs e Tp declarados**, devolvendo a **elevação e a aceleração** — o par que
+permite alimentar o algoritmo pela aceleração e cobrar dele a elevação de volta.
+
+| entrada | Hs medido | erro |
+|---|---|---|
+| senoide T=9 s, a=1 m | 2,828 m | **0,0%** |
+| PM Hs 2,5 / Tp 9 | 2,44 m | −2,5% |
+| PM Hs 1,2 / Tp 6 | 1,20 m | +0,5% |
+| PM Hs 4,0 / Tp 12 | 3,86 m | −3,1% |
+| **ponta a ponta, 60 Hz → GM** | 2,58 m | **+2,4%** |
+
+O último é o caminho inteiro: acelerômetro a 60 Hz, decimação, relógio,
+espectro, balanço e estabilidade — com o aparelho simulado jogando 8°.
+Recuperou o período de balanço em **6,28 s contra 6,30 reais**.
+
+### Por que não se integra no tempo
+
+Integrar aceleração duas vezes é receita de desastre: meio miligal de viés vira
+uma parábola e produz metros de "heave" em minutos — lindo e inteiramente
+falso. No domínio da frequência a mesma operação é uma divisão:
+
+```
+η = a·sen(ωt)  →  ä = −a·ω²·sen(ωt)  →  S_η(ω) = S_a(ω)/ω⁴
+```
+
+A deriva vive em ~0 Hz e é cortada fora antes de causar dano. É o método das
+boias Datawell.
+
+**A divisão por ω⁴ amplifica brutalmente o ruído de baixa frequência** — em
+0,01 Hz o fator é 2,5 milhões de vezes o de 0,3 Hz. Medido: a energia
+descartada abaixo de 0,03 Hz chega a **99% do total bruto**. A banda não é
+capricho, é o que separa onda de deriva de sensor.
+
+### A janela mínima é a inteira — 17 min, e isso foi MEDIDO
+
+Com meia janela o algoritmo perdia **13% do Hs**. A causa foi localizada, não
+adivinhada: num registro curto parte da variância do deslocamento aparece
+abaixo de 0,03 Hz, onde a banda a descarta com razão.
+
+**Não é defeito do espectro** — com senoides puras ele é exato a 0,0% até em
+256 amostras. É que um mar real, olhado por pouco tempo, tem deriva lenta que
+não se distingue de onda longa. Boia de onda usa 20 a 30 minutos pelo mesmo
+motivo.
+
+### |a| − g escolhido por medição, não por elegância
+
+Havia dois caminhos para tirar a vertical do que o aparelho entrega: girar o
+vetor pela atitude fundida, ou tomar o módulo e subtrair g. O primeiro é
+teoricamente melhor e depende de acertar a convenção de sinais do
+DeviceOrientation, que varia com aparelho e montagem — **e um sinal trocado ali
+não aparece como erro, aparece como espectro plausível e errado**.
+
+| jogo | sway | \|a\|−g | a_z−g |
+|---:|---:|---:|---:|
+| 0° | 0,0 | +0,3% | +0,2% |
+| 10° | 0,8 | +0,2% | −0,4% |
+| 20° | 1,5 | **−0,3%** | −1,5% |
+
+E a prova decisiva: **parado e adernado 20°**, o eixo z cru acusa −0,59 m/s²
+— 6% de g de viés permanente, oscilando no período de **balanço**, que cai bem
+no meio da banda de onda. Vira mar do nada.
+
+### ⚠️ O GM pelo período de balanço
+
+```
+T_R = 2·C·B/√GM   →   GM = (2·C·B/T_R)²
+C = 0,373 + 0,023·(B/d) − 0,043·(L/100) = 0,4106   (ASD 2810)
+```
+
+| T_R | GM | leitura de bordo |
+|---:|---:|---|
+| 5,0 s | 2,94 m | duro, seco, quebra coisa |
+| 6,0 s | 2,04 m | confortável |
+| 7,0 s | 1,50 m | atenção |
+| **8,0 s** | **1,15 m** | 🔴 o barco está amolecendo |
+
+**Não é a onda grande que emborca rebocador: é o GM que baixou sem ninguém
+notar.** Superfície livre em tanque parcialmente cheio, água no convés que não
+escoou, peso que subiu, e sobretudo o puxão do cabo na cintura. Um rebocador
+que emborca raramente avisa — mas o período de balanço avisa, e ninguém escuta.
+
+**E a TENDÊNCIA vale mais que o número.** O valor absoluto depende do
+coeficiente empírico e pode estar deslocado; a tendência não depende de C
+nenhum: se o balanço alonga, o GM caiu, e isso é verdade qualquer que seja o
+coeficiente.
+
+#### As três ressalvas, que vão no código, no manual e na fala
+
+1. **Sensibilidade quadrática.** dGM/GM = −2·dT/T: 10% de erro no período vira
+   20% no GM. A faixa de incerteza viaja junto com o número. É **indicador de
+   tendência, não cálculo de estabilidade** — a prancha continua mandando.
+2. **Só vale com balanço LIVRE.** Se o encontro está perto do natural, o navio
+   balança forçado e o período medido é o do **mar**, não o do navio. Nesse
+   caso não se diz nada: `qualidadeDoBalanco()` recusa e explica por quê.
+3. **O coeficiente C é empírico.** Um ASD com dutos e skeg não é exatamente o
+   casco convencional da fórmula IMO. O número absoluto pode estar deslocado;
+   a tendência, não.
+
+### O tablet mede o NAVIO, não o mar — e o rótulo vem junto
+
+λ = 1,56·T². Um rebocador de 28 m é boia sensível às ondas longas e **surda às
+curtas**:
+
+| período | λ | vs. 28,6 m | leitura |
+|---|---|---|---|
+| 10 s | 156 m | 5,5× | ✅ o navio sobe junto |
+| 7 s | 76 m | 2,7× | razoável |
+| 4 s | 25 m | 0,9× | ❌ atravessa — subestima muito |
+
+**Não se corrige.** Corrigir exigiria o RAO deste casco, que ninguém levantou,
+e inventar um RAO seria o mesmo pecado de chamar lista de faróis de linha de
+costa. **Rotula-se**, e o rótulo diz para que lado erra.
+
+### Ressonância: os dois caminhos que derrubam navio
+
+```
+Te = T / |1 − V·cos μ / c|,   c = g·T/2π
+```
+
+Em mar de **popa** o encontro estica: a 10 nós numa onda de 8 s vai a **13,6 s**
+— o perigo clássico. Dois alertas, ambos com prioridade de **segurança** na
+fila da fala, à frente de qualquer conselho de consumo:
+
+- **síncrono** (Te ≈ T_R): cada onda chega empurrando no mesmo tempo;
+- **paramétrico** (Te ≈ T_R/2): cresce rápido e pega de surpresa porque o mar
+  não parece perigoso.
+
+"Surfando" passou a ser definido **pelo resultado**, não pelo denominador: um
+navio a 24,3 nós numa onda cuja celeridade é 24,29 dava den = 1,2×10⁻³ e
+escapava do corte de 10⁻³, embora esteja montado na onda.
+
+### O campo reservado no Sprint 1 se preencheu
+
+No Sprint 1 o registro nascia com `onda: null` e a nota dizia: *"a comparação
+entre onda medida e prevista só tem valor com série temporal, e dado que não
+foi gravado hoje não volta amanhã"*. **Três sprints depois o `null` virou
+observação** — Hs, Tz, Tp, jogo, período de balanço, GM e o Hs previsto, lado a
+lado. Com o tempo, a razão entre medido e previsto **é o RAO deste casco
+levantado no mar de verdade**.
+
+### Provas
+
+**Suíte 24 (14 provas), validada por mutação: 16 defeitos, 15 apanhados e 1
+comprovadamente inócuo.** A inócua foi retirar o cálculo da média: medido, um
+viés de 5 m/s² não move o Hs em nenhuma casa decimal, porque o laço do espectro
+já começa no bin 1. Fica no código, documentada como redundância deliberada.
+
+Quatro só foram pegas depois de consertar as provas — e todas pela mesma razão:
+**tolerância frouxa esconde defeito**. A amplitude de jogo usando a fórmula da
+altura de onda, o relógio do coletor derivando, a queda de GM sem alerta e o
+heave sem correção de adernamento passavam todas dentro das margens que eu
+tinha escolhido. A do adernamento era a pior: 5% de tolerância no Hs deixava
+passar um viés de 6% de g.
+
+### Números
+
+| | v2.11.0 | v2.12.0 |
+|---|---|---|
+| Provas do banco | 227 | **241** |
+| Passos da prova de fumaça | 63 | **65** |
+| Módulos | 13 | **14** (`ondas.js`) |
+| Bancadas de simulação | 0 | **1** (`tests/mar_sintetico.js`) |
+| `app.html` | 3.279 linhas | **3.287** (teto: 3.500) |
+
+---
+
 ## v2.11.0 (21/09/2026) — FAIXA ECONÔMICA DE ROTAÇÃO · SPRINT 4
 
 Autor: Jossian Brito (Charlie Bravo)

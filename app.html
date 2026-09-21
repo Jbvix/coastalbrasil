@@ -5,7 +5,7 @@
   COASTAL NAVIGATOR BRASIL — Sistema de Planejamento de Viagem Costeira
 ════════════════════════════════════════════════════════════════════════════════
 
-  Versão: 2.11.0
+  Versão: 2.12.0
   Autor: Jossian Brito (Charlie Bravo)
   LinkedIn: https://www.linkedin.com/in/jossianbrito/
   X: https://x.com/jossiancosta  ·  Medium: https://medium.com/@jossiancosta
@@ -44,7 +44,7 @@
   <meta name="keywords"
     content="navegação costeira, planejamento de viagem, faróis, Brasil, OpenSeaMap, GPX, rebocadores">
 
-  <title>Coastal Navigator Brasil v2.11.0 - Planejamento de Viagem</title>
+  <title>Coastal Navigator Brasil v2.12.0 - Planejamento de Viagem</title>
 
   <!-- Leaflet CSS -->
   <!-- Subresource Integrity: o navegador recusa o arquivo se o conteúdo servido
@@ -75,7 +75,7 @@
     <header class="app-header">
       <div class="header-content">
         <div class="logo">
-          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.11.0</span></h1>
+          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.12.0</span></h1>
         </div>
 
         <div class="controls">
@@ -240,13 +240,14 @@
                  min="0" max="110" step="1" placeholder="%" aria-label="Carga do motor em porcento da MCR">
         </div>
         <div class="nav-line nav-eco" id="navEco"></div>
-        <!-- TEMPO NO PAINEL.                                        (v2.11.0)
+        <!-- TEMPO NO PAINEL.                                        (v2.12.0)
              O Sprint 2 pôs vento, mar e corrente só na FALA. Quando o
              orçamento de fala começou a cortar exceções dizendo "tem mais no
              painel", a frase virou mentira: não havia painel nenhum para
              essas coisas. Ou se apagava a frase, ou se tornava verdade. É
              mais útil torná-la verdade. -->
         <div class="nav-line nav-tempo" id="navTempo"></div>
+        <div class="nav-line nav-mar" id="navMarMedido"></div>
         <div class="nav-divider"></div>
         <div class="nav-line nav-lh" id="navLighthouse">💡 Nenhum farol no alcance</div>
         <div class="nav-line nav-status" id="navGpsStatus">Aguardando GPS…</div>
@@ -531,6 +532,7 @@
   <script src="assets/js/iara.js"></script>
   <script src="assets/js/tempo.js"></script>
   <script src="assets/js/consumo.js"></script>
+  <script src="assets/js/ondas.js"></script>
   <script src="assets/js/relatorio_voz.js"></script>
 
   <!-- three.js (carregado sob demanda ao abrir o painel 3D de atitude do rebocador) -->
@@ -1953,6 +1955,10 @@
       iniciarTempo(() => navLastFix);
       // Máquinas: restaura rotação e carga anotadas e liga os campos do HUD.
       iniciarMaquinas();
+      // Sensores de mar: acelerômetro a 2 Hz para o espectro de onda e o
+      // período de balanço. Roda a navegação inteira — 17 minutos de janela
+      // não se juntam com o painel 3D aberto de vez em quando.
+      iniciarSensoresDeMar();
       // Pré-carrega o consumo já feito se a viagem partiu antes de agora (em andamento)
       navAccumFuel = elapsedFuel(tripData, Date.now());
       if (tripData) tripData.fuelAlreadyUsed = navAccumFuel;
@@ -1991,6 +1997,7 @@
       navActive = false;
       pararRelatorios();
       pararTempo();
+      pararSensoresDeMar();
       if (navWatchId !== null) {
         navigator.geolocation.clearWatch(navWatchId);
         navWatchId = null;
@@ -2174,6 +2181,7 @@
       // falta e o tempo disponível mudam a cada minuto.
       atualizarPainelEco();
       atualizarPainelTempo();
+      atualizarPainelMar();
 
       // --- Alertas de faróis ---
       checkLighthouseAlerts(lat, lng, cog);
@@ -3209,7 +3217,7 @@
       updateShareButtons();
 
       console.log('═══════════════════════════════════════════════════════════════');
-      console.log('  Coastal Navigator Brasil v2.11.0 - Inicializado ⚓');
+      console.log('  Coastal Navigator Brasil v2.12.0 - Inicializado ⚓');
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('Autor: Jossian Brito (Charlie Bravo)');
       console.log('58 Faróis curados carregados 💡 (52 DHN + 6 Validados)');

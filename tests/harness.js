@@ -19,7 +19,7 @@ const MODULOS = ['assets/js/lighthouses.js', 'assets/js/coastline.js',
                  'assets/js/report.js', 'assets/js/mirror.js',
                  'assets/js/ship3d.js', 'assets/js/iara.js',
                  'assets/js/relatorio_voz.js', 'assets/js/tempo.js',
-                 'assets/js/consumo.js'];
+                 'assets/js/consumo.js', 'assets/js/ondas.js'];
 const SRC = [path.join(ROOT, 'app.html'), ...MODULOS.map(m => path.join(ROOT, m))]
   .map(f => fs.readFileSync(f, 'utf8')).join('\n');
 module.exports = module.exports || {};
@@ -112,7 +112,16 @@ const FNS = ['calculateDistance','calculateBearing','eyeHeight','calculateVisibi
              // Sprint 4: a lei da hélice e a minimização com restrição de ETA.
              'fracaoMCR','curvaDoMotor','velocidadeDoRpm','rpmDaVelocidade',
              'consumoHora','consumoPorMilha','combustivelAteDestino','velocidadeDeCasco',
-             'faixaEconomica','diagnosticoDeCarga','aprenderCurva'];
+             'faixaEconomica','diagnosticoDeCarga','aprenderCurva',
+             // Sprint 5: espectro, GM e ressonância. Provados contra mares
+             // SINTETIZADOS de Hs e Tp conhecidos — é a única forma de
+             // verificar um espectro sem ir ao mar.
+             'fft','janelaHann','densidadeEspectral','espectroDeHeave','momentos',
+             'alturaSignificativa','parametrosDeMar','comprimentoDeOnda',
+             'confiabilidadeDaOnda','coeficienteC','gmDoPeriodo',
+             'periodoDeBalanco','periodoDeEncontro','alertaDeRessonancia',
+             'qualidadeDoBalanco','recortePotenciaDe2',
+             'aceleracaoVerticalDoModulo','alimentarSensorDeMar','tendenciaDoGm','estadoDoMarMedido','cascoAtual'];
 
 const sandboxSrc = extractLighthouses() + '\n' +
   'let _coastline = null;\n' +
@@ -167,18 +176,42 @@ const sandboxSrc = extractLighthouses() + '\n' +
   extractDecl('CONSUMO_CARGA_DESVIO') + '\n' +
   extractDecl('CONSUMO_MIN_AMOSTRAS') + '\n' +
   extractDecl('CONSUMO_MIN_ESPALHAMENTO_RPM') + '\n' +
+  extractDecl('ONDA_F_MIN') + '\n' +
+  extractDecl('ONDA_F_MAX') + '\n' +
+  extractDecl('ONDA_G') + '\n' +
+  extractDecl('ONDA_RESSONANCIA_TOL') + '\n' +
+  extractDecl('ONDA_BALANCO_MIN_GRAUS') + '\n' +
+  extractDecl('ONDA_TAXA_HZ') + '\n' +
+  extractDecl('ONDA_JANELA') + '\n' +
+  extractDecl('ONDA_MIN_JANELA') + '\n' +
+  extractDecl('ONDA_GM_QUEDA_ALERTA') + '\n' +
+  extractDecl('ONDA_TE_MAX') + '\n' +
+  // As variáveis de estado do coletor de mar. Sem elas a caixa de areia não
+  // consegue simular 17 minutos de sensor, que é a única prova de ponta a
+  // ponta possível sem ir ao mar.
+  'let marAcel = [], marRoll = [], marGmHistorico = [];\n' +
+  'let marCaixaSoma = 0, marCaixaN = 0, marCaixaRoll = 0, marUltimoT = 0, marHandler = null;\n' +
+  'let tempoAtual = null, shipAttitude = null;\n' +
+  // shipModelAtual vem de ship3d.js e depende de localStorage; na bancada o
+  // casco é injetado direto, que é o que cascoAtual() consulta.
+  'let _cascoTeste = null;\n' +
+  'function shipModelAtual() { return _cascoTeste; }\n' +
   extractDecl('REFERENCIAS_TERRA') + '\n' +
   'const RESYNC_NM = ' + (SRC.match(/const RESYNC_NM = (\\d+)/) || [,'10'])[1] + ';\n' +
   FNS.map(extractFn).join('\n\n') + '\n' +
   'module.exports = { lighthouses, COSTA_BRASIL, DEFAULT_EYE_HEIGHT_M, RESYNC_NM,\n'
   + '  IARA_NOME, IARA_PRIORIDADE, IARA_VALIDADE_MS, IARA_ROT_LIMITE, IARA_IMPERATIVOS_PROIBIDOS, IARA_TETO_S, REFERENCIAS_TERRA, REF_MESMO_LUGAR_NM, REF_ALCANCE_MAX_NM, MOTOR_PADRAO,\n'
-  + '  CONSUMO_MCR_BAIXA, CONSUMO_TOLERANCIA, REL_RPM_ECONOMIA_PCT, CONSUMO_CARGA_DESVIO, CONSUMO_MIN_AMOSTRAS, CONSUMO_MIN_ESPALHAMENTO_RPM,\n'
+  + '  CONSUMO_MCR_BAIXA, CONSUMO_TOLERANCIA, REL_RPM_ECONOMIA_PCT,\n'
+  + '  ONDA_F_MIN, ONDA_F_MAX, ONDA_G, ONDA_RESSONANCIA_TOL, ONDA_BALANCO_MIN_GRAUS, ONDA_TAXA_HZ, ONDA_JANELA, ONDA_MIN_JANELA, ONDA_GM_QUEDA_ALERTA, ONDA_TE_MAX, CONSUMO_CARGA_DESVIO, CONSUMO_MIN_AMOSTRAS, CONSUMO_MIN_ESPALHAMENTO_RPM,\n'
   + '  REL_XTE_MENCIONA_NM, REL_XTE_PREOCUPA_NM, REL_COMBUSTIVEL_A_CADA, REL_TETO_S, REL_PRIORIDADE,\n'
   + '  TEMPO_FRESCO_MIN, TEMPO_VELHO_MIN, TEMPO_RAJADA_DELTA, TEMPO_MAR_NM, TEMPO_CORRENTE_NOS,\n'
   + '  setTrip: t => { tripData = t; },\n'
   + '  setRota: (r, leg) => { waypoints = r; navActiveLeg = leg || 0; },\n'
   + '  setFix: f => { navLastFix = f; },\n'
   + '  setSim: v => { navSimActive = !!v; },\n'
+  + '  zerarMar: () => { marAcel = []; marRoll = []; marGmHistorico = []; marCaixaSoma = 0; marCaixaN = 0; marCaixaRoll = 0; marUltimoT = 0; },\n'
+  + '  setTempoAtual: v => { tempoAtual = v; },\n'
+  + '  setCasco: c => { _cascoTeste = c; },\n'
   + '  getLeg: () => navActiveLeg, '
   + FNS.join(', ') + ' };';
 

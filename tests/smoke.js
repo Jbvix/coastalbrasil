@@ -295,6 +295,29 @@ const srv = http.createServer((req, res) => {
   ok('Texto do canal não vira marcação', relEsp.existe && !relEsp.temTag,
      relEsp.temTag ? 'a <img> foi interpretada — injeção' : 'escapado');
 
+  /* SENSORES DE MAR NO NAVEGADOR.                                  (v2.12.0)
+     O banco de provas mede o espectro contra mar sintetizado. O que só o
+     navegador diz é se o `devicemotion` é escutado de verdade e se a linha do
+     mar medido existe para receber o resultado. */
+  const mar = await page.evaluate(() => {
+    const el = document.getElementById('navMarMedido');
+    if (!el) return { existe: false };
+    const ligou = iniciarSensoresDeMar();
+    // Injeta eventos de acelerômetro como o aparelho faria.
+    let entrou = 0;
+    for (let i = 0; i < 200; i++) {
+      if (alimentarSensorDeMar(0.3 * Math.sin(i / 8), 2, Date.now() + i * 500)) entrou++;
+    }
+    atualizarPainelMar();
+    const txt = el.textContent;
+    pararSensoresDeMar();
+    return { existe: true, ligou, entrou, txt };
+  });
+  ok('Sensores de mar ligam e aceitam amostras', mar.existe && mar.entrou > 150,
+     mar.existe ? `${mar.entrou} amostras decimadas` : 'linha do mar não existe');
+  ok('Com janela curta ele DIZ que está medindo, não inventa número',
+     mar.existe && /medindo o mar/.test(mar.txt), mar.txt || '(vazio)');
+
   /* MÁQUINAS NO PAINEL.                                            (v2.11.0)
      O banco de provas mede a conta; o navegador diz se os campos existem, se
      aceitam número e se o conselho aparece. */

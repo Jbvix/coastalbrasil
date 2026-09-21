@@ -2285,7 +2285,16 @@ t(S20, '20.19', 'O histórico já guarda o lugar da onda do Sprint 5', () => {
   const i = REL20.indexOf('function registrarRelatorio');
   ok(i > 0, 'registrarRelatorio não existe');
   const corpo = REL20.slice(i, REL20.indexOf('\n}', i));
-  ok(/onda: null/.test(corpo), 'o histórico não reserva o campo da onda (Sprint 5)');
+  /* O ARCO SE FECHA. No Sprint 1 este campo nascia `onda: null`, e a nota
+     dizia: "a comparação entre onda medida e prevista só tem valor com série
+     temporal, e dado que não foi gravado hoje não volta amanhã". Três sprints
+     depois ele guarda observação de verdade — e é por isso que a série
+     começou a existir três sprints ANTES de haver o que gravar nela. */
+  ok(/onda: \(e\.mar/.test(corpo), 'o histórico não guarda mais a onda medida');
+  ['Hs:', 'Troll:', 'gm:', 'HsPrevisto:'].forEach(c =>
+    ok(corpo.includes(c), `o registro da onda perdeu o campo ${c}`));
+  ok(/HsPrevisto/.test(corpo),
+     'não guarda o previsto junto do medido — sem os dois lado a lado não há calibração possível');
   /* O campo `tempo` era reservado no Sprint 1 e passou a ser PREENCHIDO no
      Sprint 2 — a prova acompanha. E guarda-se o dado BRUTO do modelo, não a
      frase: a frase se regenera a qualquer momento, a observação não. */
@@ -3204,6 +3213,357 @@ t(S23, '23.16', 'Uma amostra por RELATÓRIO, não por fixo de GPS', () => {
   const i = CONS23.indexOf('function colherAmostraDeMaquina');
   const corpo = CONS23.slice(i, CONS23.indexOf('\n}', i));
   ok(/if \(!maqRpm/.test(corpo), 'colheria amostra sem rotação informada');
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SUÍTE 24 · Ondas e estabilidade pelos sensores (Sprint 5)        (v2.12.0)
+
+   Não há como verificar um espectro de ondas sem ir ao mar — a não ser
+   fabricando um mar de Hs e Tp conhecidos e cobrando o algoritmo de volta.
+   É o que tests/mar_sintetico.js faz, e é o que esta suíte usa.
+
+   A prova 24.9 é a mais importante de todo o projeto: o GM estimado pelo
+   período de balanço. Não porque seja a mais difícil, mas porque é a única
+   que, se estiver errada, pode contribuir para emborcar um rebocador. Por
+   isso ela confere o número E as três ressalvas que o acompanham.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const S24 = '24 · Ondas e estabilidade';
+const { fft, densidadeEspectral, espectroDeHeave, momentos, alturaSignificativa,
+        parametrosDeMar, comprimentoDeOnda, confiabilidadeDaOnda, coeficienteC,
+        gmDoPeriodo, periodoDeBalanco, periodoDeEncontro, alertaDeRessonancia,
+        qualidadeDoBalanco, aceleracaoVerticalDoModulo, alimentarSensorDeMar,
+        estadoDoMarMedido, tendenciaDoGm, recortePotenciaDe2,
+        ONDA_F_MIN, ONDA_F_MAX, ONDA_G, ONDA_TAXA_HZ, ONDA_JANELA,
+        ONDA_MIN_JANELA, ONDA_RESSONANCIA_TOL, ONDA_GM_QUEDA_ALERTA } = A;
+const { marSintetico } = require('./mar_sintetico.js');
+const fs24 = require('fs');
+const OND24 = semComentarios(fs24.readFileSync(ROOT + '/assets/js/ondas.js', 'utf8'));
+const APP24 = semComentarios(fs24.readFileSync(ROOT + '/app.html', 'utf8'));
+const DT = 1 / ONDA_TAXA_HZ;
+
+/* Aceleração de uma senoide de elevação: ä = −a·ω²·sen(ωt). */
+const senoide = (N, T, amp) =>
+  Array.from({ length: N }, (_, i) => -amp * Math.pow(2 * Math.PI / T, 2) * Math.sin(2 * Math.PI * i * DT / T));
+
+t(S24, '24.1', 'A FFT é uma FFT — conferida contra o que se calcula à mão', () => {
+  /* Antes de confiar num espectro de ondas, confia-se na transformada. Uma
+     senoide de 4 ciclos em 16 pontos tem de pôr TODA a energia no bin 4. */
+  const n = 16, k0 = 4;
+  const x = Array.from({ length: n }, (_, i) => Math.cos(2 * Math.PI * k0 * i / n));
+  const { re, im } = fft(x);
+  eq(re[k0], n / 2, 1e-9, 'a energia não caiu no bin certo');
+  for (let k = 1; k < n / 2; k++) {
+    if (k === k0) continue;
+    ok(Math.hypot(re[k], im[k]) < 1e-9, `vazou energia para o bin ${k}`);
+  }
+  // Constante -> tudo no bin 0.
+  const c = fft(new Array(8).fill(3));
+  eq(c.re[0], 24, 1e-9, 'a média não caiu no bin zero');
+  // Comprimento que não é potência de 2 tem de ESTOURAR, não devolver lixo.
+  let estourou = false;
+  try { fft([1, 2, 3]); } catch (e) { estourou = true; }
+  ok(estourou, 'aceitou comprimento que não é potência de 2 — devolveria espectro sem sentido');
+  // E o recorte descarta o COMEÇO: o fim é o presente.
+  const r = recortePotenciaDe2([1, 2, 3, 4, 5]);
+  ok(r.length === 4 && r[3] === 5, 'o recorte jogou fora o presente em vez do passado');
+});
+
+t(S24, '24.2', 'Hs de uma senoide é 2,83·a — e a definição é essa mesma', () => {
+  /* Hs = 4√m₀ é a definição espectral (Hm0) e vale para mar aleatório. Para
+     onda REGULAR ela não dá a altura: uma senoide de amplitude a tem altura
+     H = 2a mas m₀ = a²/2, logo Hs = 2,83·a = 1,41·H. Não é erro do código: é
+     a definição, e quem conferir com senoide precisa esperar isso. */
+  const p = parametrosDeMar(espectroDeHeave(senoide(2048, 9, 1.0), DT));
+  eq(p.Hs, 2 * Math.SQRT2, 0.01, 'Hs de senoide de amplitude 1');
+  eq(p.Tp, 9, 0.2, 'período de pico');
+  // E o pipeline é exato em qualquer comprimento — 256 amostras inclusive.
+  [1024, 512, 256].forEach(N => {
+    const q = parametrosDeMar(espectroDeHeave(senoide(N, 9, 1.0), DT));
+    ok(Math.abs(q.Hs / (2 * Math.SQRT2) - 1) < 0.02, `N=${N}: erro de ${(100 * (q.Hs / 2.828 - 1)).toFixed(1)}%`);
+  });
+});
+
+t(S24, '24.3', 'Mar Pierson-Moskowitz: recupera Hs e Tp DA ACELERAÇÃO', () => {
+  /* A prova central do espectro. Fabrica-se um mar de Hs conhecido, integra-se
+     mentalmente para aceleração, e cobra-se o Hs de volta. Se isto fecha, a
+     divisão por ω⁴, a janela de Hann, a correção 8/3 e os momentos estão
+     todos certos ao mesmo tempo. */
+  const erros = [];
+  for (const [hs, tp] of [[2.5, 9], [1.2, 6], [4.0, 12]]) {
+    const m = marSintetico({ Hs: hs, Tp: tp, n: 2048, dt: DT, semente: Math.round(hs * 1000) });
+    const q = parametrosDeMar(espectroDeHeave(Array.from(m.acel), DT));
+    const erro = q.Hs / m.HsReal - 1;
+    erros.push(`${hs}m: ${(100 * erro).toFixed(1)}%`);
+    ok(Math.abs(erro) < 0.08, `Hs de ${hs} m saiu com ${(100 * erro).toFixed(1)}% de erro`);
+    ok(Math.abs(q.Tp / tp - 1) < 0.15, `Tp de ${tp} s saiu ${q.Tp.toFixed(1)}`);
+    /* Tz/Tp de um Pierson-Moskowitz fica perto de 0,71–0,75. Sai de graça e
+       é uma conferência independente: se o m₂ estivesse errado, esta razão
+       denunciaria mesmo com o Hs certo. */
+    ok(q.Tz / q.Tp > 0.6 && q.Tz / q.Tp < 0.9, `Tz/Tp = ${(q.Tz / q.Tp).toFixed(2)} fora do esperado`);
+  }
+  return { detail: erros.join(' · ') };
+});
+
+t(S24, '24.4', 'A banda corta o que a divisão por ω⁴ tornaria absurdo', () => {
+  /* Em 0,01 Hz o fator 1/ω⁴ é 2,5 milhões de vezes maior que em 0,3 Hz. Sem
+     o corte, a deriva do acelerômetro vira um "mar" de dezenas de metros —
+     medido: a energia descartada abaixo de 0,03 Hz chega a ser 99% do total
+     bruto. */
+  const N = 2048;
+  const lenta = Array.from({ length: N }, (_, i) => 0.002 * Math.sin(2 * Math.PI * i * DT / 300));
+  const p = parametrosDeMar(espectroDeHeave(lenta, DT));
+  ok(!p || !isFinite(p.Hs) || p.Hs < 0.2,
+     `uma oscilação de 300 s virou mar de ${p && p.Hs ? p.Hs.toFixed(1) : '?'} m`);
+  // E uma deriva pura (rampa) não pode virar onda nenhuma.
+  const deriva = Array.from({ length: N }, (_, i) => 0.01 * i / N);
+  const d = parametrosDeMar(espectroDeHeave(deriva, DT));
+  ok(!d || !isFinite(d.Hs) || d.Hs < 0.2, 'viés do acelerômetro virou onda');
+  ok(ONDA_F_MIN > 0.01 && ONDA_F_MIN < 0.06, 'a borda inferior da banda saiu da faixa defensável');
+  ok(ONDA_F_MAX >= 0.4 && ONDA_F_MAX <= 1, 'a borda superior da banda saiu da faixa defensável');
+});
+
+t(S24, '24.5', 'A JANELA MÍNIMA É A INTEIRA — e isso foi medido, não arbitrado', () => {
+  /* Com meia janela o algoritmo perdia 13% do Hs. A causa: num registro curto
+     parte da variância do deslocamento aparece abaixo de 0,03 Hz, onde a
+     banda a descarta com razão. Não é defeito do espectro — com senoides
+     puras ele é exato a 0,0% até em 256 amostras (prova 24.2). É que um mar
+     real, olhado por pouco tempo, tem deriva lenta que não se distingue de
+     onda longa. Boia de onda usa 20 a 30 minutos pelo mesmo motivo. */
+  ok(ONDA_MIN_JANELA === ONDA_JANELA,
+     `a janela mínima (${ONDA_MIN_JANELA}) é menor que a inteira (${ONDA_JANELA}) — volta o erro de 13%`);
+  const minutos = ONDA_JANELA / ONDA_TAXA_HZ / 60;
+  ok(minutos >= 15 && minutos <= 35, `janela de ${minutos.toFixed(0)} min fora da prática de boia`);
+  // E enquanto não encher, NÃO se devolve número: diz quanto falta.
+  A.zerarMar();
+  const e = estadoDoMarMedido(10, 0);
+  ok(e && e.pronto === false, 'devolveu estado de mar com a janela vazia');
+  ok(e.faltamS > 0, 'não diz quanto falta para medir');
+  return { detail: `${minutos.toFixed(0)} min a ${ONDA_TAXA_HZ} Hz` };
+});
+
+t(S24, '24.6', '|a|−g aguenta o navio jogando — foi escolhido por medição', () => {
+  /* Havia dois caminhos: girar o vetor pela atitude fundida, ou tomar o
+     módulo e subtrair g. O primeiro é teoricamente melhor e depende de
+     acertar a convenção de sinais do DeviceOrientation, que varia com
+     aparelho e montagem — e um sinal trocado ali não aparece como erro,
+     aparece como espectro plausível e errado. O segundo é imune a convenção.
+     Mediu-se, e o módulo se segura em ±0,5% até 20° de jogo. */
+  const N = 2048, g = ONDA_G;
+  const m = marSintetico({ Hs: 2.5, Tp: 9, n: N, dt: DT, semente: 7 });
+  for (const rollAmp of [0, 10, 20]) {
+    const mod = [];
+    for (let i = 0; i < N; i++) {
+      const phi = rollAmp * Math.PI / 180 * Math.sin(2 * Math.PI * i * DT / 6.3);
+      const ez = g + m.acel[i];
+      mod.push(aceleracaoVerticalDoModulo(0, -ez * Math.sin(phi), ez * Math.cos(phi)));
+    }
+    const hs = parametrosDeMar(espectroDeHeave(mod, DT)).Hs;
+    ok(Math.abs(hs / m.HsReal - 1) < 0.05,
+       `com ${rollAmp}° de jogo o Hs saiu com ${(100 * (hs / m.HsReal - 1)).toFixed(1)}% de erro`);
+  }
+  eq(aceleracaoVerticalDoModulo(0, 0, ONDA_G), 0, 1e-9, 'parado devia dar aceleração vertical nula');
+  /* A PROVA DECISIVA, e a que faltava: PARADO E ADERNADO tem de ler ZERO.
+     Com o eixo z cru, um navio adernado 20° em água parada acusa −0,59 m/s²
+     — 6% de g de viés permanente, oscilando no período de BALANÇO, que cai
+     bem no meio da banda de onda. Vira mar do nada. A tolerância de 5% no Hs
+     não pegava isso; esta pega. */
+  for (const grau of [10, 20, 30]) {
+    const phi = grau * Math.PI / 180;
+    const lido = aceleracaoVerticalDoModulo(0, -ONDA_G * Math.sin(phi), ONDA_G * Math.cos(phi));
+    ok(Math.abs(lido) < 1e-6,
+       `parado e adernado ${grau}° o sensor acusou ${lido.toFixed(3)} m/s² de aceleração vertical`);
+  }
+});
+
+t(S24, '24.7', 'De ponta a ponta: 60 Hz de aparelho até o Hs e o GM', () => {
+  /* A prova que exercita o caminho inteiro — decimação, relógio, espectro,
+     balanço e estabilidade — como acontece a bordo. */
+  /* Alimenta-se EXATAMENTE a duração de uma janela. Alimentar de sobra
+     mascarava a deriva do relógio: o excedente reenchia o que a deriva
+     perdia, e 2004 amostras viravam 2048 pelo caminho errado. */
+  const g = ONDA_G, dtDisp = 1 / 60;
+  /* Uma janela MAIS UM PASSO: a primeira chamada só ancora o relógio e não
+     emite amostra, então alimentar exatamente 1024 s deixa o buffer com 2047. */
+  const nDisp = Math.round(60 * (ONDA_JANELA / ONDA_TAXA_HZ + 1 / ONDA_TAXA_HZ));
+  A.setCasco({ loa: 28.6, boca: 10.2, calado: 4.80 });
+  A.setTempoAtual({ mar: { wave_height: 2.4, wave_direction: 90 } });
+  const m = marSintetico({ Hs: 2.5, Tp: 9, n: nDisp, dt: dtDisp, semente: 11 });
+  A.zerarMar();
+  let t0 = 0;
+  for (let i = 0; i < nDisp; i++) {
+    t0 += dtDisp * 1000;
+    const phi = 8 * Math.PI / 180 * Math.sin(2 * Math.PI * (i * dtDisp) / 6.3);
+    const ez = g + m.acel[i];
+    alimentarSensorDeMar(aceleracaoVerticalDoModulo(0, -ez * Math.sin(phi), ez * Math.cos(phi)),
+                         phi * 180 / Math.PI, t0);
+  }
+  const e = estadoDoMarMedido(10, 0);
+  ok(e.pronto, 'não encheu a janela em 18 minutos de sensor a 60 Hz');
+  /* O RELÓGIO AVANÇA POR PASSO, NÃO PELA CHEGADA. `marUltimoT = t` produzia
+     1,97 Hz em vez de 2 e retinha 2004 amostras onde cabiam 2048 — e o
+     recorte por potência de 2 caía para 1024, metade do registro. */
+  ok(e.janelaS >= ONDA_JANELA / ONDA_TAXA_HZ - 1,
+     `a janela encolheu para ${e.janelaS} s — o relógio do coletor está derivando`);
+  ok(Math.abs(e.Hs / m.HsReal - 1) < 0.08,
+     `Hs de ponta a ponta com ${(100 * (e.Hs / m.HsReal - 1)).toFixed(1)}% de erro`);
+  eq(e.balanco.periodoS, 6.3, 0.25, 'período de balanço recuperado do jogo simulado');
+  ok(e.gm && e.gm.gm > 1 && e.gm.gm < 3, `GM implausível: ${e.gm && e.gm.gm}`);
+  return { detail: `janela ${e.janelaS} s · Hs ${e.Hs.toFixed(2)} (${(100 * (e.Hs / m.HsReal - 1)).toFixed(1)}%) · T_roll ${e.balanco.periodoS.toFixed(2)} s · GM ${e.gm.gm.toFixed(2)} m` };
+});
+
+t(S24, '24.8', 'O tablet mede o NAVIO, não o mar — e o rótulo vem junto', () => {
+  /* λ = 1,56·T². Um rebocador de 28 m é boia sensível às ondas longas e surda
+     às curtas. Não se corrige — corrigir exigiria o RAO deste casco, que
+     ninguém levantou, e inventar um RAO seria o mesmo pecado de chamar lista
+     de faróis de linha de costa. Rotula-se. */
+  eq(comprimentoDeOnda(10), 156, 1, 'comprimento de onda de 10 s');
+  eq(comprimentoDeOnda(4), 25, 1, 'comprimento de onda de 4 s');
+  ok(confiabilidadeDaOnda(10, 28.6).nivel === 'boa', 'onda de 156 m devia ser confiável num casco de 28 m');
+  ok(confiabilidadeDaOnda(4, 28.6).nivel === 'ruim', 'onda de 25 m devia ser marcada como pouco confiável');
+  ok(/subestima/.test(confiabilidadeDaOnda(4, 28.6).texto), 'o rótulo não diz para que lado erra');
+  ok(confiabilidadeDaOnda(10, null) === null, 'inventou confiabilidade sem comprimento de navio');
+});
+
+t(S24, '24.14', 'Jogo se mede em AMPLITUDE, não em altura', () => {
+  /* Para onda usa-se Hs = 4√m₀ porque interessa a ALTURA, de cava a crista.
+     Para balanço o marinheiro fala em AMPLITUDE, de prumo a bordo: "jogando
+     10 graus" quer dizer 10 para cada lado. Usar a fórmula da onda daria
+     18,7° para um jogo cuja amplitude dominante é 6,5° — quase o triplo, e
+     seria lido como um mar muito pior do que o que está lá fora. */
+  const N = 2048, dom = 6.5, sec = 1.2;
+  const roll = Array.from({ length: N }, (_, i) =>
+    dom * Math.sin(2 * Math.PI * i * DT / 6.3) + sec * Math.sin(2 * Math.PI * i * DT / 4.1 + 1));
+  const b = periodoDeBalanco(roll, DT);
+  eq(b.periodoS, 6.3, 0.1, 'período de balanço do jogo sintético');
+  const esperado = 2 * Math.sqrt((dom * dom + sec * sec) / 2);      // 2·σ = 9,34°
+  eq(b.amplitudeGraus, esperado, 0.3,
+     `amplitude de jogo: ${b.amplitudeGraus.toFixed(1)}° contra ${esperado.toFixed(1)}° esperados`);
+  ok(b.amplitudeGraus < dom * 2,
+     'a amplitude saiu maior que o dobro da dominante — está usando a fórmula da ALTURA de onda');
+  return { detail: `${b.amplitudeGraus.toFixed(1)}° de amplitude para dominante de ${dom}°` };
+});
+
+t(S24, '24.9', '⚠️ GM PELO PERÍODO DE BALANÇO — o número e as três ressalvas', () => {
+  /* A prova mais importante do projeto, e não por ser difícil: é a única que,
+     errada, pode contribuir para emborcar um rebocador.
+
+        T_R = 2·C·B/√GM   ->   GM = (2·C·B/T_R)²
+        C = 0,373 + 0,023·(B/d) − 0,043·(L/100)
+
+     Para o ASD 2810 (B 10,43 · L 28,67 · d 4,8): C = 0,4106, 2CB = 8,57. */
+  const B = 10.43, L = 28.67, d = 4.8;
+  const cc = coeficienteC(B, L, d);
+  eq(cc.c, 0.4106, 0.001, 'coeficiente C da IMO');
+  ok(cc.plausivel, 'C fora da faixa plausível para este casco');
+  // Os quatro pontos da tabela do manual.
+  [[5, 2.94], [6, 2.04], [7, 1.50], [8, 1.15]].forEach(([T, gmEsperado]) =>
+    eq(gmDoPeriodo(T, B, L, d).gm, gmEsperado, 0.02, `GM para T_R = ${T} s`));
+
+  /* RESSALVA 1 — SENSIBILIDADE QUADRÁTICA. dGM/GM = −2·dT/T: 10% de erro no
+     período vira 20% no GM. Quem recebe um GM sem saber disso confia demais. */
+  const g6 = gmDoPeriodo(6, B, L, d);
+  ok(g6.sensibilidade === 2, 'a sensibilidade quadrática não viaja junto do número');
+  ok(g6.faixa && g6.faixa.min < g6.gm && g6.faixa.max > g6.gm, 'não devolve faixa de incerteza');
+  ok(Math.abs((g6.faixa.max - g6.faixa.min) / g6.gm - 0.4) < 0.1,
+     '±10% no período devia abrir ~±20% no GM — a faixa devolvida não reflete isso');
+
+  /* RESSALVA 2 — SÓ VALE COM BALANÇO LIVRE. Se o encontro está perto do
+     natural, o navio balança FORÇADO e o período medido é o do MAR. */
+  const bal = { periodoS: 6.3, amplitudeGraus: 9 };
+  ok(!qualidadeDoBalanco(bal, 6.3).confiavel, 'aceitou período de balanço forçado pela onda');
+  ok(/forçado/.test(qualidadeDoBalanco(bal, 6.3).motivo), 'não explica por que recusou');
+  ok(qualidadeDoBalanco(bal, 12).confiavel, 'recusou balanço livre sem motivo');
+  // Balanço pequeno demais não tem pico: o "período" dali é sorteio.
+  ok(!qualidadeDoBalanco({ periodoS: 6.3, amplitudeGraus: 0.4 }, 12).confiavel,
+     'extraiu período de um balanço de 0,4 grau');
+  ok(!qualidadeDoBalanco(null, 12).confiavel, 'sem sinal de balanço devolveu confiança');
+
+  /* RESSALVA 3 — O C É EMPÍRICO. Casco fora da faixa devolve aviso em vez de
+     um número com cara de certo. */
+  ok(coeficienteC(10.43, 28.67, 0.5).plausivel === false, 'não marcou C implausível num calado absurdo');
+  ok(coeficienteC(0, 28, 4) === null && coeficienteC(10, 28, null) === null, 'aceitou dimensão inválida');
+  ok(gmDoPeriodo(0, B, L, d) === null, 'período zero produziu GM');
+});
+
+t(S24, '24.10', 'A TENDÊNCIA do GM vale mais que o número — e não depende de C', () => {
+  /* O valor absoluto depende do coeficiente empírico e pode estar deslocado.
+     A tendência não depende de C nenhum: se o balanço alonga, o GM caiu, e
+     isso é verdade qualquer que seja o coeficiente.
+
+     Um GM de 1,8 m não diz muita coisa sozinho. Um GM que foi de 2,0 para 1,3
+     em duas horas diz que alguma coisa mudou a bordo e ninguém percebeu — e é
+     isso que emborca rebocador: superfície livre, água no convés, peso que
+     subiu, o puxão do cabo na cintura. */
+  const base = Date.now() - 3 * 3600000;
+  const h = [0, 1, 2, 3].map(i => ({ t: base + i * 3600000, gm: 2.0 - i * 0.25 }));
+  const tend = tendenciaDoGm(h);
+  ok(tend && tend.caindo, 'queda de 2,0 para 1,25 m em 3 h não acendeu alerta');
+  ok(/conferir tanques/.test(tend.texto), 'não diz o que fazer: ' + tend.texto);
+  eq(tend.de, 2.0, 1e-9, 'origem da tendência'); eq(tend.para, 1.25, 1e-9, 'valor atual');
+  // Variação pequena não vira alarme.
+  const estavel = tendenciaDoGm([0, 1, 2, 3].map(i => ({ t: base + i * 3600000, gm: 2.0 - i * 0.02 })));
+  ok(estavel && !estavel.caindo, 'variação de 3% em 3 h virou alerta');
+  // Série curta não extrapola.
+  ok(tendenciaDoGm([{ t: base, gm: 2 }, { t: base + 60000, gm: 1.2 }]) === null,
+     'um minuto de série virou tendência de horas');
+  ok(tendenciaDoGm([]) === null && tendenciaDoGm(null) === null, 'série vazia quebrou');
+  ok(ONDA_GM_QUEDA_ALERTA > 0.05 && ONDA_GM_QUEDA_ALERTA < 0.5, 'limiar de queda fora da faixa defensável');
+});
+
+t(S24, '24.11', 'Período de encontro e as duas ressonâncias que derrubam navio', () => {
+  /* Te = T/|1 − V·cos μ/c|, c = gT/2π. Em mar de POPA o encontro ESTICA — a
+     10 nós numa onda de 8 s vai a 13,6 s, e é aí que mora o perigo clássico. */
+  const popa = periodoDeEncontro(8, 10, 0), proa = periodoDeEncontro(8, 10, 180);
+  eq(popa.Te, 13.61, 0.05, 'período de encontro em mar de popa');
+  eq(proa.Te, 5.67, 0.05, 'período de encontro em mar de proa');
+  eq(periodoDeEncontro(8, 10, 90).Te, 8, 0.01, 'de través o encontro devia ser o próprio período');
+  eq(popa.c * 1.94384, 24.3, 0.1, 'celeridade da onda de 8 s');
+  // Surfe: quando o navio anda na velocidade da onda, o encontro tende ao infinito.
+  ok(periodoDeEncontro(8, 24.3, 0).surfando, 'não reconheceu o navio andando com a onda');
+
+  /* SÍNCRONO: cada onda chega no tempo exato de empurrar o balanço.
+     PARAMÉTRICO: a estabilidade varia duas vezes por ciclo — cresce rápido e
+     pega de surpresa porque o mar não parece perigoso. */
+  ok(alertaDeRessonancia(6, 6.2).tipo === 'sincrono', 'não viu balanço síncrono');
+  ok(alertaDeRessonancia(6, 3.1).tipo === 'parametrico', 'não viu balanço paramétrico');
+  ok(alertaDeRessonancia(6, 9) === null, 'alarme falso com encontro longe');
+  ok(alertaDeRessonancia(6, 4.5) === null, 'alarme falso entre os dois casos');
+  ok(ONDA_RESSONANCIA_TOL > 0.05 && ONDA_RESSONANCIA_TOL < 0.3,
+     'a tolerância saiu da faixa: larga demais vira o alarme que se ignora');
+});
+
+t(S24, '24.12', 'Ressonância e GM caindo são SEGURANÇA na fila da fala', () => {
+  /* São os dois caminhos pelos quais um rebocador emborca, e nenhum deles
+     avisa duas vezes. Não esperam a vez atrás de um relatório de consumo. */
+  const p = k => REL_PRIORIDADE[k];
+  ok(p('ressonancia') <= 1, `ressonância com prioridade ${p('ressonancia')}`);
+  ok(p('gm-caindo') <= 1, `GM caindo com prioridade ${p('gm-caindo')}`);
+  ok(p('ressonancia') < p('rpm-reduzir') && p('gm-caindo') < p('mar-medido'), 'ordem de urgência trocada');
+  // E o mar medido só fala quando DISCORDA do modelo — senão vira ruído.
+  const REL = semComentarios(fs24.readFileSync(ROOT + '/assets/js/relatorio_voz.js', 'utf8'));
+  const i = REL.indexOf("pus('mar-medido'");
+  ok(i > 0, 'o mar medido nunca chega à fala');
+  const contexto = REL.slice(Math.max(0, i - 400), i);
+  ok(/razao < 0\.7 \|\| razao > 1\.3/.test(contexto),
+     'o mar medido é anunciado mesmo confirmando o modelo — repetir confirmação é ruído');
+});
+
+t(S24, '24.13', 'Os sensores rodam a navegação inteira, não só com o 3D aberto', () => {
+  /* 17 minutos de janela não se juntam com o painel 3D aberto de vez em
+     quando. E param ao encerrar, porque acelerômetro ligado com o navio
+     atracado é bateria queimada à toa. */
+  ok(/iniciarSensoresDeMar\(\)/.test(APP24), 'os sensores de mar nunca são ligados');
+  ok(/pararSensoresDeMar\(\)/.test(APP24), 'os sensores nunca param — gastariam bateria atracado');
+  const i = APP24.indexOf('iniciarSensoresDeMar()');
+  const j = APP24.indexOf('iniciarRelatorios()');
+  ok(i > 0 && j > 0 && Math.abs(i - j) < 900, 'os sensores não arrancam junto com a navegação');
+  // devicemotion, e não deviceorientation: são eventos diferentes.
+  ok(/'devicemotion'/.test(OND24), 'não escuta o acelerômetro');
+  ok(/accelerationIncludingGravity/.test(OND24),
+     'usa `acceleration` em vez de `accelerationIncludingGravity`, que muitos aparelhos não entregam');
+  // E a linha do mar medido aparece no painel.
+  ok(/id="navMarMedido"/.test(fs24.readFileSync(ROOT + '/app.html', 'utf8')), 'o mar medido não tem onde aparecer');
+  ok(/atualizarPainelMar\(\)/.test(APP24), 'a linha do mar nunca é preenchida');
 });
 
 /* ═══ RELATÓRIO ═══ */
