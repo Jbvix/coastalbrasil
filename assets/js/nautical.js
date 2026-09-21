@@ -369,3 +369,105 @@ function safeFileName(str, padrao) {
     .replace(/[^\w\-. ]+/g, '').trim().replace(/\s+/g, '-').slice(0, 60);
   return limpo || padrao;
 }
+
+/*
+════════════════════════════════════════════════════════════════════════════════
+  REFERÊNCIAS DE TERRA — de coordenada para nome                    (v2.10.0)
+════════════════════════════════════════════════════════════════════════════════
+  SPRINT 3. "Estou em 23°05'S 041°53'W" não diz nada a ninguém. "Estou 12
+  milhas a leste de Cabo Frio" diz tudo — e é assim que se conversa no rádio,
+  se anota no diário e se explica a posição a quem está em terra.
+
+  TRÊS REFERÊNCIAS DE NATUREZAS DIFERENTES, e a distinção não é preciosismo:
+
+    CIDADE   onde estou              — para me situar e me comunicar
+    PORTO    onde há estrutura       — para saber o que existe por perto
+    FAROL    o que eu vejo à noite   — já entregue desde a v1, com alcance
+                                       efetivo calculado para o meu passadiço
+
+  ⚠️  PORTO AQUI NÃO SIGNIFICA ABRIGO. Escolher fundeadouro com mau tempo exige
+  carta, tenedouro, proteção de qual quadrante, profundidade e acesso noturno.
+  Nada disso existe nesta base, nem em nenhuma fonte pública que o gerador
+  alcance. Ver a ressalva no topo de assets/js/referencias.js.
+
+  MARCAÇÃO, NÃO SÓ DISTÂNCIA. "Cabo Frio a 12 milhas" deixa o navegante girando
+  a cabeça; "12 milhas a leste de Cabo Frio" o orienta. A marcação devolvida é
+  DO PONTO PARA A REFERÊNCIA — é para onde olhar, não de onde se veio.
+*/
+
+/*
+ALÉM DE 120 MILHAS, NENHUMA REFERÊNCIA DE TERRA ORIENTA — devolve-se nada.
+
+A primeira versão desta função, a 400 milhas da costa, respondia "Campos a 399
+milhas". Tecnicamente correto e operacionalmente pior que o silêncio: um nome
+de terra numa frase IMPLICA relevância, e quem ouve passa a procurar uma
+referência que não existe.
+
+O corte em 120 NM é generoso de propósito. Não é alcance visual — o horizonte
+de um passadiço de 10 m são 7 milhas, e a serra mais alta talvez 50. É alcance
+de ORIENTAÇÃO: "80 milhas a leste de Vitória" ainda situa alguém num rádio ou
+num diário. Acima disso, a posição se diz em latitude e longitude, como sempre
+se disse no mar aberto.
+*/
+const REF_ALCANCE_MAX_NM = 120;
+
+/* Busca linear: são ~120 entradas contra os 6.218 vértices da linha de costa.
+   Caixa envolvente aqui seria complexidade sem ganho mensurável. */
+function referenciaMaisProxima(lat, lng, lista) {
+  if (!Array.isArray(lista) || !lista.length || !isFinite(lat) || !isFinite(lng)) return null;
+  let melhor = null, min = Infinity;
+  for (const r of lista) {
+    const d = calculateDistance(lat, lng, r[0], r[1]);
+    if (d < min) { min = d; melhor = r; }
+  }
+  if (!melhor || min > REF_ALCANCE_MAX_NM) return null;
+  const brg = calculateBearing(lat, lng, melhor[0], melhor[1]);
+  return {
+    nome: melhor[2],
+    uf: melhor[3] || '',
+    lat: melhor[0], lng: melhor[1],
+    distNM: min,
+    brg,
+    // A palavra vem do módulo do tempo, que já traduz rumo em ponto cardeal.
+    // Sem ele carregado, devolve-se o grau — nunca uma string vazia que o
+    // relatório falaria como buraco no meio da frase.
+    rumo: (typeof rumoCardeal === 'function') ? rumoCardeal(brg)
+                                              : Math.round(brg).toString().padStart(3, '0') + '°'
+  };
+}
+
+/* As duas referências de terra de um ponto. O farol continua vindo de
+   findNearestLighthouse(), que já existia e já sabe calcular alcance. */
+function referenciasDoPonto(lat, lng) {
+  const base = (typeof REFERENCIAS_TERRA !== 'undefined') ? REFERENCIAS_TERRA : null;
+  if (!base) return { cidade: null, porto: null };
+  return {
+    cidade: referenciaMaisProxima(lat, lng, base.cidades),
+    porto: referenciaMaisProxima(lat, lng, base.portos)
+  };
+}
+
+/*
+UMA FRASE CURTA COM A REFERÊNCIA MAIS ÚTIL.
+
+Quando cidade e porto são o mesmo lugar — e na costa brasileira quase sempre
+são, porque a cidade cresceu em volta do porto — repetir os dois seria dizer
+"Santos, e também Santos". Compara-se por distância: se estão a menos de 2 NM
+um do outro, é o mesmo lugar e diz-se uma vez só.
+*/
+const REF_MESMO_LUGAR_NM = 2;
+
+function fraseDeReferencia(refs) {
+  const r = refs || {};
+  const c = r.cidade, p = r.porto;
+  if (!c && !p) return '';
+  if (c && p) {
+    const juntos = calculateDistance(c.lat, c.lng, p.lat, p.lng) <= REF_MESMO_LUGAR_NM;
+    if (juntos) return `${c.nome}, ${c.distNM.toFixed(1).replace('.', ',')} milhas a ${c.rumo}`;
+    // Diferentes: a cidade situa, o porto informa o que há por perto.
+    return `${c.nome} a ${c.distNM.toFixed(1).replace('.', ',')} milhas para ${c.rumo}` +
+           `; porto de ${p.nome} a ${p.distNM.toFixed(1).replace('.', ',')}`;
+  }
+  const u = c || p;
+  return `${u.nome}, ${u.distNM.toFixed(1).replace('.', ',')} milhas a ${u.rumo}`;
+}

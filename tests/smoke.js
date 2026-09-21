@@ -81,6 +81,37 @@ const srv = http.createServer((req, res) => {
     return route.continue();
   });
 
+  /* ═══════════════════════════════════════════════════════════════════════
+     O CANAL DE TELEMETRIA TAMBÉM PRECISA SER BLOQUEADO.          (v2.15.0)
+
+     `ctx.route()` intercepta HTTP. O Realtime do Supabase é WEBSOCKET, e
+     WebSocket o `route()` NÃO toca. Durante meses isso passou despercebido
+     porque a bancada de desenvolvimento não tem rota até o supabase.co: o
+     canal falhava sozinho, e as provas do banner davam certo por acidente
+     de ambiente, não por construção.
+
+     A primeira execução na integração contínua desmascarou: o runner tem
+     internet de verdade, o WebSocket ABRIU, e o aplicativo — corretamente —
+     passou a dizer "📡 Canal aberto. Aguardando a embarcação transmitir."
+     em vez de "servidor fora do ar". Duas provas caíram acusando o
+     aplicativo de um defeito que era premissa do teste.
+
+     Duas consequências, e a segunda é a que mais importa:
+
+       · a prova só valia na máquina de quem a escreveu — o pior tipo de
+         prova, porque parece verde e não mede nada em outro lugar;
+       · a fumaça abria uma ligação REAL com o Supabase de produção a
+         partir de um runner de pull request. Nada vazou (a chave é a
+         publishable e o token é falso), mas era dependência externa não
+         declarada dentro de um teste.
+
+     Agora o bloqueio é EXPLÍCITO e vale em qualquer máquina. Isto não
+     afrouxa nada: ao contrário, é o que faz a prova medir o mesmo cenário
+     — projeto Supabase suspenso — em toda parte.
+     ═══════════════════════════════════════════════════════════════════════ */
+  let wsBloqueados = 0;
+  await ctx.routeWebSocket(/.*/, ws => { wsBloqueados++; ws.close(); });
+
   const erros = [], falhas = [];
   const RUIDO = /Failed to load resource|ERR_FAILED|ERR_CONNECTION|net::/;
   page.on('console', m => { if (m.type() === 'error' && !RUIDO.test(m.text())) erros.push(m.text().slice(0, 200)); });
@@ -263,12 +294,172 @@ const srv = http.createServer((req, res) => {
     modo:   document.body.classList.contains('mirror-mode')
   }));
   ok('Modo espelho reconhece o token da URL', esp.modo && esp.token.includes('ab457fdc1428'), esp.token);
+  /* A PROVA CONFERE A PRÓPRIA PREMISSA.                              (v2.15.0)
+     As duas provas seguintes só fazem sentido com o backend inalcançável. Se
+     o canal abrir, elas acusam o aplicativo de um defeito que é do teste —
+     foi exatamente o que aconteceu na primeira execução na integração
+     contínua. Então a premissa deixa de ser suposição e passa a ser medida:
+     se nenhum WebSocket foi bloqueado, o cenário não é o que se pretendia e
+     é ISSO que precisa aparecer em vermelho, não o banner. */
+  ok('O canal de telemetria foi mesmo bloqueado (premissa das 2 provas seguintes)',
+     wsBloqueados > 0,
+     wsBloqueados > 0 ? `${wsBloqueados} WebSocket(s) bloqueado(s)`
+                      : 'NENHUM WebSocket interceptado — o cenário testado não é o pretendido');
   ok('Banner nomeia a causa em vez de "erro de conexão"',
      /servidor fora do ar|sem internet|reconectando/.test(esp.banner) && !/^erro de conexão$/.test(esp.banner),
      esp.banner);
   ok('Banner mostra que está tentando de novo', /nova tentativa em \d+s/.test(esp.banner), esp.banner);
   ok('Linha de status orienta o observador', esp.dica.length > 30 && esp.dica !== 'Aguardando GPS…',
      esp.dica.slice(0, 74));
+  /* O RELATÓRIO DA IARA CHEGANDO EM TERRA.                           (v2.8.0)
+     O banco de provas garante que o texto SAI no pacote e que é aplicado com
+     textContent. O que só o navegador diz é se o painel realmente aparece no
+     espelho — e se ele NÃO aparece a bordo, onde tomaria o espaço do XTE. */
+  const relEsp = await espelho.evaluate(() => {
+    const cx = document.getElementById('mirrorRelatorio');
+    if (!cx) return { existe: false };
+    // Simula a chegada de um relatório pelo canal, com texto hostil de propósito.
+    cx.querySelector('.mirror-rel-hora').textContent = '14:00';
+    cx.querySelector('.mirror-rel-txt').textContent = '<img src=x onerror=alert(1)> Rumo zero quatro oito.';
+    cx.classList.add('active');
+    const visivelEspelho = cx.getBoundingClientRect().height > 0;
+    const temTag = !!cx.querySelector('img');
+    document.body.classList.remove('mirror-mode');
+    const visivelBordo = cx.getBoundingClientRect().height > 0;
+    document.body.classList.add('mirror-mode');
+    return { existe: true, visivelEspelho, visivelBordo, temTag,
+             texto: cx.querySelector('.mirror-rel-txt').textContent.slice(0, 24) };
+  });
+  ok('Relatório da Iara aparece para quem está em terra',
+     relEsp.existe && relEsp.visivelEspelho, relEsp.existe ? relEsp.texto : 'painel não existe');
+  ok('E NÃO aparece a bordo (espaço é do XTE)', relEsp.existe && !relEsp.visivelBordo,
+     relEsp.visivelBordo ? 'apareceria a bordo também' : 'só no espelho');
+  ok('Texto do canal não vira marcação', relEsp.existe && !relEsp.temTag,
+     relEsp.temTag ? 'a <img> foi interpretada — injeção' : 'escapado');
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     O ESPELHO SOBREVIVE À REVALIDAÇÃO DOS 30 s.                  (v2.15.0)
+
+     Este passo custa ~32 segundos de relógio, e o custo é deliberado.
+
+     O defeito que ele guarda não existe no primeiro segundo: ele NASCE aos
+     30, quando `startViewerRecheck` dispara pela primeira vez. Com o backend
+     inalcançável, a revalidação lia só `data` — e `supa.rpc()` resolve com
+     `{ data: null, error }` em vez de lançar — e concluía "link inválido"
+     para quem estava com o link CERTO. O bloqueio é definitivo: mata os três
+     temporizadores e derruba o canal, então a reconexão automática morria.
+
+     Por que passou despercebido até a v2.14.0: esta bancada media o painel
+     ANTES dos 30 s. Quem o pegou foi o runner da integração contínua, mais
+     lento, que cruzou a marca na PRIMEIRA execução do workflow novo.
+
+     É exatamente por isso que o passo espera o relógio de verdade em vez de
+     encurtar o intervalo para testar depressa: encurtar mediria um intervalo
+     que não existe em produção. O defeito era de CORRIDA, e prova de corrida
+     que não deixa a corrida acontecer não prova nada.
+     ═══════════════════════════════════════════════════════════════════════ */
+  await espelho.waitForTimeout(32000);
+  const pos30 = await espelho.evaluate(() => ({
+    hudAtivo:  document.getElementById('navHud').classList.contains('active'),
+    bloqueado: document.getElementById('mirrorBlocked').classList.contains('active'),
+    titulo:    (document.getElementById('mbTitle') || {}).textContent || '',
+    banner:    (document.getElementById('mirrorBannerStatus') || {}).textContent || ''
+  }));
+  ok('Revalidação dos 30 s não acusa o link de quem está em terra',
+     !pos30.bloqueado && pos30.hudAtivo,
+     pos30.bloqueado ? `acusou "${pos30.titulo}" enquanto o banner dizia "${pos30.banner}"`
+                     : 'painel de pé após a revalidação');
+  /* E a contradição na mesma tela, que era o sintoma mais revelador: o banner
+     dizendo "servidor fora do ar" e a página dizendo que o link estava errado. */
+  ok('O espelho não se contradiz na mesma tela',
+     !(pos30.bloqueado && /servidor fora do ar|sem internet|reconectando/.test(pos30.banner)),
+     pos30.bloqueado ? 'banner culpa o servidor, tela culpa o link' : 'coerente');
+
+  /* A CONVERSA NO NAVEGADOR.                                       (v2.13.0)
+     O banco de provas mede a gramática contra os dois corpora. O que só o
+     navegador diz é se o caminho do microfone até a resposta está ligado —
+     iaraResponder -> conversar -> fila da Iara. */
+  const conv = await page.evaluate(() => {
+    const saidas = [];
+    // Intercepta a fala para ver o que ela DIRIA, sem alto-falante.
+    const orig = window.iaraDizer;
+    window.iaraDizer = (t, p) => { saidas.push({ t, p }); };
+    ['quanto falta', 'como tá o tempo', 'me fala uma piada'].forEach(q => iaraResponder(q));
+    window.iaraDizer = orig;
+    return saidas;
+  });
+  ok('O microfone chega à gramática e volta com resposta', conv.length === 3,
+     `${conv.length} resposta(s) de 3 perguntas`);
+  ok('Resposta entra na fila com prioridade de resposta',
+     conv.every(x => x.p === 'resposta'), conv.map(x => x.p).join(','));
+  ok('Pergunta fora do escopo é recusada, não improvisada',
+     /não sei responder/i.test(conv[2] ? conv[2].t : ''),
+     (conv[2] ? conv[2].t : '').slice(0, 70));
+
+  /* SENSORES DE MAR NO NAVEGADOR.                                  (v2.12.0)
+     O banco de provas mede o espectro contra mar sintetizado. O que só o
+     navegador diz é se o `devicemotion` é escutado de verdade e se a linha do
+     mar medido existe para receber o resultado. */
+  const mar = await page.evaluate(() => {
+    const el = document.getElementById('navMarMedido');
+    if (!el) return { existe: false };
+    const ligou = iniciarSensoresDeMar();
+    // Injeta eventos de acelerômetro como o aparelho faria.
+    let entrou = 0;
+    for (let i = 0; i < 200; i++) {
+      if (alimentarSensorDeMar(0.3 * Math.sin(i / 8), 2, Date.now() + i * 500)) entrou++;
+    }
+    atualizarPainelMar();
+    const txt = el.textContent;
+    pararSensoresDeMar();
+    return { existe: true, ligou, entrou, txt };
+  });
+  ok('Sensores de mar ligam e aceitam amostras', mar.existe && mar.entrou > 150,
+     mar.existe ? `${mar.entrou} amostras decimadas` : 'linha do mar não existe');
+  ok('Com janela curta ele DIZ que está medindo, não inventa número',
+     mar.existe && /medindo o mar/.test(mar.txt), mar.txt || '(vazio)');
+
+  /* MÁQUINAS NO PAINEL.                                            (v2.11.0)
+     O banco de provas mede a conta; o navegador diz se os campos existem, se
+     aceitam número e se o conselho aparece. */
+  const maq = await page.evaluate(() => {
+    const hud = document.getElementById('navHud'); hud.classList.add('active');
+    const r = document.getElementById('navRpm'), cg = document.getElementById('navCarga');
+    if (!r || !cg) return { existe: false };
+    const alt = Math.round(r.getBoundingClientRect().height);
+    r.value = '1250'; cg.value = '52';
+    r.dispatchEvent(new Event('change', { bubbles: true }));
+    const eco = document.getElementById('navEco');
+    return { existe: true, alt, tipo: r.type, modo: r.getAttribute('inputmode'),
+             lido: typeof maqRpm !== 'undefined' ? maqRpm : null,
+             cargaLida: typeof maqCarga !== 'undefined' ? maqCarga : null,
+             temEco: !!eco };
+  });
+  ok('Campos de máquinas existem e são numéricos',
+     maq.existe && maq.tipo === 'number' && maq.modo === 'numeric',
+     maq.existe ? `${maq.tipo}/${maq.modo}, ${maq.alt} px` : 'não existem');
+  ok('O que o chefe digita é lido', maq.lido === 1250 && maq.cargaLida === 52,
+     `rpm=${maq.lido} carga=${maq.cargaLida}`);
+  ok('Há linha de conselho e de tempo no painel', maq.temEco, 'presentes');
+
+  /* A REFERÊNCIA DE TERRA NO PAINEL DE WAYPOINTS.                  (v2.10.0)
+     O banco de provas garante a conta e o escape; o que só o navegador diz é
+     se a linha aparece de fato no painel que o comandante abre no 🔷 ℹ️. */
+  const refPainel = await page.evaluate(() => {
+    openWaypointsInfo();
+    const corpo = document.getElementById('waypointsInfoBody');
+    const txt = corpo.textContent;
+    const html = corpo.innerHTML;
+    closeWaypointsInfo();
+    return { temEmoji: /🏙️/.test(txt), txt: txt.slice(0, 160),
+             // Nenhuma marcação veio do dado: se um nome trouxesse "<b>",
+             // ele tem de aparecer escapado.
+             temTagInjetada: /<b>|<img/i.test(html) };
+  });
+  ok('Waypoints mostram a referência de terra', refPainel.temEmoji,
+     refPainel.temEmoji ? refPainel.txt.replace(/\s+/g, ' ').slice(0, 90) : 'sem 🏙️ no painel');
+  ok('Referência não injeta marcação', !refPainel.temTagInjetada, 'escapado');
+
   await espelho.screenshot({ path: path.join(__dirname, 'smoke-espelho.png') });
   await espelho.close();
 
@@ -284,7 +475,7 @@ const srv = http.createServer((req, res) => {
 
      Aqui se abre o painel em larguras reais de telefone e tablete e se confere
      que TODO botão está dentro dos limites do painel. */
-  for (const [nomeTela, larg, alt] of [['telefone 375', 375, 667], ['tablete 768', 768, 1024]]) {
+  for (const [nomeTela, larg, alt] of [['telefone 320', 320, 568], ['telefone 375', 375, 667], ['tablete 768', 768, 1024]]) {
     const tela = await browser.newPage({ viewport: { width: larg, height: alt }, isMobile: true, hasTouch: true });
     await tela.goto('http://localhost:8099/app.html', { waitUntil: 'domcontentloaded' });
     await tela.waitForTimeout(600);
@@ -307,6 +498,109 @@ const srv = http.createServer((req, res) => {
         .map(e => e.id));
     ok(`Alvo de toque mantém 44 px (${nomeTela})`, pequenos.length === 0,
        pequenos.length ? 'menores: ' + pequenos.join(', ') : 'todos ≥ 44 px');
+
+    /* O MESMO EXAME NO CABEÇALHO DO PAINEL 3D.                        (v2.6.0)
+       Ele acaba de receber o 💡 dos faróis e já carregava título, o par
+       Atitude/Earth, o seletor de casco, o 🎚️ e o ✕. A conta a 375 px é a
+       mesma que cortou o 🚢 na v2.3.3 — e o botão que sumiria aqui seria o ✕,
+       deixando o comandante preso na tela cheia sem saída visível. Abre-se o
+       painel no modo Earth (onde o 💡 existe) e confere-se cada filho. */
+    const fora3d = await tela.evaluate(() => {
+      const ov = document.getElementById('ship3dModal');
+      ov.classList.add('active', 'earth');
+      // Com o seletor VAZIO mede-se outra tela: ele nasce sem opções e só é
+      // preenchido ao abrir o painel. Medir vazio foi por pouco o erro desta
+      // própria verificação — o seletor aparecia com 34 px e nada acusava.
+      popularSeletorModelo();
+      document.getElementById('ship3dVessel').textContent = 'REBOCADOR CHARLIE BRAVO';
+      const cab = ov.querySelector('.ship3d-header');
+      const cx = cab.getBoundingClientRect();
+      // Elemento ESCONDIDO de propósito (display:none) não é botão cortado: o
+      // 🎚️ some no globo, o 💡 some na Atitude, ambos por regra explícita.
+      // Cortado é o que continua desenhado e cai FORA da caixa — foi assim que
+      // o 🚢 sumiu na v2.3.3, com tamanho normal e posição além da borda.
+      return [...cab.querySelectorAll('button, select')]
+        .filter(e => e.offsetParent !== null)
+        .filter(e => { const b = e.getBoundingClientRect();
+          return b.right > cx.right + 0.5 || b.left < cx.left - 0.5 ||
+                 b.bottom > cx.bottom + 0.5 || b.top < cx.top - 0.5; })
+        .map(e => e.id || e.textContent.trim());
+    });
+    ok(`Cabeçalho 3D cabe na tela (${nomeTela})`, fora3d.length === 0,
+       fora3d.length ? 'cortados: ' + fora3d.join(', ') : 'todos dentro');
+    const peq3d = await tela.evaluate(() =>
+      [...document.querySelectorAll('#ship3dModal .ship3d-header .nav-icon-btn')]
+        .filter(e => e.offsetParent !== null)
+        .filter(e => { const b = e.getBoundingClientRect(); return b.width < 44 || b.height < 44; })
+        .map(e => e.id));
+    ok(`Botões do painel 3D com 44 px (${nomeTela})`, peq3d.length === 0,
+       peq3d.length ? 'menores: ' + peq3d.join(', ') : 'todos ≥ 44 px');
+    /* O SELETOR DE CASCO NÃO PODE SER ESPREMIDO ATÉ SUMIR O NOME.
+       Aqui nada é CORTADO — este cabeçalho ocupa a largura toda da tela e tem
+       itens que encolhem (título, seletor), então o excesso vira aperto, não
+       recorte. Mas apertado também engana: "ASD 2810 “SAAM Aguia”" tem 21
+       caracteres a 0,72 rem e some dentro de um seletor estreito. Medido: com
+       a fileira rígida o seletor cai a 94 px a 320 px de tela; com quebra de
+       linha ele mantém os 108 px de projeto. O piso é esse. */
+    const selW = await tela.evaluate(() => {
+      const ov = document.getElementById('ship3dModal');
+      ov.classList.add('active', 'earth');
+      const w = document.getElementById('ship3dModelSel').getBoundingClientRect().width;
+      ov.classList.remove('active', 'earth');
+      return Math.round(w);
+    });
+    ok(`Seletor de casco legível (${nomeTela})`, selW >= 100, selW + ' px');
+
+    /* A IARA NO NAVEGADOR DE VERDADE.                                (v2.7.0)
+       O banco de provas mede a DECISÃO (que estado, falar ou calar). O que só
+       um navegador diz é se o botão nasceu, se o ícone realmente troca, e se
+       o toque não recolhe o painel — que era o defeito mais provável, porque
+       o cabeçalho inteiro do HUD recolhe ao clique. */
+    const iara = await tela.evaluate(() => {
+      const hud = document.getElementById('navHud');
+      hud.classList.add('active');
+      const b = document.getElementById('iaraBtn');
+      if (!b) return { existe: false };
+      const r0 = b.getBoundingClientRect();
+      const antes = { icone: b.textContent.trim(), classe: b.className, aria: b.getAttribute('aria-label') };
+      // Percorre os quatro estados pela função real do módulo.
+      const vistos = ['off', 'ouvindo', 'processando', 'respondendo'].map(e => {
+        iaraEstado = e; pintarIara();
+        return { e, icone: b.textContent.trim(), classe: b.className };
+      });
+      // E o toque NÃO pode recolher o painel.
+      const recolhidoAntes = hud.classList.contains('collapsed');
+      b.click();
+      const recolhidoDepois = hud.classList.contains('collapsed');
+      iaraEstado = 'off'; pintarIara();
+      return { existe: true, largura: Math.round(r0.width), altura: Math.round(r0.height),
+               antes, vistos, recolheu: !recolhidoAntes && recolhidoDepois };
+    });
+    ok(`Botão da Iara existe e tem 44 px (${nomeTela})`,
+       iara.existe && iara.largura >= 44 && iara.altura >= 44,
+       iara.existe ? `${iara.largura}x${iara.altura}` : 'não existe');
+    ok(`Ícone da Iara troca nos 4 estados (${nomeTela})`,
+       iara.existe && new Set(iara.vistos.map(v => v.icone)).size === 4 &&
+       new Set(iara.vistos.map(v => v.classe)).size === 4,
+       iara.existe ? iara.vistos.map(v => v.e + '=' + v.icone).join(' ') : '—');
+    ok(`Perguntar à Iara não recolhe o painel (${nomeTela})`, iara.existe && !iara.recolheu,
+       iara.recolheu ? 'o toque recolheu o HUD' : 'painel continua aberto');
+
+    // E o 💡 só existe onde há globo: em Atitude tem de sumir de fato.
+    const lampada = await tela.evaluate(() => {
+      const ov = document.getElementById('ship3dModal');
+      ov.classList.add('active');            // o painel precisa estar aberto
+      ov.classList.remove('earth');
+      const b = document.getElementById('s3dFaroisBtn').getBoundingClientRect();
+      const visivel = b.width > 0 && b.height > 0;
+      ov.classList.add('earth');
+      const b2 = document.getElementById('s3dFaroisBtn').getBoundingClientRect();
+      ov.classList.remove('active', 'earth');
+      return { atitude: visivel, earth: b2.width > 0 && b2.height > 0 };
+    });
+    ok(`💡 aparece no globo e some em Atitude (${nomeTela})`,
+       lampada.earth && !lampada.atitude,
+       `earth=${lampada.earth} atitude=${lampada.atitude}`);
     await tela.close();
   }
 

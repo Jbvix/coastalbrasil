@@ -5,7 +5,7 @@
   COASTAL NAVIGATOR BRASIL — Sistema de Planejamento de Viagem Costeira
 ════════════════════════════════════════════════════════════════════════════════
 
-  Versão: 2.5.1
+  Versão: 2.15.0
   Autor: Jossian Brito (Charlie Bravo)
   LinkedIn: https://www.linkedin.com/in/jossianbrito/
   X: https://x.com/jossiancosta  ·  Medium: https://medium.com/@jossiancosta
@@ -44,7 +44,7 @@
   <meta name="keywords"
     content="navegação costeira, planejamento de viagem, faróis, Brasil, OpenSeaMap, GPX, rebocadores">
 
-  <title>Coastal Navigator Brasil v2.5.1 - Planejamento de Viagem</title>
+  <title>Coastal Navigator Brasil v2.15.0 - Planejamento de Viagem</title>
 
   <!-- Leaflet CSS -->
   <!-- Subresource Integrity: o navegador recusa o arquivo se o conteúdo servido
@@ -75,7 +75,7 @@
     <header class="app-header">
       <div class="header-content">
         <div class="logo">
-          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.5.1</span></h1>
+          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.15.0</span></h1>
         </div>
 
         <div class="controls">
@@ -186,6 +186,14 @@
         <span class="nav-hud-title"><span class="nav-pulse"></span> NAVEGANDO</span>
         <button class="nav-icon-btn" title="Recolher" id="navCollapseBtn">▾</button>
         <div class="nav-hud-actions">
+          <!-- IARA. Primeira da fileira porque é a mais tocada e o polegar chega
+               primeiro na borda esquerda. SEM onclick inline: o aviso 9.7 conta
+               58 atributos desses, que são o que força a CSP a aceitar
+               'unsafe-inline'. Código novo não aumenta a dívida — a ligação é
+               por addEventListener em iaraInit(). O ícone e o title são
+               reescritos a cada mudança de estado por pintarIara(). -->
+          <button class="nav-icon-btn iara-off" title="Perguntar à Iara" id="iaraBtn"
+                  aria-label="Microfone FECHADO. Tocar e falar para perguntar à Iara.">🎙️</button>
           <button class="nav-icon-btn" title="Compartilhar (espelhar p/ quem está em terra)" onclick="event.stopPropagation(); toggleShare()" id="navShareBtn">📤</button>
           <button class="nav-icon-btn" title="Som dos alertas" onclick="event.stopPropagation(); toggleNavMute()" id="navMuteBtn">🔊</button>
           <button class="nav-icon-btn" title="Centralizar no barco" onclick="event.stopPropagation(); toggleNavFollow()" id="navFollowBtn">🎯</button>
@@ -194,6 +202,14 @@
           <button class="nav-icon-btn" title="Informações dos waypoints" onclick="event.stopPropagation(); openWaypointsInfo()" id="navInfoBtn">ℹ️</button>
           <button class="nav-icon-btn" title="Atitude 3D do rebocador (sensores)" onclick="event.stopPropagation(); openShip3D()" id="navShip3dBtn">🚢</button>
         </div>
+      </div>
+      <!-- Último relatório falado pela Iara. Só aparece no MODO ESPELHO: a
+           bordo o comandante já ouviu, e repetir na tela é ocupar espaço do
+           que ele precisa olhar. Em terra é o contrário — é a única forma de
+           saber o que foi dito. -->
+      <div id="mirrorRelatorio" class="mirror-rel">
+        <div class="mirror-rel-cab">🎙️ Iara relatou às <span class="mirror-rel-hora">--:--</span></div>
+        <div class="mirror-rel-txt"></div>
       </div>
       <div class="nav-hud-body" id="navHudBody">
         <div class="nav-clock" id="navClock">--</div>
@@ -210,6 +226,28 @@
         <div class="nav-line"><span>⛽ Consumido:</span> <strong id="navFuelUsed">0 L</strong></div>
         <div class="nav-line"><span>🛢️ Saldo:</span> <strong id="navFuelLeft">--</strong></div>
         <div class="nav-line"><span>↪️ Perda p/ desvio:</span> <strong id="navFuelDev">0 L</strong></div>
+        <div class="nav-divider"></div>
+        <!-- MÁQUINAS. Dois campos, e só dois: rotação e carga, que é o que o
+             chefe lê de relance no painel da praça. Entrada numérica com
+             inputmode="numeric" para o teclado do tablete abrir no numérico —
+             num passadiço, cada toque a mais é um toque errado. -->
+        <div class="nav-line nav-maq">
+          <span>⚙️ Rotação</span>
+          <input id="navRpm" class="nav-maq-in" type="number" inputmode="numeric"
+                 min="0" max="3000" step="10" placeholder="rpm" aria-label="Rotação do motor em RPM">
+          <span>Carga</span>
+          <input id="navCarga" class="nav-maq-in" type="number" inputmode="numeric"
+                 min="0" max="110" step="1" placeholder="%" aria-label="Carga do motor em porcento da MCR">
+        </div>
+        <div class="nav-line nav-eco" id="navEco"></div>
+        <!-- TEMPO NO PAINEL.                                        (v2.13.0)
+             O Sprint 2 pôs vento, mar e corrente só na FALA. Quando o
+             orçamento de fala começou a cortar exceções dizendo "tem mais no
+             painel", a frase virou mentira: não havia painel nenhum para
+             essas coisas. Ou se apagava a frase, ou se tornava verdade. É
+             mais útil torná-la verdade. -->
+        <div class="nav-line nav-tempo" id="navTempo"></div>
+        <div class="nav-line nav-mar" id="navMarMedido"></div>
         <div class="nav-divider"></div>
         <div class="nav-line nav-lh" id="navLighthouse">💡 Nenhum farol no alcance</div>
         <div class="nav-line nav-status" id="navGpsStatus">Aguardando GPS…</div>
@@ -239,6 +277,10 @@
         <select id="ship3dModelSel" class="ship3d-select" title="Trocar o casco exibido"
                 onchange="trocarShipModel(this.value)"></select>
         <div class="ship3d-actions">
+          <!-- Só faz sentido no globo: em Atitude o CSS o esconde (regra
+               `.ship3d-overlay:not(.earth) #s3dFaroisBtn`), porque um botão que
+               não faz nada na tela em que está é pior que botão nenhum. -->
+          <button class="nav-icon-btn" title="Faróis no globo — tocar para ocultar" onclick="toggleCesiumLighthouses()" id="s3dFaroisBtn">💡</button>
           <button class="nav-icon-btn" title="Nivelar (zerar referência atual)" onclick="calibrateShip3D()" id="ship3dCalBtn">🎚️</button>
           <button class="nav-icon-btn" title="Fechar" onclick="closeShip3D()">✕</button>
         </div>
@@ -482,10 +524,17 @@
        Ordem obrigatória: nautical.js usa `lighthouses`. -->
   <script src="assets/js/lighthouses.js"></script>
   <script src="assets/js/coastline.js"></script>
+  <script src="assets/js/referencias.js"></script>
   <script src="assets/js/nautical.js"></script>
   <script src="assets/js/report.js"></script>
   <script src="assets/js/mirror.js"></script>
   <script src="assets/js/ship3d.js"></script>
+  <script src="assets/js/iara.js"></script>
+  <script src="assets/js/tempo.js"></script>
+  <script src="assets/js/consumo.js"></script>
+  <script src="assets/js/ondas.js"></script>
+  <script src="assets/js/conversa.js"></script>
+  <script src="assets/js/relatorio_voz.js"></script>
 
   <!-- three.js (carregado sob demanda ao abrir o painel 3D de atitude do rebocador) -->
   <script type="importmap">
@@ -1897,6 +1946,20 @@
       }
 
       navActive = true;
+      // Relatórios falados de hora em hora (alinhados na hora cheia, para
+      // casarem com o registro do diário de bordo) — ver relatorio_voz.js.
+      iniciarRelatorios();
+      // Tempo pelo proxy do Netlify (a chave paga nunca chega ao navegador —
+      // ver docs/arquitetura.md). Busca de 15 em 15 min, que é o passo do
+      // próprio modelo; entre uma e outra o relatório usa o último valor
+      // conhecido, rotulado com a idade.
+      iniciarTempo(() => navLastFix);
+      // Máquinas: restaura rotação e carga anotadas e liga os campos do HUD.
+      iniciarMaquinas();
+      // Sensores de mar: acelerômetro a 2 Hz para o espectro de onda e o
+      // período de balanço. Roda a navegação inteira — 17 minutos de janela
+      // não se juntam com o painel 3D aberto de vez em quando.
+      iniciarSensoresDeMar();
       // Pré-carrega o consumo já feito se a viagem partiu antes de agora (em andamento)
       navAccumFuel = elapsedFuel(tripData, Date.now());
       if (tripData) tripData.fuelAlreadyUsed = navAccumFuel;
@@ -1933,6 +1996,9 @@
     /* Encerra a navegação e libera recursos. */
     function stopNavigation() {
       navActive = false;
+      pararRelatorios();
+      pararTempo();
+      pararSensoresDeMar();
       if (navWatchId !== null) {
         navigator.geolocation.clearWatch(navWatchId);
         navWatchId = null;
@@ -2047,6 +2113,10 @@
           navLegAncorada = true;
         }
         advanceActiveLeg(lat, lng);
+        // A Iara OBSERVA a troca de perna em vez de decidi-la. Duas fontes de
+        // verdade sobre "chegamos" sempre acabam divergindo, e aí o relatório
+        // falado contradiz o painel na frente do comandante.
+        verificarTrocaDePerna();
         const legStart = waypoints[navActiveLeg];
         const legEnd = waypoints[navActiveLeg + 1];
         const ct = crossTrackError(lat, lng, legStart, legEnd);
@@ -2107,6 +2177,12 @@
         document.getElementById('navNextWp').textContent = 'Próximo WP: (sem rota planejada)';
         document.getElementById('navEta').textContent = 'ETA destino: --';
       }
+
+      // Conselho de rotação: recalculado a cada fixo porque a distância que
+      // falta e o tempo disponível mudam a cada minuto.
+      atualizarPainelEco();
+      atualizarPainelTempo();
+      atualizarPainelMar();
 
       // --- Alertas de faróis ---
       checkLighthouseAlerts(lat, lng, cog);
@@ -2669,12 +2745,17 @@
       if (watchMode) {
         rows = (mirrorWaypoints || []).map(w => ({
           name: w.n, eta: w.eta ? new Date(w.eta) : null, dist: w.d, total: w.td,
-          fuel: w.fr, lh: w.lh, lv: w.lv
+          fuel: w.fr, lh: w.lh, lv: w.lv, ref: w.rf
         }));
       } else {
         rows = waypoints.map(w => ({
           name: w.name, eta: w.eta, dist: w.distance, total: w.totalDistance,
-          fuel: w.fuelRemaining, lh: w.nearestLighthouse ? w.nearestLighthouse.name : null, lv: w.lighthouseVisible
+          fuel: w.fuelRemaining, lh: w.nearestLighthouse ? w.nearestLighthouse.name : null, lv: w.lighthouseVisible,
+          // SPRINT 3 — cada waypoint amarrado a um nome de terra. É o pedido de
+          // bordo: "23°05'S 041°53'W" não diz nada; "12 milhas a leste de Cabo
+          // Frio" diz tudo. Calculado aqui e não no espelho porque o observador
+          // em terra recebe a frase pronta, sem precisar da base de 98 cidades.
+          ref: fraseDeReferencia(referenciasDoPonto(w.lat, w.lng))
         }));
       }
       document.getElementById('waypointsInfoBody').innerHTML = waypointsInfoHtml(rows);
@@ -2693,10 +2774,13 @@
         const acum = (w.total != null) ? `acum ${(+w.total).toFixed(1)} NM` : '';
         const fuel = (w.fuel != null) ? ` · saldo ${(+w.fuel).toFixed(0)} L` : '';
         const lh = w.lh ? `<br>💡 ${escapeHtml(w.lh)} ${w.lv ? '<span style="color:#69F0AE">(visível)</span>' : '<span style="color:#FFB74D">(fora de alcance)</span>'}` : '';
+        // Referência de terra. escapeHtml porque no modo espelho esta frase
+        // chega pelo canal — mesma regra do nome do farol logo acima.
+        const ref = w.ref ? `<br>🏙️ ${escapeHtml(w.ref)}` : '';
         return `
         <div class="wp-info-row">
           <div class="wp-info-head"><strong>${escapeHtml(w.name || '-')}</strong>${eta}</div>
-          <div class="wp-info-meta">${trecho}${acum}${fuel}${lh}</div>
+          <div class="wp-info-meta">${trecho}${acum}${fuel}${lh}${ref}</div>
         </div>`;
       }).join('');
     }
@@ -2722,7 +2806,10 @@
         wps: waypoints.map(w => ({
           n: w.name, lat: w.lat, lng: w.lng, d: w.distance, td: w.totalDistance,
           eta: w.eta ? w.eta.toISOString() : null, fr: w.fuelRemaining,
-          lh: w.nearestLighthouse ? w.nearestLighthouse.name : null, lv: w.lighthouseVisible
+          lh: w.nearestLighthouse ? w.nearestLighthouse.name : null, lv: w.lighthouseVisible,
+          // A frase de referência segue pronta: o observador em terra não
+          // precisa carregar a base de 98 cidades para ler um nome.
+          rf: fraseDeReferencia(referenciasDoPonto(w.lat, w.lng))
         })),
         // Sempre envia o rumo (COG) para o observador orientar a embarcação no curso
         // e exibir a Proa; jogo/caturro vão junto quando os sensores estão ativos.
@@ -2733,7 +2820,11 @@
         // essa distinção não é espelho — é fonte de informação falsa para quem
         // confia nele. Segue sempre, inclusive false, para o observador poder
         // apagar a faixa quando a simulação termina.
-        sim: !!navSimActive
+        sim: !!navSimActive,
+        // O último relatório falado segue junto: quem está em terra lê
+        // exatamente o que a ponte ouviu, pelo canal que já existe, sem
+        // nenhuma chamada de rede a mais.
+        rel: relatorioParaEspelho()
       };
       mirrorShares.forEach(s => {
         if (!s.channel) return;
@@ -2960,20 +3051,34 @@
         const supa = getSupa(); if (!supa) return;
         try {
           /*
-          FALHA DE REDE NÃO É VEREDITO SOBRE O LINK.                 (v2.5.1)
+          FALHA DE REDE NÃO É VEREDITO SOBRE O LINK.                (v2.15.0)
 
-          `supa.rpc()` NÃO lança exceção quando a chamada falha: ela RESOLVE
-          com `{ data: null, error }` — a armadilha já documentada na §6.1 do
-          `docs/tecnica.md` e já guardada na revogação. Esta revalidação, que
-          roda a cada 30 s enquanto alguém acompanha em terra, era a cópia que
-          tinha perdido a guarda.
+          Esta revalidação roda a cada 30 s enquanto alguém acompanha em terra.
+          Antes ela lia só `data` e descartava `error` — e `supa.rpc()` NÃO
+          lança exceção quando a chamada falha: ela RESOLVE com
+          `{ data: null, error }`. É a mesma armadilha já documentada em
+          `docs/tecnica.md` §6.1 e já guardada na revogação (prova 13.11); o
+          recheck era a cópia que tinha perdido a guarda.
 
-          Sem `if (error) return`, 30 segundos de instabilidade faziam o
-          aplicativo declarar "❌ Link inválido" a quem estava com o link
-          CERTO — e o bloqueio é definitivo: `showMirrorBlocked()` limpa os
-          três temporizadores e derruba o canal, matando a reconexão
-          automática. O banner ao lado seguia dizendo "servidor fora do ar",
-          e o aplicativo se contradizia na mesma tela.
+          Sem esta linha, 30 segundos de instabilidade — ou o projeto Supabase
+          dormindo, como em 07/09 — faziam o aplicativo declarar
+          "❌ Link inválido" a quem estava com o link CERTO. Pior: o bloqueio é
+          definitivo (showMirrorBlocked limpa os três temporizadores e derruba
+          o canal), então a reconexão automática morria e só voltava
+          recarregando a página. O banner, ao lado, continuava dizendo
+          "servidor fora do ar" — o aplicativo se contradizia na mesma tela.
+
+          Encontrado pela integração contínua da v2.14.0 na PRIMEIRA execução:
+          o runner é mais lento que a bancada e cruzou os 30 s, que aqui
+          passavam despercebidos.
+
+          Comportamento por retorno:
+            · { error: <qualquer> }        → não decide nada, espera o próximo
+            · { data: null }   sem error   → link inválido (servidor respondeu vazio)
+            · { data: [] }     sem error   → link inválido
+            · { data: [{valid:true}] }     → segue
+            · { data: [{valid:false, revoked:true}] }  → revogado
+            · { data: [{valid:false, revoked:false}] } → expirado
 
           Só uma resposta BEM-SUCEDIDA e vazia significa link inválido.
           */
@@ -3056,6 +3161,32 @@
       // remontada aqui a partir dos campos, com escape.
       if (h.lighthouse !== undefined) renderLighthouseCard(h.lighthouse);
       if (p.vessel) document.getElementById('mirrorBannerToken').textContent = p.vessel + ' #' + mirrorToken;
+
+      /*
+      O RELATÓRIO DA IARA, PARA QUEM ESTÁ EM TERRA.
+
+      Quem acompanha lê exatamente o que a ponte ouviu — mesma frase, mesmo
+      instante. É a família sabendo que o barco passou pelo waypoint, e o
+      armador tendo o registro escrito do que foi dito a bordo.
+
+      Chega pelo canal que já existe: nenhuma chamada de rede a mais.
+
+      TEXTO VINDO DO CANAL NUNCA VAI PARA innerHTML — a mesma regra do cartão
+      de farol, três linhas acima. Aqui é textContent, e a marca de hora é
+      remontada a partir do número, não recebida pronta.
+      */
+      if (p.rel && typeof p.rel.txt === 'string') {
+        const cx = document.getElementById('mirrorRelatorio');
+        if (cx) {
+          const quando = Number(p.rel.t);
+          const hora = isFinite(quando) && quando > 0
+            ? new Date(quando).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+            : '--:--';
+          cx.querySelector('.mirror-rel-hora').textContent = hora;
+          cx.querySelector('.mirror-rel-txt').textContent = p.rel.txt;
+          cx.classList.add('active');
+        }
+      }
     }
 
     function setMirrorConn(text, cls) {
@@ -3095,6 +3226,17 @@
       a persistência foi feita para evitar.
       */
       pintarBotoesNav();   // reflete as preferências gravadas no aparelho
+      /*
+      IARA ANTES DO MAPA — mesma razão que a prova 17.10 guarda para o
+      pintarBotoesNav(): o initMap() depende do Leaflet vindo de CDN e, quando a
+      CDN falha, ele ESTOURA e leva embora o resto do DOMContentLoaded. Botão de
+      microfone que nasceu morto por causa de um mapa que não carregou é defeito
+      que já aconteceu neste arquivo, com outro botão.
+      */
+      iaraInit();
+      // Campos de máquinas: DOM puro, ligado ANTES do mapa pela mesma razão
+      // da prova 17.10 — CDN que falha leva embora o resto do arranque.
+      ligarCamposDeMaquinas();
       initMap();
       startClock();        // relógio de data/hora (embarcação e observador)
 
@@ -3109,7 +3251,7 @@
       updateShareButtons();
 
       console.log('═══════════════════════════════════════════════════════════════');
-      console.log('  Coastal Navigator Brasil v2.5.1 - Inicializado ⚓');
+      console.log('  Coastal Navigator Brasil v2.15.0 - Inicializado ⚓');
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('Autor: Jossian Brito (Charlie Bravo)');
       console.log('58 Faróis curados carregados 💡 (52 DHN + 6 Validados)');

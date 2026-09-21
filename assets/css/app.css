@@ -817,6 +817,109 @@
       box-shadow: inset 0 0 0 1.5px rgba(129, 199, 132, 0.75);
     }
 
+    /*
+    ════════════════════════════════════════════════════════════════════════
+    IARA — os quatro estados do microfone                            (v2.7.0)
+    ════════════════════════════════════════════════════════════════════════
+    "O microfone está aberto" é a última informação do mundo que pode ficar
+    ambígua numa ponte. Por isso cada estado tem TRÊS canais redundantes e
+    independentes — ícone, cor de fundo e moldura — porque um deles vai falhar:
+    o ícone some sob reflexo, a cor lava no sol, a moldura fica invisível para
+    quem tem daltonismo. Três canais, nenhum deles a transparência (lição da
+    v2.3.3: sob sol de passadiço, opacidade 0,4 e 1,0 são a mesma coisa).
+
+    OUVINDO é o único estado com animação, e de propósito: movimento é o que o
+    olho periférico capta sem que a cabeça vire. Quem está com os olhos no
+    tráfego precisa perceber que o microfone ficou aberto sem parar de olhar
+    para fora.
+    */
+    .nav-icon-btn.iara-off {
+      background: rgba(255, 255, 255, 0.06);
+      box-shadow: inset 0 0 0 1.5px rgba(179, 229, 252, 0.45);
+    }
+    .nav-icon-btn.iara-ouvindo {
+      background: rgba(244, 67, 54, 0.30);
+      box-shadow: inset 0 0 0 2px rgba(255, 82, 82, 0.95);
+      animation: iaraPulso 1.1s ease-in-out infinite;
+    }
+    .nav-icon-btn.iara-processando {
+      background: rgba(255, 193, 7, 0.24);
+      box-shadow: inset 0 0 0 2px rgba(255, 213, 79, 0.85);
+    }
+    .nav-icon-btn.iara-respondendo {
+      background: rgba(3, 169, 244, 0.30);
+      box-shadow: inset 0 0 0 2px rgba(129, 212, 250, 0.9);
+    }
+    /* Muda: cinza e dessaturada, como o 🔇 dos alertas — mesma gramática
+       visual, para não obrigar a aprender dois vocabulários de estado. */
+    .nav-icon-btn.iara-muda {
+      background: rgba(255, 255, 255, 0.06);
+      box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.35);
+      filter: grayscale(1);
+    }
+    @keyframes iaraPulso {
+      0%, 100% { box-shadow: inset 0 0 0 2px rgba(255, 82, 82, 0.95), 0 0 0 0 rgba(244, 67, 54, 0.55); }
+      50%      { box-shadow: inset 0 0 0 2px rgba(255, 82, 82, 0.95), 0 0 0 7px rgba(244, 67, 54, 0); }
+    }
+    /* Quem pediu menos movimento no sistema não perde a informação: o estado
+       continua legível pela cor e pela moldura, que nunca dependeram da
+       animação para existir. */
+    @media (prefers-reduced-motion: reduce) {
+      .nav-icon-btn.iara-ouvindo { animation: none; }
+    }
+
+    /*
+    O RELATÓRIO DA IARA NO ESPELHO.                                  (v2.8.0)
+    Só existe para quem acompanha em terra — `body.mirror-mode`. A bordo o
+    comandante JÁ OUVIU a frase; repeti-la na tela tomaria espaço do XTE e do
+    próximo waypoint, que é o que ele precisa olhar. Em terra é o oposto: é a
+    única forma de saber o que foi dito no passadiço.
+    */
+    .mirror-rel { display: none; }
+    body.mirror-mode .mirror-rel.active {
+      display: block;
+      margin: 6px 0 2px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: rgba(3, 169, 244, 0.14);
+      box-shadow: inset 0 0 0 1.5px rgba(129, 212, 250, 0.5);
+      font-family: var(--font-body);
+    }
+    .mirror-rel-cab { font-size: 0.72rem; font-weight: 700; color: #81D4FA; letter-spacing: 0.4px; }
+    .mirror-rel-txt { font-size: 0.82rem; line-height: 1.35; color: #E3F2FD; margin-top: 3px; }
+
+    /*
+    ENTRADA DE MÁQUINAS.                                            (v2.11.0)
+    Campo numérico de passadiço: alto o bastante para o polegar molhado (36 px
+    de altura, que é menos que os 44 px de um botão porque aqui o alvo é largo
+    e não se toca por engano), e `inputmode` numérico para o tablete abrir o
+    teclado certo. O fundo escuro e a borda azul seguem o resto do HUD.
+    */
+    .nav-maq { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .nav-maq-in {
+      flex: 1 1 64px; min-width: 56px; max-width: 92px; height: 36px;
+      background: rgba(255, 255, 255, 0.10); color: #fff;
+      border: 1px solid var(--navigation-blue); border-radius: 6px;
+      font-family: var(--font-body); font-size: 0.95rem; font-weight: 700;
+      text-align: center; padding: 2px 4px;
+    }
+    .nav-maq-in::placeholder { color: rgba(227, 242, 253, 0.45); font-weight: 400; }
+    /* Tempo no painel: uma linha, aparece só quando há dado. */
+    .nav-tempo { display: none; }
+    .nav-tempo.active { display: block; font-size: 0.78rem; line-height: 1.3; color: #B3E5FC; }
+
+    /* Mar medido pelos sensores. Vazio até a janela encher. */
+    .nav-mar { display: none; }
+    .nav-mar.active { display: block; font-size: 0.78rem; line-height: 1.3; color: #C5E1A5; }
+
+    /* O conselho de rotação. Vazio por padrão: só ocupa espaço quando tem o
+       que dizer — mesma disciplina do relatório por exceção. */
+    .nav-eco { display: none; }
+    .nav-eco.active { display: block; font-size: 0.8rem; line-height: 1.3; }
+    .nav-eco.reduzir { color: #A5D6A7; }
+    .nav-eco.aumentar { color: #FFCC80; }
+    .nav-eco.alerta { color: #EF9A9A; }
+
     .nav-hud-body {
       padding: 10px;
     }
@@ -1082,8 +1185,27 @@
       flex-direction: column;
     }
     .ship3d-overlay.active { display: flex; }
+    /*
+    A LIÇÃO DA v2.4.2, APLICADA AQUI — MAS COM O DEFEITO CERTO.        (v2.6.0)
+    No painel de navegação um botão a mais numa fileira rígida CORTOU o 🚢: lá
+    o painel tem largura fixa (344 px) e os botões têm `min-width: 44px`, então
+    o excedente some pela borda.
+
+    Aqui é diferente, e foi medido em navegador antes de escrever esta regra:
+    este cabeçalho ocupa a largura inteira da tela e tem itens que encolhem
+    (título e seletor). Nada era cortado — o excesso virava APERTO. Com o 💡
+    somado e a fileira rígida, a 320 px o seletor de casco caía de 108 px para
+    94 px, e "ASD 2810 “SAAM Aguia”" não cabe em 94 px.
+
+    Com a quebra de linha o seletor volta aos 108 px de projeto e o cabeçalho
+    até encurta (97 px de altura contra 112 px), porque o título deixa de
+    disputar a linha. E é isso que segura o PRÓXIMO botão, que virá.
+    Os 44 px de alvo continuam intactos: dedo molhado na ponte não acerta menos.
+    */
     .ship3d-header {
       display: flex;
+      flex-wrap: wrap;
+      row-gap: 6px;
       justify-content: space-between;
       align-items: center;
       padding: 10px 14px;
@@ -1091,8 +1213,13 @@
       color: #E3F2FD;
       font-family: var(--font-body);
     }
-    .ship3d-title { font-weight: 700; letter-spacing: 0.5px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .ship3d-actions { display: flex; gap: 4px; }
+    /* Base de 120 px (e não o tamanho do texto): assim um nome comprido vira
+       reticências na PRÓPRIA linha em vez de empurrar o resto para baixo. */
+    .ship3d-title { font-weight: 700; letter-spacing: 0.5px; flex: 1 1 120px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ship3d-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+    /* O 💡 comanda os faróis do GLOBO. Na vista de Atitude não há globo, e um
+       botão que não faz nada na tela em que está confunde mais que ajuda. */
+    .ship3d-overlay:not(.earth) #s3dFaroisBtn { display: none; }
     .ship3d-modes { display: flex; gap: 0; border: 1px solid var(--navigation-blue); border-radius: 6px; overflow: hidden; margin: 0 8px; }
     .ship3d-mode {
       background: transparent; color: #90CAF9; border: none; padding: 5px 10px;
