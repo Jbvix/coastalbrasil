@@ -4691,6 +4691,83 @@ t(S28, '28.8', 'O painel administrativo não tem mais manipulador inline', () =>
   return { detail: 'zero manipuladores inline' };
 });
 
+t(S28, '28.9', 'O gerador de hash produz valor que o portão aceita — e não convida ao erro', () => {
+  /* ═══════════════════════════════════════════════════════════════════════
+     ESTA PROVA FALTAVA, E A FALTA CUSTOU CARO.                    (v2.21.1)
+
+     Eu construí o gerador para aceitar entrada CANALIZADA justamente para que
+     a bancada pudesse exercitá-lo — e depois nunca escrevi a prova. A
+     capacidade existia, o uso não. É pior que não ter feito: dá a sensação de
+     cobertura sem a cobertura.
+
+     Em 01/10/2026, na primeira configuração real em produção, o script
+     imprimia o resultado assim:
+
+         ADMIN_SENHA_HASH=scrypt$a1b2…$c3d4…
+
+     Formato `CHAVE=valor`, de arquivo .env. Diante de dois campos separados no
+     painel do Netlify, o gesto natural é selecionar a linha inteira e colar no
+     campo de valor — e foi o que aconteceu. O portão respondeu "mal
+     configurado", e levou quatro rodadas de sonda até a causa aparecer, porque
+     `ADMIN_SENHA_HASH=scrypt$…` tem três pedaços separados por `$` e passa pela
+     contagem; só falha na comparação do prefixo.
+
+     Ferramenta que convida ao erro é ferramenta defeituosa — como um bujão de
+     dreno que aceita a mesma chave do bujão de enchimento. A prova guarda as
+     duas metades: que o valor SERVE, e que ele não vem grudado no nome.
+     ═══════════════════════════════════════════════════════════════════════ */
+  const { execFileSync } = require('child_process');
+  const FRASE = 'frase-de-bancada-com-doze';
+
+  let saida;
+  try {
+    saida = execFileSync('node', [ROOT + '/scripts/gerar-hash-admin.mjs'],
+                         { input: FRASE + '\n' + FRASE + '\n',
+                           encoding: 'utf8', timeout: 30000 });
+  } catch (e) {
+    ok(false, 'o gerador não rodou com entrada canalizada: ' + ((e && e.message) || e));
+    return;
+  }
+
+  /* ── 1 · o valor impresso é ACEITO pelo portão ──────────────────────────
+     Esta é a prova de ponta a ponta que faltava: o que o script imprime tem
+     de ser exatamente o que conferirSenha() aceita. Nenhuma varredura de
+     texto substitui isto. */
+  const linhas = saida.split('\n').map(l => l.trim());
+  const valor = linhas.find(l => /^scrypt\$[0-9a-f]+\$[0-9a-f]+$/.test(l));
+  ok(valor, 'o gerador não imprimiu nenhuma linha contendo SÓ o valor scrypt$…$…');
+
+  const bom = A28.conferirSenha(FRASE, valor);
+  ok(bom.ok, `o portão recusou o hash que o próprio gerador produziu: ${bom.motivo}`);
+
+  const ruim = A28.conferirSenha('outra-frase-qualquer', valor);
+  ok(!ruim.ok && ruim.motivo === 'senha incorreta',
+     `frase errada devia dar "senha incorreta", deu "${ruim.motivo}"`);
+
+  /* ── 2 · o valor NÃO vem colado ao nome em nenhuma linha ────────────────
+     O defeito real. Se alguma linha trouxer `ADMIN_SENHA_HASH=scrypt…`, o
+     gesto de copiar a linha inteira volta a produzir um valor inválido. */
+  const grudado = linhas.filter(l => /ADMIN_SENHA_HASH\s*=\s*scrypt\$/.test(l));
+  eq(grudado.length, 0, 0,
+     '🔴 o gerador voltou a imprimir CHAVE=valor numa linha só — ' +
+     'copiar a linha inteira produz um valor que o portão recusa');
+
+  /* ── 3 · e o colado-errado é REALMENTE recusado ─────────────────────────
+     Prova o mecanismo de frente, em vez de confiar na leitura: se um dia a
+     contagem de pedaços mudar, isto acusa. */
+  const comoColariaErrado = 'ADMIN_SENHA_HASH=' + valor;
+  const erro = A28.conferirSenha(FRASE, comoColariaErrado);
+  ok(!erro.ok && /mal configurado/.test(erro.motivo),
+     `colar a linha inteira devia dar "mal configurado", deu "${erro.motivo}" — ` +
+     'se passasse, o portão aceitaria um valor que ninguém pretendeu');
+
+  /* ── 4 · o script avisa, em texto, o que não fazer ──────────────────────
+     Cinto e suspensório: o formato está certo E o aviso está lá. */
+  ok(/NÃO inclua/.test(saida), 'o gerador não avisa para não colar o nome junto');
+
+  return { detail: 'valor aceito pelo portão · nenhum CHAVE=valor numa linha' };
+});
+
 /* ══════════════════════════════════════════════════════════════════════════
    29 · LICENÇA NO CAMINHO DO SERVIÇO                        (C4 · v2.20.0)
    ══════════════════════════════════════════════════════════════════════════

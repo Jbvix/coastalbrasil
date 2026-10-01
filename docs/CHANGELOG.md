@@ -11,6 +11,74 @@ executável.
 
 ```
 
+## v2.21.1 (01/10/2026) — FERRAMENTA QUE CONVIDA AO ERRO É FERRAMENTA DEFEITUOSA
+
+Autor: Jossian Brito (Charlie Bravo)
+Data: 01/10/2026 · Versão 2.21.1
+
+Correção encontrada na **primeira configuração real em produção**, não em
+bancada. Nada no aplicativo mudou.
+
+### O que aconteceu
+
+Ao configurar `ADMIN_SENHA_HASH` pela primeira vez, o portão respondeu
+`"portão mal configurado"`. Quatro rodadas de sonda depois, a causa:
+
+```
+ADMIN_SENHA_HASH=scrypt$a1b2…$c3d4…     ← o script imprimia ASSIM, numa linha
+```
+
+Formato `CHAVE=valor`, que é o idioma de um arquivo `.env`. Diante de **dois
+campos separados** no painel do Netlify, o gesto natural é selecionar a linha
+inteira e colar no campo de valor. O resultado passa pela contagem de pedaços
+(`split('$')` devolve três) e só falha na comparação do prefixo — por isso o
+diagnóstico demorou.
+
+> **A culpa não é de quem colou.** Ferramenta que convida ao erro é ferramenta
+> defeituosa, do mesmo jeito que um bujão de dreno que aceita a mesma chave do
+> bujão de enchimento é projeto ruim, não desatenção do mecânico.
+
+### O conserto
+
+O gerador (`scripts/gerar-hash-admin.mjs` v1.1.0) agora imprime os campos
+**separados e rotulados com o nome que aparece no painel**, com o valor sozinho
+na sua linha — selecionável de ponta a ponta sem pegar mais nada — e um aviso
+explícito de não incluir o nome.
+
+### A prova que faltava, e a lição
+
+🔴 **O script nunca tinha sido exercitado pela bancada.** Eu o construí para
+aceitar entrada canalizada *justamente* para que pudesse ser provado, e depois
+nunca escrevi a prova.
+
+> Capacidade de teste sem teste é pior que nada: dá a sensação de cobertura sem
+> a cobertura. O defeito que custou quatro rodadas morava exatamente nesse vão.
+
+A prova **28.9** executa o script de verdade e guarda quatro coisas:
+
+1. o valor impresso é **aceito** por `conferirSenha` — ponta a ponta, não varredura;
+2. frase errada contra esse hash dá `senha incorreta`;
+3. **nenhuma linha** traz `ADMIN_SENHA_HASH=scrypt…`;
+4. e o colado-errado é **comprovadamente** recusado com `mal configurado`.
+
+### Diagnóstico de campo que vale registrar
+
+A distinção entre `"portão não configurado"` (variável ausente ou vazia) e
+`"portão mal configurado"` (presente, formato inválido), escrita na C3 sem uso
+previsto, foi **o que permitiu diagnosticar à distância**. A transição de uma
+mensagem para a outra marcou o momento exato em que a variável passou a chegar
+à função.
+
+Também ficou medido que as variáveis do Netlify **só chegam às Functions num
+deploy novo** — e que um deploy do diretório local **quebraria** este site,
+porque `cesium-config.js` é gerado no build e está no `.gitignore`.
+
+### Provas
+
+304 provas (303 → 304), 30 suítes, 0 FAIL, 2 WARN. Fumaça 105/105.
+
+---
+
 ## v2.21.0 (01/10/2026) — O FIM DO SILÊNCIO · ETAPA C5 · O CAMINHO C FECHA
 
 Autor: Jossian Brito (Charlie Bravo)

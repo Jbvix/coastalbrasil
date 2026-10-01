@@ -84,8 +84,37 @@ if (!conferirSenha(senha, hash).ok) {
   process.exit(1);
 }
 
-console.log('\n── Cole no Netlify, em Site settings → Environment variables ──\n');
-console.log('ADMIN_SENHA_HASH=' + hash);
+/* ═══════════════════════════════════════════════════════════════════════════
+   COMO ESTE RESULTADO É IMPRESSO — e por que mudou               (v1.1.0)
+
+   A primeira versão imprimia uma linha única:
+
+       ADMIN_SENHA_HASH=scrypt$a1b2…$c3d4…
+
+   Formato `CHAVE=valor`, que é o idioma de um arquivo .env — e lido por um
+   humano diante de dois campos separados no painel do Netlify, ele CONVIDA ao
+   gesto errado: selecionar a linha inteira e colar no campo de valor.
+
+   Foi o que aconteceu em 01/10/2026, na primeira configuração real. O portão
+   respondeu "mal configurado" e levou várias rodadas de diagnóstico, porque
+   `ADMIN_SENHA_HASH=scrypt$…` tem três pedaços separados por `$` e passa pela
+   contagem — só falha na comparação do prefixo.
+
+   A culpa não é de quem colou. **Ferramenta que convida ao erro é ferramenta
+   defeituosa**, do mesmo jeito que um bujão de dreno com a mesma chave do
+   bujão de enchimento é projeto ruim, não desatenção do mecânico.
+
+   Agora os dois campos saem separados, rotulados com o nome do campo no
+   painel, e o valor sai sozinho na sua linha — selecionável de ponta a ponta
+   sem pegar mais nada.
+   ═══════════════════════════════════════════════════════════════════════════ */
+console.log('\n── No Netlify: Site configuration → Environment variables → Add a variable ──\n');
+console.log('  Campo "Key" .......... ADMIN_SENHA_HASH');
+console.log('  Contexto ............. Same value for all deploy contexts');
+console.log('\n  Campo "Value" — copie a linha ABAIXO inteira, e só ela:\n');
+console.log(hash);
+console.log('\n  ⚠️  NÃO inclua "ADMIN_SENHA_HASH=" no campo de valor.');
+console.log('      O valor começa em "scrypt$" e termina no último caractere acima.');
 console.log(`\n(scrypt N=${SCRYPT_N}, ${custo} ms por tentativa nesta máquina)`);
 console.log('\nA frase-senha NÃO foi gravada. Se você a perder, gere outra:');
 console.log('o hash não se inverte, e é essa a razão de ele poder ficar numa variável.\n');
