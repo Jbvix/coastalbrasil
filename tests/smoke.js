@@ -850,10 +850,32 @@ const srv = http.createServer((req, res) => {
       const r = {};
       const box = () => document.getElementById('navTempoDica');
 
+      /* ⚠️ VISIBILIDADE MEDIDA PELO ESTILO COMPUTADO, não pelo atributo.
+
+         A primeira versão destes passos conferia `!box().hidden` — e isso é
+         insuficiente de um jeito perigoso. O CSS traz `.nav-tempo-dica
+         { display: none }` e só a classe `.active` devolve `display: block`.
+         Se a classe não fosse aplicada, ou se o arquivo de estilo não chegasse
+         ao navegador, a faixa ficaria INVISÍVEL com `hidden = false` — e os
+         seis passos passariam verdes sobre uma funcionalidade que o comandante
+         não vê.
+
+         Prova verde sobre funcionalidade invisível é exatamente o "mecanismo
+         de prova que falha para o lado do verde" que esta casa trata como pior
+         que código errado. Agora se mede `display` e o retângulo de fato. */
+      const medir = () => {
+        const el = box(), cs = getComputedStyle(el), rc = el.getBoundingClientRect();
+        return { display: cs.display, altura: Math.round(rc.height),
+                 largura: Math.round(rc.width),
+                 visivel: cs.display !== 'none' && rc.height > 0 && rc.width > 0 };
+      };
+
       /* Falta licença: dica + link. */
       tempoFalhaAtual = 'licenca';
       atualizarPainelTempo();
-      r.licenca = { texto: box().textContent, visivel: !box().hidden,
+      const mLic = medir();
+      r.licenca = { texto: box().textContent, visivel: mLic.visivel,
+                    display: mLic.display, altura: mLic.altura,
                     links: box().querySelectorAll('a').length,
                     href: box().querySelector('a') ? box().querySelector('a').href : '',
                     linha: document.getElementById('navTempo').textContent };
@@ -869,16 +891,21 @@ const srv = http.createServer((req, res) => {
       r.servico = { filhosElemento: box().querySelectorAll('*').length,
                     texto: box().textContent };
 
-      /* Busca voltou: a faixa SAI. */
+      /* Busca voltou: a faixa SAI — e sair é desaparecer do layout, não ficar
+         com texto escondido num elemento de altura zero que ainda ocupa linha. */
       tempoFalhaAtual = null;
       atualizarPainelTempo();
-      r.limpo = { visivel: !box().hidden, texto: box().textContent };
+      const mLimpo = medir();
+      r.limpo = { visivel: mLimpo.visivel, display: mLimpo.display,
+                  atributo: box().hidden, texto: box().textContent };
       return r;
     });
 
-    ok('Dica de licença aparece com o contato', 
+    ok('Dica de licença é de fato VISÍVEL e traz o contato',
        diag.licenca.visivel && diag.licenca.links === 1 && /wa\.me/.test(diag.licenca.href),
-       diag.licenca.visivel ? 'visível, 1 link' : 'INVISÍVEL');
+       diag.licenca.visivel
+         ? `display=${diag.licenca.display} ${diag.licenca.altura}px, 1 link`
+         : `INVISÍVEL (display=${diag.licenca.display} altura=${diag.licenca.altura}px)`);
     ok('A linha do painel não fica em branco sem previsão',
        /sem previsão/.test(diag.licenca.linha) && /licença necessária/.test(diag.licenca.linha),
        JSON.stringify(diag.licenca.linha.slice(0, 48)));
@@ -889,9 +916,11 @@ const srv = http.createServer((req, res) => {
        diag.cota.links === 0, diag.cota.links + ' link(s)');
     ok('A dica não cria elemento algum além do link',
        diag.servico.filhosElemento === 0, diag.servico.filhosElemento + ' elemento(s)');
-    ok('A faixa SAI quando a busca volta',
-       !diag.limpo.visivel && diag.limpo.texto === '',
-       !diag.limpo.visivel ? 'escondida e vazia' : 'FICOU GRUDADA');
+    ok('A faixa SAI do layout quando a busca volta',
+       !diag.limpo.visivel && diag.limpo.display === 'none' &&
+       diag.limpo.atributo === true && diag.limpo.texto === '',
+       !diag.limpo.visivel ? `display=${diag.limpo.display}, hidden=${diag.limpo.atributo}, vazia`
+                           : 'FICOU GRUDADA');
   }
 
   await page.screenshot({ path: path.join(__dirname, 'smoke.png'), fullPage: false });

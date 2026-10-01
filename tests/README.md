@@ -4,7 +4,7 @@
 npm test
 ```
 
-302 provas em 30 suítes, executadas sobre as **funções reais** extraídas do
+303 provas em 30 suítes, executadas sobre as **funções reais** extraídas do
 `app.html` e dos módulos por contagem de chaves — não sobre uma
 reimplementação. Sem dependências: Node puro.
 

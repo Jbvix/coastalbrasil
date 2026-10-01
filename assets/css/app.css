@@ -1012,6 +1012,28 @@
       color: #90CAF9;
     }
 
+    /* ⚠️ `hidden` TEM DE SIGNIFICAR ESCONDIDO.                    (C5)
+
+       Defeito encontrado por uma prova de fumaça endurecida, e ele é
+       PRÉ-EXISTENTE — não nasceu na C5, foi herdado por ela.
+
+       `.nav-tempo { display: none }` está na linha 908 e `.nav-line
+       { display: flex }` na 1015. Mesma especificidade (uma classe cada), logo
+       a ORDEM DE ORIGEM decide: o `flex` ganha. Resultado — o atributo
+       `hidden`, que o navegador implementa como `display: none` na folha do
+       próprio agente, era silenciosamente derrotado por uma regra de autor.
+       Um elemento marcado `hidden` continuava sendo caixa viva no layout.
+
+       Hoje isso é inofensivo só porque a caixa fica vazia e com altura zero.
+       É armadilha armada: basta alguém dar padding ou borda a `.nav-line` para
+       uma tarja aparecer sozinha na tela, sem conteúdo e sem explicação.
+
+       Duas classes vencem uma, e classe + atributo vence classe. A emenda é
+       declarativa e vale para TODA nav-line, não só para as duas de hoje. */
+    .nav-line[hidden] { display: none; }
+    .nav-line.nav-tempo:not(.active),
+    .nav-line.nav-tempo-dica:not(.active) { display: none; }
+
     .nav-line {
       font-size: 0.85rem;
       margin: 4px 0;

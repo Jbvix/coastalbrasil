@@ -5213,6 +5213,50 @@ t(S30, '30.7', 'A dica é construída com nós do DOM, nunca com innerHTML', () 
   ok(!/navGpsStatus/.test(fn), 'a dica disputa o espaço do GPS — duas verdades no mesmo lugar');
 });
 
+t(S30, '30.8', '`hidden` significa escondido — a regra de autor não derrota o navegador', () => {
+  /* ═══════════════════════════════════════════════════════════════════════
+     DEFEITO PRÉ-EXISTENTE, achado por uma prova de fumaça ENDURECIDA.
+
+     A primeira versão dos passos da C5 conferia `!box.hidden`. Isso passava
+     verde sobre uma faixa que o CSS poderia estar escondendo — ou mostrando —
+     por conta própria. Ao trocar a aferição para o ESTILO COMPUTADO, apareceu:
+     com a faixa limpa, `display` era `flex`, não `none`.
+
+     Causa: `.nav-tempo { display: none }` (linha ~908) e `.nav-line
+     { display: flex }` (linha ~1015) têm a MESMA especificidade, e a ordem de
+     origem decide. O `flex` ganhava, e com isso o atributo `hidden` — que o
+     navegador implementa como `display: none` na folha do agente — era
+     derrotado por uma regra de autor. Elemento marcado `hidden` seguia sendo
+     caixa viva no layout.
+
+     A prova de verdade é o passo de fumaça, que mede `getComputedStyle`. Esta
+     aqui é varredura, e declara que é: ela guarda a REGRA, para que a emenda
+     não seja removida por quem não souber por que ela existe.
+     ═══════════════════════════════════════════════════════════════════════ */
+  const css = fs16.readFileSync(ROOT + '/assets/css/app.css', 'utf8')
+                  .replace(/\/\*[\s\S]*?\*\//g, ' ');
+
+  ok(/\.nav-line\[hidden\]\s*\{[^}]*display:\s*none/.test(css),
+     'a regra que faz `hidden` valer desapareceu — um elemento escondido voltaria a ocupar o layout');
+
+  /* E as duas linhas de tempo precisam da especificidade dobrada, senão
+     voltam a perder para `.nav-line` por ordem de origem. */
+  ok(/\.nav-line\.nav-tempo:not\(\.active\)/.test(css),
+     'a linha do tempo perdeu a especificidade e volta a ser flex quando inativa');
+  ok(/\.nav-line\.nav-tempo-dica:not\(\.active\)/.test(css),
+     'a faixa da dica perdeu a especificidade e volta a ser flex quando inativa');
+
+  /* A armadilha era de ORDEM: `.nav-line` vem depois. Se algum dia vier antes,
+     as regras simples passam a funcionar — mas a emenda não atrapalha. O que
+     esta asserção guarda é o diagnóstico: a ordem é a razão de tudo isto. */
+  const iTempo = css.indexOf('.nav-tempo {');
+  const iLinha = css.indexOf('.nav-line {');
+  ok(iTempo > 0 && iLinha > 0, 'não encontrei as duas regras em conflito');
+  return { detail: iTempo < iLinha
+                     ? '.nav-line vem depois — a emenda de especificidade é necessária'
+                     : '.nav-line vem antes — a emenda ficou redundante, mas inofensiva' };
+});
+
 t(S30, '30.6', 'A classificação acontece onde o status existe, não no catch', () => {
   const C = semComentarios(fs16.readFileSync(ROOT + '/assets/js/tempo.js', 'utf8'));
   /* Classificar só no `catch` perderia o número HTTP — e o número é metade do
