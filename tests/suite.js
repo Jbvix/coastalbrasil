@@ -4691,6 +4691,166 @@ t(S28, '28.8', 'O painel administrativo não tem mais manipulador inline', () =>
   return { detail: 'zero manipuladores inline' };
 });
 
+t(S28, '28.9', 'O gerador de hash produz valor que o portão aceita — e não convida ao erro', () => {
+  /* ═══════════════════════════════════════════════════════════════════════
+     ESTA PROVA FALTAVA, E A FALTA CUSTOU CARO.                    (v2.21.1)
+
+     Eu construí o gerador para aceitar entrada CANALIZADA justamente para que
+     a bancada pudesse exercitá-lo — e depois nunca escrevi a prova. A
+     capacidade existia, o uso não. É pior que não ter feito: dá a sensação de
+     cobertura sem a cobertura.
+
+     Em 01/10/2026, na primeira configuração real em produção, o script
+     imprimia o resultado assim:
+
+         ADMIN_SENHA_HASH=scrypt$a1b2…$c3d4…
+
+     Formato `CHAVE=valor`, de arquivo .env. Diante de dois campos separados no
+     painel do Netlify, o gesto natural é selecionar a linha inteira e colar no
+     campo de valor — e foi o que aconteceu. O portão respondeu "mal
+     configurado", e levou quatro rodadas de sonda até a causa aparecer, porque
+     `ADMIN_SENHA_HASH=scrypt$…` tem três pedaços separados por `$` e passa pela
+     contagem; só falha na comparação do prefixo.
+
+     Ferramenta que convida ao erro é ferramenta defeituosa — como um bujão de
+     dreno que aceita a mesma chave do bujão de enchimento. A prova guarda as
+     duas metades: que o valor SERVE, e que ele não vem grudado no nome.
+     ═══════════════════════════════════════════════════════════════════════ */
+  const { execFileSync } = require('child_process');
+  const FRASE = 'frase-de-bancada-com-doze';
+
+  let saida;
+  try {
+    saida = execFileSync('node', [ROOT + '/scripts/gerar-hash-admin.mjs'],
+                         { input: FRASE + '\n' + FRASE + '\n',
+                           encoding: 'utf8', timeout: 30000 });
+  } catch (e) {
+    ok(false, 'o gerador não rodou com entrada canalizada: ' + ((e && e.message) || e));
+    return;
+  }
+
+  /* ── 1 · o valor impresso é ACEITO pelo portão ──────────────────────────
+     Esta é a prova de ponta a ponta que faltava: o que o script imprime tem
+     de ser exatamente o que conferirSenha() aceita. Nenhuma varredura de
+     texto substitui isto. */
+  const linhas = saida.split('\n').map(l => l.trim());
+  const valor = linhas.find(l => /^scrypt\$[0-9a-f]+\$[0-9a-f]+$/.test(l));
+  ok(valor, 'o gerador não imprimiu nenhuma linha contendo SÓ o valor scrypt$…$…');
+
+  const bom = A28.conferirSenha(FRASE, valor);
+  ok(bom.ok, `o portão recusou o hash que o próprio gerador produziu: ${bom.motivo}`);
+
+  const ruim = A28.conferirSenha('outra-frase-qualquer', valor);
+  ok(!ruim.ok && ruim.motivo === 'senha incorreta',
+     `frase errada devia dar "senha incorreta", deu "${ruim.motivo}"`);
+
+  /* ── 2 · o valor NÃO vem colado ao nome em nenhuma linha ────────────────
+     O defeito real. Se alguma linha trouxer `ADMIN_SENHA_HASH=scrypt…`, o
+     gesto de copiar a linha inteira volta a produzir um valor inválido. */
+  const grudado = linhas.filter(l => /ADMIN_SENHA_HASH\s*=\s*scrypt\$/.test(l));
+  eq(grudado.length, 0, 0,
+     '🔴 o gerador voltou a imprimir CHAVE=valor numa linha só — ' +
+     'copiar a linha inteira produz um valor que o portão recusa');
+
+  /* ── 3 · o colado-errado agora é ACEITO, e isso é a mudança ─────────────
+     ⚠️ ESTA ASSERÇÃO FOI INVERTIDA na v2.22.0, e a inversão é deliberada.
+
+     Uma hora atrás ela exigia que `ADMIN_SENHA_HASH=<valor>` fosse RECUSADO.
+     Estava certa para o código daquele momento e errada como objetivo: o
+     portão recusar por causa de um artefato de colagem não protege nada, só
+     custa rodadas de diagnóstico. A tolerância da v2.22.0 o faz funcionar.
+
+     Guardo as duas metades: o gerador continua NÃO imprimindo CHAVE=valor
+     (asserção 2, acima), E o portão passou a tolerar quem colou assim. Cinto
+     e suspensório — consertar a ergonomia não dispensa aceitar o engano que
+     ela já causou em produção. */
+  const comoColariaErrado = 'ADMIN_SENHA_HASH=' + valor;
+  const tolerado = A28.conferirSenha(FRASE, comoColariaErrado);
+  ok(tolerado.ok,
+     `colar a linha inteira devia ser TOLERADO, deu "${tolerado.motivo}" — ` +
+     'a v2.22.0 existe exatamente para isto');
+
+  /* ── 4 · o script avisa, em texto, o que não fazer ──────────────────────
+     Cinto e suspensório: o formato está certo E o aviso está lá. */
+  ok(/NÃO inclua/.test(saida), 'o gerador não avisa para não colar o nome junto');
+
+  return { detail: 'valor aceito pelo portão · nenhum CHAVE=valor numa linha' };
+});
+
+t(S28, '28.10', 'Tolerância a colagem: embalagem perdoada, conteúdo nunca', () => {
+  /* ═══════════════════════════════════════════════════════════════════════
+     Nasceu de cinco rodadas de diagnóstico na primeira configuração real.
+     Três artefatos de copiar-e-colar, todos reais, um deles INVISÍVEL.
+
+     A prova guarda a fronteira, que é o que importa: tolera-se EMBALAGEM,
+     nunca CONTEÚDO. Se um dia alguém "melhorar" isto e passar a aceitar um
+     hash de outro algoritmo, ou pedaço faltando, a segunda metade acusa.
+     ═══════════════════════════════════════════════════════════════════════ */
+  const FRASE = 'frase-de-bancada-tolerancia';
+  const h = A28.gerarHashDeSenha(FRASE);
+  const Z = '\u200B', WJ = '\u200D', BOM = '\uFEFF';
+
+  /* ── Embalagem: TUDO isto tem de ser aceito ─────────────────────────────
+     Nenhum destes aproxima ninguém de adivinhar 32 bytes. Remover uma aspa
+     não é afrouxar segurança, é desembrulhar. */
+  const perdoaveis = [
+    [h,                                        'limpo'],
+    ['ADMIN_SENHA_HASH=' + h,                  'linha inteira do gerador antigo'],
+    ['ADMIN_SENHA_HASH = ' + h,                'com espaços em volta do ='],
+    ['admin_senha_hash=' + h,                  'prefixo em minúsculas'],
+    ['"' + h + '"',                            'aspas duplas'],
+    ["'" + h + "'",                            'aspas simples'],
+    [Z + h + Z,                                'espaço de largura zero (invisível!)'],
+    [BOM + h,                                  'BOM do Windows'],
+    [h + WJ,                                   'word joiner no fim'],
+    ['  ' + h + '\n',                          'espaço e quebra de linha'],
+    [Z + '"ADMIN_SENHA_HASH=' + h + '"' + Z,   'os três aninhados'],
+    ['"' + Z + 'ADMIN_SENHA_HASH= ' + h + Z + '"', 'os três em ordem invertida']
+  ];
+  for (const [valor, rotulo] of perdoaveis) {
+    const r = A28.conferirSenha(FRASE, valor);
+    ok(r.ok, `embalagem "${rotulo}" devia ser tolerada, mas deu "${r.motivo}"`);
+  }
+
+  /* ── Conteúdo: NADA disto pode passar, e cada um diz o próprio defeito ──
+     O código do defeito é estrutural de propósito: nomeia a FORMA do erro e
+     nunca ecoa o valor. Se alguém colar a própria frase-senha no lugar do
+     hash, devolvê-la na mensagem seria entregá-la a quem fizer a chamada. */
+  const recusaveis = [
+    ['100000$YWJj$ZGVm',        'prefixo',   'hash PBKDF2 de outra ferramenta'],
+    ['scrypt$abc',              'pedaços',   'faltando um pedaço'],
+    ['scrypt$a$b$c',            'pedaços',   'um pedaço a mais'],
+    ['scrypt$zzz$yyy',          'hex',       'caractere não-hexadecimal'],
+    ['scrypt$' + 'a'.repeat(32) + '$ZZZ', 'hex', 'hash não-hexadecimal'],
+    ['SCRYPT$abc$def',          'prefixo',   'prefixo em caixa alta — não é o mesmo algoritmo']
+  ];
+  for (const [valor, codigo, rotulo] of recusaveis) {
+    const r = A28.conferirSenha(FRASE, valor);
+    ok(!r.ok, `🔴 conteúdo inválido ACEITO: ${rotulo}`);
+    ok(r.motivo.includes('(' + codigo + ')'),
+       `"${rotulo}" devia acusar (${codigo}), acusou "${r.motivo}" — ` +
+       'o código do defeito é o que evita rodadas de adivinhação');
+  }
+
+  /* ── E a fronteira que não se cruza: a senha ainda tem de estar certa ───
+     Toda a tolerância acima é sobre o invólucro do HASH GUARDADO. A senha
+     digitada continua sendo comparada byte a byte, em tempo constante. */
+  ok(!A28.conferirSenha('senha-completamente-outra', h).ok,
+     '🔴 a tolerância vazou para a comparação da senha');
+  eq(A28.conferirSenha('senha-completamente-outra', h).motivo === 'senha incorreta' ? 1 : 0, 1, 0,
+     'senha errada devia dizer "senha incorreta"');
+
+  /* ── E a mensagem NÃO ecoa o que foi colado ─────────────────────────────
+     Se alguém puser a frase-senha no lugar do hash, a recusa não pode
+     devolvê-la. Varredura das mensagens possíveis, declarada como tal. */
+  const comSegredo = A28.conferirSenha(FRASE, 'minha-frase-senha-secreta-do-comandante');
+  ok(!/comandante|secreta/.test(comSegredo.motivo),
+     '🔴 a mensagem de erro ecoou o valor colado — entregaria a frase-senha a quem chamar');
+
+  return { detail: perdoaveis.length + ' embalagens toleradas · ' +
+                   recusaveis.length + ' conteúdos recusados com código' };
+});
+
 /* ══════════════════════════════════════════════════════════════════════════
    29 · LICENÇA NO CAMINHO DO SERVIÇO                        (C4 · v2.20.0)
    ══════════════════════════════════════════════════════════════════════════

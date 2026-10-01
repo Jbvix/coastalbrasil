@@ -11,6 +11,171 @@ executável.
 
 ```
 
+## v2.22.0 (01/10/2026) — EMBALAGEM PERDOADA, CONTEÚDO NUNCA
+
+Autor: Jossian Brito (Charlie Bravo)
+Data: 01/10/2026 · Versão 2.22.0
+
+Nasceu de **cinco rodadas de diagnóstico** na primeira configuração real do
+portão em produção. A v2.21.1 consertou a ferramenta que convidava ao erro;
+esta versão faz o portão **tolerar o erro que a ferramenta já causou**.
+
+### A regra, e ela é uma fronteira
+
+> **Tolera-se EMBALAGEM. Nunca CONTEÚDO.**
+
+`conferirSenha` passa a desembrulhar três artefatos reais de copiar-e-colar,
+antes de examinar o valor:
+
+| Artefato | De onde vem |
+|---|---|
+| prefixo `ADMIN_SENHA_HASH=` | o gerador antigo imprimia `CHAVE=valor` numa linha |
+| aspas envolventes | painéis e editores acrescentam sozinhos |
+| **espaço de largura zero** (`U+200B`–`U+200D`, `U+FEFF`) | terminais e navegadores, ao copiar — **e o `.trim()` do JavaScript NÃO o remove**, porque ele não é whitespace |
+
+O terceiro é o cruel: **invisível**, imune a inspeção visual, e capaz de
+quebrar tudo sem deixar rastro na tela.
+
+**Isto não afrouxa segurança nenhuma.** A comparação continua sendo o mesmo
+scrypt, em tempo constante. Remover uma aspa não aproxima ninguém de adivinhar
+32 bytes. É a lei de Postel aplicada onde é segura: rigoroso no que se
+**compara**, tolerante no que se aceita como **invólucro**. A bordo, é o bocal
+de abastecimento que aceita o bico com folga — não muda uma gota do que entra
+no tanque, só impede que a operação falhe por um milímetro.
+
+O que **não** se tolera, de propósito: hash de outro algoritmo, pedaço
+faltando, caractere não-hexadecimal. Isso é conteúdo errado, e a resposta é
+recusa.
+
+### Desembrulho em LAÇO, não em ordem fixa
+
+A primeira versão tirava invisíveis, depois prefixo, depois aspas. Funcionava
+com cada artefato sozinho e **falhava com os três juntos**:
+
+```
+​"ADMIN_SENHA_HASH=scrypt$…"​
+```
+
+Tirados os invisíveis, a cadeia começa por aspa — a regra do prefixo não casa.
+Tiradas as aspas, o prefixo reaparece, mas o passo dele já passou.
+
+> **Ordem fixa só desembrulha a ordem que o autor imaginou.**
+
+Agora descasca em laço até estabilizar, com teto de 5 voltas.
+
+### A recusa passa a dizer QUAL é o defeito
+
+Era `"portão mal configurado"` para tudo — e foi isso que custou cinco rodadas,
+porque a mensagem não distinguia três causas muito diferentes:
+
+| Código | Significa |
+|---|---|
+| `(pedaços)` | número errado de partes separadas por `$` |
+| `(prefixo)` | não é um hash scrypt — provavelmente de outra ferramenta |
+| `(hex)` | sal ou hash com caractere não-hexadecimal |
+
+O código é **deliberadamente estrutural**: nomeia a *forma* do defeito e nunca
+ecoa o conteúdo. Se alguém colar a própria frase-senha no lugar do hash,
+devolvê-la na mensagem seria entregá-la a quem fizer a chamada. **Diagnóstico
+sem vazamento: nomear o defeito, não exibir o dado** — e a prova 28.10 verifica
+isso com uma frase reconhecível.
+
+### Uma prova minha foi INVERTIDA, e a inversão é deliberada
+
+A asserção 3 da prova 28.9, escrita uma hora antes, exigia que
+`ADMIN_SENHA_HASH=<valor>` fosse **recusado**. Estava certa para o código
+daquele instante e errada como objetivo: o portão recusar por artefato de
+colagem não protege nada, só custa rodadas.
+
+Agora guarda as duas metades — o gerador continua **não** imprimindo
+`CHAVE=valor`, **e** o portão tolera quem colou assim. Cinto e suspensório:
+consertar a ergonomia não dispensa aceitar o engano que ela já causou.
+
+### Provas
+
+305 provas (304 → 305), 30 suítes, 0 FAIL, 2 WARN. Fumaça 105/105.
+
+Cinco mutações, todas acusadas pela 28.10 — inclusive a que faz a tolerância
+vazar para o conteúdo, e a que faz a mensagem ecoar o valor colado.
+
+**E uma delas quase virou falso negativo:** a mutação que removia o tratamento
+dos invisíveis não casou com o alvo, porque num literal Python `\s` fica
+literal e `\u200B` vira o caractere real — eu comparava texto contra um
+invisível de verdade. A asserção que eu já havia passado a usar
+(`assert alvo encontrado`) pegou. Terceira vez nesta sessão que escape
+transforma mutação em não-evento, e a terceira em que a verificação prévia
+salva o resultado.
+
+---
+
+## v2.21.1 (01/10/2026) — FERRAMENTA QUE CONVIDA AO ERRO É FERRAMENTA DEFEITUOSA
+
+Autor: Jossian Brito (Charlie Bravo)
+Data: 01/10/2026 · Versão 2.21.1
+
+Correção encontrada na **primeira configuração real em produção**, não em
+bancada. Nada no aplicativo mudou.
+
+### O que aconteceu
+
+Ao configurar `ADMIN_SENHA_HASH` pela primeira vez, o portão respondeu
+`"portão mal configurado"`. Quatro rodadas de sonda depois, a causa:
+
+```
+ADMIN_SENHA_HASH=scrypt$a1b2…$c3d4…     ← o script imprimia ASSIM, numa linha
+```
+
+Formato `CHAVE=valor`, que é o idioma de um arquivo `.env`. Diante de **dois
+campos separados** no painel do Netlify, o gesto natural é selecionar a linha
+inteira e colar no campo de valor. O resultado passa pela contagem de pedaços
+(`split('$')` devolve três) e só falha na comparação do prefixo — por isso o
+diagnóstico demorou.
+
+> **A culpa não é de quem colou.** Ferramenta que convida ao erro é ferramenta
+> defeituosa, do mesmo jeito que um bujão de dreno que aceita a mesma chave do
+> bujão de enchimento é projeto ruim, não desatenção do mecânico.
+
+### O conserto
+
+O gerador (`scripts/gerar-hash-admin.mjs` v1.1.0) agora imprime os campos
+**separados e rotulados com o nome que aparece no painel**, com o valor sozinho
+na sua linha — selecionável de ponta a ponta sem pegar mais nada — e um aviso
+explícito de não incluir o nome.
+
+### A prova que faltava, e a lição
+
+🔴 **O script nunca tinha sido exercitado pela bancada.** Eu o construí para
+aceitar entrada canalizada *justamente* para que pudesse ser provado, e depois
+nunca escrevi a prova.
+
+> Capacidade de teste sem teste é pior que nada: dá a sensação de cobertura sem
+> a cobertura. O defeito que custou quatro rodadas morava exatamente nesse vão.
+
+A prova **28.9** executa o script de verdade e guarda quatro coisas:
+
+1. o valor impresso é **aceito** por `conferirSenha` — ponta a ponta, não varredura;
+2. frase errada contra esse hash dá `senha incorreta`;
+3. **nenhuma linha** traz `ADMIN_SENHA_HASH=scrypt…`;
+4. e o colado-errado é **comprovadamente** recusado com `mal configurado`.
+
+### Diagnóstico de campo que vale registrar
+
+A distinção entre `"portão não configurado"` (variável ausente ou vazia) e
+`"portão mal configurado"` (presente, formato inválido), escrita na C3 sem uso
+previsto, foi **o que permitiu diagnosticar à distância**. A transição de uma
+mensagem para a outra marcou o momento exato em que a variável passou a chegar
+à função.
+
+Também ficou medido que as variáveis do Netlify **só chegam às Functions num
+deploy novo** — e que um deploy do diretório local **quebraria** este site,
+porque `cesium-config.js` é gerado no build e está no `.gitignore`.
+
+### Provas
+
+304 provas (303 → 304), 30 suítes, 0 FAIL, 2 WARN. Fumaça 105/105.
+
+---
+
 ## v2.21.0 (01/10/2026) — O FIM DO SILÊNCIO · ETAPA C5 · O CAMINHO C FECHA
 
 Autor: Jossian Brito (Charlie Bravo)
