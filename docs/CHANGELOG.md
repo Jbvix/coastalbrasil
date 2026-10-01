@@ -11,6 +11,147 @@ executável.
 
 ```
 
+## v2.18.0 (01/10/2026) — O ESQUEMA SAI DA CABEÇA E VAI PARA O REPOSITÓRIO · ETAPA C2
+
+Autor: Jossian Brito (Charlie Bravo)
+
+### Antes da licença, um apagão de três dias
+
+A C2 começou esbarrando em algo que não era da C2: **o projeto Supabase
+estava pausado desde ~28/09** e o espelhamento fora do ar. O monitor
+`manter-supabase-ativo.yml` falhou em 28/09 e 01/10, exatamente como foi
+projetado — `curl: (6) Could not resolve host`.
+
+Duas lições, e a segunda dói mais:
+
+1. **O alarme funcionou e ninguém atendeu.** Alarme só vale com alguém do
+   outro lado.
+2. **O esquema não estava versionado em lugar nenhum.** Zero `.sql` no
+   repositório. Tabelas, funções e políticas existiam só dentro do projeto
+   ao vivo — o mesmo que acabara de dormir. "Pausado" é recuperável;
+   "perdido" teria sido reconstrução de memória.
+
+Nota de campo que vale guardar: durante o apagão, as correções da v2.15.0
+estavam **em serviço real**. Quem acompanhava em terra via *"servidor fora do
+ar · nova tentativa em 2s"* e **não** era acusado de link inválido aos 30 s.
+Foi para este dia que aquele trabalho serviu.
+
+### O retrato: `supabase/esquema_atual.sql`
+
+Extraído do banco vivo — `pg_get_functiondef`, `information_schema`,
+`pg_policies` — não escrito de cabeça.
+
+E o retrato revelou um desenho **correto**, que merece ser dito: `nav_shares`
+tem RLS ativo e **nenhuma política**. Não é esquecimento, é o ponto. Com RLS
+ligado e sem política, `anon` não lê nem escreve nada diretamente, mesmo
+portando a chave publishable. A única porta são as três funções
+`SECURITY DEFINER` — superfície auditável de três portas, e não uma tabela
+inteira. O `SET search_path TO 'public'` em cada uma fecha o sequestro de
+resolução de nomes.
+
+### A licença: `supabase/licenca.sql` — proposta, **não aplicada**
+
+Segue a convenção da casa, com duas diferenças deliberadas.
+
+**1 · Guarda SHA-256, nunca o token.** `nav_shares` guarda em claro, e lá é
+tolerável — o link expõe a posição de uma viagem. Licença é credencial de
+serviço pago. Com só o resumo, um vazamento do banco entrega hashes inúteis.
+O que o hash **não** protege, dito antes que alguém se iluda: roubo em
+trânsito ou cópia do aparelho. Hash guarda contra vazamento do banco.
+
+E o resumo é calculado por **quem chama**, nunca no SQL — o banco nunca vê o
+token, nem num log de consulta lenta. Consequência aceita: **nem o autor
+recupera um token perdido.** Emite-se outro.
+
+**2 · Grant estreito.** As funções do espelho são de `anon` porque o
+observador chama do navegador. A licença não: quem consulta é a Função
+Netlify, do lado do servidor.
+
+### 🔴 A trava que parecia certa e não trancava nada
+
+A primeira versão trazia:
+
+```sql
+revoke execute on function public.create_license(...) from anon;
+```
+
+Lido, parece correto. **Executado, não faz nada.** O Postgres concede
+`EXECUTE` a `public` por padrão, e revogar de `anon` revoga uma concessão
+direta que nunca existiu. O comando roda sem reclamar.
+
+Medido num Postgres 16 local, com o papel `anon` assumido:
+
+```
+anon → check_license    devolveu 1 linha
+anon → create_license   EMITIU uma licença de 99 dias para si mesmo
+anon → revoke_license   revogou a licença de outra embarcação
+```
+
+**Qualquer portador da chave publishable fabricaria a própria licença.**
+
+A correção é revogar de `public` primeiro, e só então conceder a
+`service_role`.
+
+> **Nenhuma varredura de texto pegaria isto — o texto estava certo.** É o
+> limite duro da varredura, e a razão de o esquema passar a rodar de verdade.
+
+### O CI ganha um terceiro job: `esquema`
+
+Postgres 16 descartável a cada execução, **nunca o banco de produção**. Carrega
+os dois arquivos e roda `tests/esquema_provas.sql`, que prova:
+
+| | |
+|---|---|
+| válida / **vencida** / **revogada** | distinguíveis, com o motivo |
+| hash desconhecido | nenhuma linha |
+| 6 travas de integridade | recusam |
+| reemissão do mesmo hash | **levanta exceção**, não silencia |
+| `anon` → consultar, emitir, revogar, ler a tabela | **negado** |
+| `anon` → `check_nav_share` | **continua aberto** |
+
+A última linha importa tanto quanto as outras: trancar a licença não pode
+trancar junto o que deve ficar aberto.
+
+**Códigos de saída medidos:** `3` com a trava furada, `0` com a correta.
+`ON_ERROR_STOP` é o que faz isso — sem ele o `psql` imprime o erro e sai com
+**zero**. Mesma família do defeito do código de saída da v2.14.0:
+**mecanismo de prova que falha para o lado do verde.**
+
+### Mutações
+
+| Mutação | Acusou |
+|---|---|
+| `revoke from anon` em vez de `from public` | **provas do esquema** (saída 3) |
+| CI roda as provas sem `ON_ERROR_STOP` | 26.2.1 |
+| O job de esquema some do CI | 26.2.1 |
+
+E uma prova que apanhou **o próprio autor**: tentei "vencer" uma licença
+empurrando `expires_at` para o passado, e a trava `expires_at > created_at`
+recusou. A trava tem razão — **encurtar não é vencer**. Para cortar existe
+`revoke_license`, e a distinção é o que permite dizer "revogada" em vez de
+"vencida". Uma licença vencida é uma emitida há 20 dias para valer 15.
+
+### O que esta etapa NÃO faz
+
+- **Nada foi aplicado em produção.** O SQL entra para ser revisado no pull
+  request, que é onde decisão de esquema se discute — não no painel, às
+  pressas, sem registro.
+- **O proxy ainda não exige licença.** É a C4, e ela precisará de uma chave
+  de serviço do Supabase no Netlify: segredo novo é decisão, não detalhe.
+- **O limite de dispositivos é declarado, não imposto.** Está na tabela para
+  a decisão ficar registrada; nada no servidor conta aparelhos ainda.
+  Declarar um limite que não se aplica é aceitável; **fingir que ele se
+  aplica não seria.**
+
+| | v2.17.0 | v2.18.0 |
+|---|---:|---:|
+| Provas do banco | 273 | **274** |
+| Jobs de CI | 2 | **3** |
+| Provas de esquema executáveis | 0 | **4 blocos** |
+| Arquivos `.sql` versionados | **0** | 3 |
+
+---
+
 ## v2.17.0 (01/10/2026) — A VITRINE PARA DE PROMETER UM PORTÃO · ETAPA C1
 
 Autor: Jossian Brito (Charlie Bravo)

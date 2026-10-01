@@ -4123,6 +4123,46 @@ t(S26, '26.2', 'O workflow roda O BANCO E A FUMAÇA — são provas diferentes',
   ok(/playwright install/.test(WF26), 'a fumaça precisa de Chromium e o workflow não o instala');
 });
 
+t(S26, '26.2.1', 'O CI prova o ESQUEMA executando, não varrendo', () => {
+  /* ═══════════════════════════════════════════════════════════════════════
+     POR QUE ESTE JOB EXISTE, E POR QUE ELE É DIFERENTE DOS OUTROS DOIS.
+
+     A primeira versão do supabase/licenca.sql trazia:
+
+         revoke execute on function public.create_license(...) from anon;
+
+     Lido, parece certo. Executado, não faz NADA: o Postgres concede EXECUTE
+     a `public` por padrão, e revogar de `anon` revoga uma concessão direta
+     que nunca existiu. Medido num Postgres 16, com o papel anon assumido, o
+     `anon` EMITIU uma licença de 99 dias para si mesmo.
+
+     Varredura de texto NÃO pegaria — o texto estava correto. É o limite
+     duro da varredura, e a razão de o esquema rodar de verdade.
+
+     Esta prova é, ela própria, uma varredura — e sabe disso. Ela não
+     verifica o esquema; verifica que ALGUÉM o verifica.
+     ═══════════════════════════════════════════════════════════════════════ */
+  const WF = semComentariosToml(fs26.readFileSync(WF26_CAMINHO, 'utf8'));
+  ok(/esquema:/.test(WF), 'o CI não tem job de esquema');
+  ok(/image:\s*postgres/.test(WF), 'o job de esquema não sobe um Postgres');
+  ok(/tests\/esquema_provas\.sql/.test(WF), 'o CI não executa as provas do esquema');
+  ok(/supabase\/licenca\.sql/.test(WF), 'o CI não carrega o arquivo da licença');
+
+  /* ON_ERROR_STOP é o que transforma prova falha em job vermelho: sem ele o
+     psql imprime o erro e sai com ZERO. Mesma família do defeito do código
+     de saída da v2.14.0 — mecanismo de prova que falha para o lado do verde. */
+  ok(/ON_ERROR_STOP=1 -f tests\/esquema_provas\.sql/.test(WF),
+     'as provas do esquema rodam sem ON_ERROR_STOP — falhariam em silêncio, com saída zero');
+
+  /* E nunca no banco do cliente. */
+  ok(!/supabase\.co/.test(WF), 'o CI aponta para um banco hospedado — prova de esquema não toca produção');
+
+  const prov = fs26.readFileSync(ROOT + '/tests/esquema_provas.sql', 'utf8');
+  ok(/anon EMITE a própria licença/.test(prov),
+     'a prova do defeito real de 01/10/2026 sumiu do arquivo');
+  return { detail: `${prov.split('\n').length} linhas de prova de esquema` };
+});
+
 t(S26, '26.3', 'FAIL derruba a obra — o defeito que quase passou despercebido', () => {
   /* Esta é a prova que não existia em 21/09/2026 e cuja ausência deixou o
      banco de provas sair com código 0 mesmo falhando. */
