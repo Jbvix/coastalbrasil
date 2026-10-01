@@ -33,6 +33,21 @@
 \set ON_ERROR_STOP on
 set client_min_messages to warning;
 
+--  ⚠️ TUDO O QUE É PREPARAÇÃO VAI PARA O LIXO, e isto quebrou na primeira
+--  execução em CI. O arquivo de saída recebe o stdout INTEIRO do psql, e o
+--  `select public.revoke_license(...)` lá embaixo imprime o resultado dele:
+--
+--      SyntaxError: Unexpected token 'r', " revoke_lic"... is not valid JSON
+--
+--  O `-q` da linha de comando silencia INSERT e CREATE, mas NÃO silencia o
+--  resultado de um select — e revogar, aqui, é um select.
+--
+--  Redirecionar explicitamente é mais seguro que confiar em quais comandos
+--  o `-q` cala: o arquivo passa a conter exatamente uma coisa, por
+--  construção. Separar a tubulação de descarga da de serviço, em vez de
+--  contar com a válvula certa estar fechada.
+\o /dev/null
+
 truncate table public.licenses;
 
 --  1 · VÁLIDA — emitida agora, vence em 7 dias.
@@ -51,6 +66,9 @@ values (repeat('b', 64), 'RT ATLANTICO', 'wa:5585900000000',
 insert into public.licenses (token_hash, vessel, contact, expires_at, devices)
 values (repeat('c', 64), 'BRAVO DOIS', 'wa:5585911111111', now() + interval '7 days', 5);
 select public.revoke_license(repeat('c', 64));
+
+--  A partir daqui, e SÓ a partir daqui, a saída volta para o arquivo.
+\o
 
 --  As linhas, como o serviço as recebe. `json_agg` para a parte 2 ler sem
 --  precisar de biblioteca de banco — o banco de provas desta casa não tem

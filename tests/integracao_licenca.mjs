@@ -36,7 +36,20 @@ import { vereditoDaLinha, ESTADO } from '../netlify/lib/licenca.mjs';
 const arquivo = process.argv[2];
 if (!arquivo) { console.error('uso: node tests/integracao_licenca.mjs <linhas.json>'); process.exit(2); }
 
-const linhas = JSON.parse(readFileSync(arquivo, 'utf8'));
+/* Diagnóstico antes do JSON.parse, porque a primeira execução desta prova
+   em CI morreu com um `SyntaxError` cru que não dizia o que havia acontecido:
+   o SQL tinha vazado o resultado de um `select` de preparação para dentro do
+   arquivo. Erro de encanamento disfarçado de erro de dados.
+
+   Nomear o defeito custa cinco linhas e economiza uma leitura de log. */
+const bruto = readFileSync(arquivo, 'utf8').trim();
+if (!bruto.startsWith('{')) {
+  console.error('\n✘ O arquivo não começa com JSON. O SQL de preparação vazou saída ' +
+                'para o stdout — confira os `\\o` em tests/integracao_licenca.sql.');
+  console.error('  Primeiros 120 caracteres recebidos: ' + JSON.stringify(bruto.slice(0, 120)));
+  process.exit(1);
+}
+const linhas = JSON.parse(bruto);
 const agora = Date.now();
 let falhas = 0;
 
