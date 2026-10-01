@@ -12,11 +12,45 @@ const { calculateDistance, calculateBearing, calculateVisibility, effectiveRange
 let results = [];
 function t(suite, id, desc, fn) {
   let status = 'PASS', detail = '';
-  try { const r = fn(); if (r && r.warn) { status = 'WARN'; detail = r.warn; } else if (r && r.detail) detail = r.detail; }
+  try {
+    const r = fn();
+    /* PROVA ASSÍNCRONA PASSARIA SEMPRE.                            (v2.16.0)
+       Este arranjo é síncrono: ele chama fn() e OLHA O RETORNO. Uma prova
+       declarada `async` devolve uma Promise — que não é `{warn}` nem
+       `{detail}`, e cujo `throw` acontece depois, longe do try. Resultado:
+       verde garantido, falhe o que falhar. É a pior espécie de defeito num
+       banco de provas, porque mente para o lado de "está tudo bem".
+       Descoberto ao tentar provar aqui o handler do proxy, que é assíncrono.
+       A saída não é aceitar Promise — é recusá-la e mandar a prova para onde
+       o assíncrono tem casa: a fumaça. */
+    if (r && typeof r.then === 'function') {
+      /* Neutraliza a Promise ANTES de reprovar. Se ela rejeitar sozinha, o
+         Node derruba o processo por rejeição não tratada — e o relatório
+         inteiro morre com ele. Já aconteceu ao escrever a prova 27.9: a
+         falha era marcada corretamente e ninguém chegava a ler, porque o
+         processo caía antes de imprimir. Reprovar sem relatório é quase tão
+         inútil quanto aprovar sem verificar. */
+      try { r.catch(() => {}); } catch (ignorado) { /* thenable sem catch */ }
+      throw new Error('prova assíncrona: este banco é síncrono e daria verde sem verificar nada. ' +
+                      'Prove a DECISÃO aqui (pura) e o EFEITO na fumaça.');
+    }
+    if (r && r.warn) { status = 'WARN'; detail = r.warn; } else if (r && r.detail) detail = r.detail;
+  }
   catch (e) { status = 'FAIL'; detail = e.message; }
   results.push({ suite, id, desc, status, detail });
 }
+/* eq() É NUMÉRICA — e calava sobre texto.                            (v2.16.0)
+   `Math.abs('abc' - 'xyz')` é NaN, e `NaN > tol` é FALSO. Logo, qualquer
+   eq() comparando textos passava SEMPRE, quaisquer que fossem eles. Uma
+   mutação do Sprint A (trocar o primeiro pelo último x-forwarded-for, que é
+   o forjável) sobreviveu exatamente por isso.
+   Varrido o banco inteiro após o endurecimento: uma única prova usava eq()
+   sobre texto — a recém-escrita. A armadilha existia e ninguém a tinha
+   pisado. Fica fechada antes que alguém pise. */
 function eq(a, b, tol, msg) {
+  if (!Number.isFinite(Number(a)) || !Number.isFinite(Number(b))) {
+    throw new Error(`${msg || ''} eq() é NUMÉRICO: comparar "${a}" com "${b}" dá NaN e NaN>tol é falso — passaria sempre. Use ok(a === b, …).`);
+  }
   if (Math.abs(a - b) > tol) throw new Error(`${msg || ''} esperado ${b} ±${tol}, obtido ${a}`);
 }
 function ok(cond, msg) { if (!cond) throw new Error(msg); }
@@ -3958,6 +3992,233 @@ t(S26, '26.5', 'O workflow não pede segredo e usa a menor permissão', () => {
   const SMOKE = semComentarios(fs26.readFileSync(ROOT + '/tests/smoke.js', 'utf8'));
   ok(/CESIUM_ION_TOKEN\s*=\s*""/.test(SMOKE),
      'a fumaça não serve mais um token Cesium vazio — passaria a depender de segredo');
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SUÍTE 27 · GUARDA DO PROXY (Sprint A do controle de acesso)      (v2.16.0)
+   ═══════════════════════════════════════════════════════════════════════════
+
+   POR QUE ESTA SUÍTE É DIFERENTE DAS OUTRAS SOBRE O PROXY
+
+   Até aqui, tudo que se afirmava sobre `netlify/functions/tempo.mjs` era
+   provado por VARREDURA DE TEXTO (suíte 21): regex no código-fonte. É a forma
+   mais fraca que existe, e esta bancada já apanhou cinco vezes de comentário
+   respondendo por código.
+
+   A guarda é a decisão com dinheiro em jogo. Varrer um `if` não prova que ele
+   decide certo — prova que ele está escrito. Então aqui a guarda é
+   EXECUTADA: as decisões moram em `netlify/lib/guarda.mjs`, que é ESM puro,
+   e o Node 22 permite `require()` de ESM sem alarde.
+
+   Separar decisão de efeito, de novo: as funções puras decidem e são provadas
+   número a número; o `tempo.mjs` só liga os fios, e disso cuidam a 27.7
+   (ordem, por varredura) e os passos da FUMAÇA (o handler de verdade).
+   ═══════════════════════════════════════════════════════════════════════════ */
+const S27 = '27 · Guarda do proxy';
+let G27 = null, G27ERRO = '';
+try { G27 = require(ROOT + '/netlify/lib/guarda.mjs'); }
+catch (e) { G27ERRO = (e && e.message) || String(e); }
+
+t(S27, '27.0', 'A guarda é executável pelo banco de provas', () => {
+  /* Se esta cair, TODAS as 27.x abaixo caem juntas, e é importante que a
+     causa apareça aqui e não disfarçada oito vezes. `require()` de ESM exige
+     Node >= 22.12; o CI fixa node-version '22'. */
+  ok(G27, 'não foi possível carregar netlify/lib/guarda.mjs — ' + G27ERRO);
+  ok(typeof G27.origemDeConfianca === 'function', 'sem origemDeConfianca');
+  return { detail: 'guarda v' + G27.GUARDA_VERSAO + ' · Node ' + process.version };
+});
+
+t(S27, '27.1', 'Quem pode chamar: a tabela inteira, medida', () => {
+  const lista = G27.GUARDA_HOSTS_PADRAO;
+  const h = o => (n => o[n]);                     // vira a função (nome)=>valor
+  const dec = o => G27.origemDeConfianca(h(o), lista);
+
+  /* O navegador garante o Sec-Fetch-Site: é nome de cabeçalho PROIBIDO, e
+     nenhuma página consegue escrevê-lo por JavaScript. */
+  ok(dec({ 'sec-fetch-site': 'same-origin' }).ok, 'a própria página foi barrada — isto derruba o app');
+  ok(!dec({ 'sec-fetch-site': 'cross-site' }).ok, 'site de terceiro passou: pendura o endpoint e gasta a chave');
+  ok(!dec({ 'sec-fetch-site': 'same-site' }).ok, 'subdomínio irmão passou — não é o aplicativo');
+  ok(!dec({ 'sec-fetch-site': 'none' }).ok, 'endereço digitado na barra passou');
+
+  /* O tablete velho, sem Sec-Fetch-*: cai para a lista de hosts. */
+  ok(dec({ referer: 'https://coastalbrasil.netlify.app/app.html' }).ok,
+     'navegador antigo da própria origem foi barrado');
+  ok(dec({ referer: 'https://deploy-preview-31--coastalbrasil.netlify.app/app.html' }).ok,
+     'Deploy Preview foi barrado — o CI e a conferência de bordo param');
+  ok(!dec({ referer: 'https://site-de-outro.com/pagina.html' }).ok, 'referer de fora passou');
+  ok(!dec({}).ok, 'curl cru, sem cabeçalho nenhum, passou');
+
+  /* Sec-Fetch-Site MANDA sobre o Referer: referer forjado não resgata uma
+     chamada que o navegador já declarou de fora. */
+  ok(!dec({ 'sec-fetch-site': 'cross-site',
+            referer: 'https://coastalbrasil.netlify.app/app.html' }).ok,
+     'referer forjado venceu o veredito do navegador');
+});
+
+t(S27, '27.2', 'Curinga só serve para Deploy Preview, e "*" é recusado', () => {
+  const P = G27.hostPermitido;
+  ok(P('deploy-preview-7--coastalbrasil.netlify.app', ['*--coastalbrasil.netlify.app']), 'preview barrado');
+  ok(P('coastalbrasil.netlify.app', ['*--coastalbrasil.netlify.app']), 'o host base devia valer');
+  ok(!P('coastalbrasil.netlify.app.mau.com', ['coastalbrasil.netlify.app']),
+     'sufixo malicioso passou — host tem de bater inteiro');
+  ok(!P('--coastalbrasil.netlify.app', ['*--coastalbrasil.netlify.app']),
+     'curinga casou com prefixo VAZIO');
+  /* Lista que aceita tudo não é lista. Um dia alguém configuraria '*' sem
+     perceber que desligou a guarda; melhor que não funcione. */
+  ok(!P('qualquer.coisa.com', ['*']), 'o curinga solto desligou a guarda');
+  ok(!P('', ['coastalbrasil.netlify.app']), 'host vazio passou');
+});
+
+t(S27, '27.3', 'Limite por chamador: janela DESLIZANTE, não balde por hora', () => {
+  const e = G27.novoEstado();
+  const T0 = Date.UTC(2026, 9, 1, 10, 0, 0), JAN = 3600000, TETO = 60;
+  for (let i = 0; i < TETO; i++) {
+    const r = G27.limiteDeTaxa(e, T0 + i, 'ip-a', TETO, JAN);
+    ok(r.ok, `a ${i + 1}ª chamada legítima foi barrada`);
+  }
+  ok(!G27.limiteDeTaxa(e, T0 + 999, 'ip-a', TETO, JAN).ok, `a ${TETO + 1}ª passou dentro da janela`);
+  /* Outro chamador não herda a punição do primeiro. */
+  ok(G27.limiteDeTaxa(e, T0 + 1000, 'ip-b', TETO, JAN).ok, 'um IP barrou o outro');
+  /* O ponto da janela deslizante: no balde por hora cheia, 60 às 10h59 e
+     outras 60 às 11h01 passariam. Aqui a mais velha precisa CADUCAR. */
+  ok(!G27.limiteDeTaxa(e, T0 + JAN - 1, 'ip-a', TETO, JAN).ok, 'liberou antes de a janela correr');
+  ok(G27.limiteDeTaxa(e, T0 + JAN + 2, 'ip-a', TETO, JAN).ok, 'não liberou depois de a mais velha caducar');
+
+  /* ─────────────────────────────────────────────────────────────────────
+     O CASO QUE DISTINGUE as duas implementações — e que faltava.
+
+     Uma mutação trocou a janela deslizante por balde de hora cheia e
+     SOBREVIVEU a tudo acima. O motivo é constrangedor e vale registrar: as
+     chamadas de prova começavam numa hora UTC cravada, que é exatamente a
+     borda do balde. Nessa posição as duas implementações concordam em todos
+     os pontos medidos. A prova confirmava o código que eu tinha em mente em
+     vez de separar um comportamento do outro.
+
+     O abuso que a janela deslizante existe para impedir é este: encostar no
+     teto no FIM de uma hora e recomeçar no COMEÇO da seguinte — 120 chamadas
+     em 100 milissegundos. No balde, passa. Na janela, não.
+     ───────────────────────────────────────────────────────────────────── */
+  const e2 = G27.novoEstado();
+  const fim = T0 + JAN - 100;                 // 100 ms antes da virada da hora
+  for (let i = 0; i < TETO; i++) {
+    ok(G27.limiteDeTaxa(e2, fim + i, 'ip-c', TETO, JAN).ok, `a ${i + 1}ª no fim da hora foi barrada`);
+  }
+  ok(!G27.limiteDeTaxa(e2, T0 + JAN + 1, 'ip-c', TETO, JAN).ok,
+     'cruzou a hora e liberou outras 60: isto é balde por hora cheia, não janela deslizante — ' +
+     '120 chamadas em 100 ms passariam');
+});
+
+t(S27, '27.4', 'O fusível conta o que a FATURA conta, e abre antes de gastar', () => {
+  const e = G27.novoEstado();
+  const T = Date.UTC(2026, 9, 1, 3, 0, 0), TETO = 10;
+  /* 2 por busca, porque são duas chamadas lá fora: mar e ar. */
+  for (let i = 0; i < 5; i++) ok(G27.pedirGasto(e, T, 2, TETO).ok, `busca ${i + 1} barrada antes do teto`);
+  const estourou = G27.pedirGasto(e, T, 2, TETO);
+  ok(!estourou.ok, 'o fusível não abriu no teto');
+  eq(estourou.usados, TETO, 0, 'contagem errada ao abrir');
+  /* E, aberto, NÃO pode continuar contando: gasto recusado não aconteceu. */
+  eq(e.gasto.n, TETO, 0, 'o fusível contou um gasto que ele próprio recusou');
+  /* Vira o dia UTC e o fusível rearma sozinho. */
+  const amanha = T + 24 * 3600000;
+  ok(G27.pedirGasto(e, amanha, 2, TETO).ok, 'o fusível não rearmou na virada do dia');
+  eq(e.gasto.n, 2, 0, 'a contagem do dia novo não começou do zero');
+  /* O dia é UTC de propósito: a função pode mudar de região, e fusível que
+     zera em horário diferente conforme o servidor ninguém audita. */
+  ok(/^\d{4}-\d{2}-\d{2}$/.test(G27.diaUtc(T)), 'diaUtc não devolve AAAA-MM-DD');
+  ok(G27.diaUtc(Date.UTC(2026, 9, 1, 23, 59)) !== G27.diaUtc(Date.UTC(2026, 9, 2, 0, 1)),
+     'a virada de dia UTC não é detectada');
+});
+
+t(S27, '27.5', 'Configuração inválida cai no padrão, nunca desliga a guarda', () => {
+  const C = G27.lerConfig;
+  eq(C({}).tetoDiario, G27.GUARDA_TETO_DIARIO, 0, 'sem ambiente, o padrão não valeu');
+  eq(C({ TEMPO_TETO_DIARIO: 'abc' }).tetoDiario, G27.GUARDA_TETO_DIARIO, 0,
+     'texto virou teto — um dia isto seria teto zero ou infinito');
+  eq(C({ TEMPO_TETO_DIARIO: '0' }).tetoDiario, G27.GUARDA_TETO_DIARIO, 0, 'zero virou teto e travaria tudo');
+  eq(C({ TEMPO_TETO_DIARIO: '-5' }).tetoDiario, G27.GUARDA_TETO_DIARIO, 0, 'negativo virou teto');
+  eq(C({ TEMPO_TETO_DIARIO: '500' }).tetoDiario, 500, 0, 'valor legítimo foi ignorado');
+  eq(C({ TEMPO_LIMITE_IP: '10' }).limiteIp, 10, 0, 'limite por IP não é configurável');
+  /* Domínio próprio entra por ambiente, SEM perder os padrões. */
+  const cfg = C({ TEMPO_HOSTS: 'coastal.com.br , www.coastal.com.br' });
+  ok(cfg.hosts.includes('coastal.com.br') && cfg.hosts.includes('www.coastal.com.br'),
+     'host do ambiente não entrou');
+  ok(cfg.hosts.includes('coastalbrasil.netlify.app'), 'o host padrão foi perdido ao acrescentar outro');
+});
+
+t(S27, '27.6', 'Quem é o chamador: o IP do Netlify manda, e o encadeado não mente', () => {
+  const h = o => (n => o[n]);
+  /* COMPARAÇÃO DE TEXTO VAI DE ok(), NÃO DE eq().                  (v2.16.0)
+     Escrevi estas três com eq() e a mutação do x-forwarded-for sobreviveu:
+     eq() é numérica, e sobre texto vira NaN > 0, que é falso. Passava sempre. */
+  const IP = o => G27.enderecoDoCliente(h(o));
+  ok(IP({ 'x-nf-client-connection-ip': '200.1.2.3' }) === '200.1.2.3',
+     'o IP real do Netlify foi ignorado');
+  /* Do x-forwarded-for só vale o PRIMEIRO: os seguintes são acrescentados por
+     quem repassou e podem ser inventados pelo próprio cliente. */
+  ok(IP({ 'x-forwarded-for': '9.9.9.9, 10.0.0.1, 172.16.0.1' }) === '9.9.9.9',
+     'pegou um endereço forjável da cadeia: o cliente escolheria o próprio balde de limite');
+  ok(IP({ 'x-nf-client-connection-ip': '200.1.2.3', 'x-forwarded-for': '1.1.1.1' }) === '200.1.2.3',
+     'o cabeçalho forjável venceu o confiável');
+  ok(G27.enderecoDoCliente(h({})) === 'desconhecido', 'sem IP, devolveu vazio em vez de chave estável');
+});
+
+t(S27, '27.7', 'No proxy, a guarda vem ANTES do gasto e a recusa não é cacheada', () => {
+  /* VARREDURA DE CÓDIGO LÊ CÓDIGO: os comentários desta emenda citam
+     'no-store', 'fusível' e 'pedirGasto' de propósito, para explicar. */
+  const P = semComentarios(fs21.readFileSync(ROOT + '/netlify/functions/tempo.mjs', 'utf8'));
+
+  const iOrigem  = P.indexOf('origemDeConfianca(');
+  const iTaxa    = P.indexOf('limiteDeTaxa(');
+  const iFusivel = P.indexOf('pedirGasto(');
+  ok(iOrigem > 0, 'o proxy não consulta a origem');
+  ok(iTaxa > 0, 'o proxy não aplica limite por chamador');
+  ok(iFusivel > 0, 'o proxy não tem fusível');
+  ok(iOrigem < iTaxa, 'a origem é verificada depois do limite de taxa');
+
+  /* O fusível tem de ser pedido ANTES da chamada que custa. Contar depois do
+     gasto é contar o que já queimou. */
+  const iChamada = P.indexOf('Promise.allSettled');
+  ok(iChamada > 0, 'as duas buscas em paralelo sumiram');
+  ok(iFusivel < iChamada, 'o fusível é pedido DEPOIS de chamar o Open-Meteo');
+
+  /* E a armadilha que daria apagão: recusa herdando o cache de 15 min faria a
+     CDN devolver 403 a quem tem direito por até 75 minutos. */
+  ok(/no-store/.test(P), 'as recusas não desligam o cache');
+  const bloco403 = P.slice(iOrigem, iOrigem + 400);
+  ok(/403/.test(bloco403) && /semCache/.test(bloco403),
+     'a recusa de origem não usa cabeçalho sem cache');
+  ok(!/status: 403, headers: cabecalhos/.test(P), 'uma recusa ainda sai com o cabeçalho cacheável');
+});
+
+t(S27, '27.8', 'O guarda não vaza memória numa instância de vida longa', () => {
+  /* Sem varredura, o Map de chamadores cresce para sempre — vazamento lento,
+     do tipo que só se descobre quando a função morre por memória às 3h da
+     manhã, que é quando o rebocador está no mar. */
+  const e = G27.novoEstado();
+  const T = Date.UTC(2026, 9, 1, 0, 0, 0), JAN = 3600000;
+  for (let i = 0; i < 500; i++) G27.limiteDeTaxa(e, T, 'ip-' + i, 60, JAN);
+  eq(e.porCliente.size, 500, 0, 'nem registrou os chamadores');
+  const removidos = G27.limparOciosos(e, T + JAN + 1, JAN);
+  eq(removidos, 500, 0, 'a varredura não removeu os ociosos');
+  eq(e.porCliente.size, 0, 0, 'o Map continuou crescendo');
+  /* Mas quem ainda está dentro da janela NÃO pode ser esquecido, senão o
+     limite se reinicia sozinho e deixa de limitar. */
+  G27.limiteDeTaxa(e, T, 'ip-vivo', 60, JAN);
+  G27.limparOciosos(e, T + 10, JAN);
+  eq(e.porCliente.size, 1, 0, 'a varredura apagou um chamador ativo e zerou o limite dele');
+});
+
+t(S27, '27.9', 'O banco recusa prova assíncrona, que passaria sempre', () => {
+  /* Descoberto nesta sprint: `t()` é síncrono e olha o RETORNO de fn(). Uma
+     prova `async` devolve Promise — nem {warn} nem {detail} — e o throw dela
+     acontece depois, longe do try. Verde garantido, falhe o que falhar.
+     É a pior espécie de defeito num banco de provas: mente para o lado bom. */
+  const antes = results.length;
+  t('·sonda·', 'sonda', 'prova assíncrona de mentira', async () => { throw new Error('nunca vista'); });
+  const sonda = results.pop();              // tira a sonda do relatório final
+  eq(results.length, antes, 0, 'a sonda ficou no relatório');
+  ok(sonda.status === 'FAIL', 'uma prova assíncrona que falha foi dada como aprovada');
+  ok(/assíncrona/.test(sonda.detail), 'a mensagem não explica por que foi recusada');
 });
 
 /* ═══ RELATÓRIO ═══ */

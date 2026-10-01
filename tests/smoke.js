@@ -125,6 +125,62 @@ const srv = http.createServer((req, res) => {
   const passo = [];
   const ok = (nome, cond, extra) => passo.push({ nome, ok: !!cond, extra: extra || '' });
 
+  /* ═══════════════════════════════════════════════════════════════════════
+     A GUARDA DO PROXY, NO HANDLER DE VERDADE.                    (v2.16.0)
+
+     A suíte 27 prova as DECISÕES da guarda, uma a uma, com números. O que
+     ela não pode provar é a LIGAÇÃO — se o `tempo.mjs` chama as decisões, na
+     ordem certa, e devolve o que deve. Isso é efeito, é assíncrono, e a
+     prova 27.9 passou a recusar assíncrono no banco justamente para que
+     acabasse aqui em vez de virar verde falso lá.
+
+     Aqui o handler é invocado como o Netlify o invocaria: um Request real,
+     com os cabeçalhos que cada tipo de chamador mandaria.
+
+     SEM REDE: a chave é removida do ambiente antes de importar, e o caminho
+     autorizado para em 502 ("chave não configurada") ANTES de qualquer
+     chamada ao Open-Meteo. Uma prova de fumaça não gasta a conta de ninguém.
+     É por isso também que o 502 é SINAL DE APROVAÇÃO nos dois casos
+     legítimos: ele só é alcançável depois de passar pela guarda inteira.
+     ═══════════════════════════════════════════════════════════════════════ */
+  delete process.env.OPEN_METEO_API_KEY;
+  const { default: proxy } = await import('../netlify/functions/tempo.mjs');
+  const bater = (h) => proxy(new Request(
+    'https://coastalbrasil.netlify.app/.netlify/functions/tempo?lat=-23&lng=-42', { headers: h }));
+  const codigo = async (h) => { const r = await bater(h); return { s: r.status, c: r.headers.get('cache-control') }; };
+
+  const curl     = await codigo({});
+  const terceiro = await codigo({ 'sec-fetch-site': 'cross-site',  'x-nf-client-connection-ip': '5.5.5.5' });
+  const barra    = await codigo({ 'sec-fetch-site': 'none',        'x-nf-client-connection-ip': '6.6.6.6' });
+  const foraRef  = await codigo({ referer: 'https://outro.com/x',  'x-nf-client-connection-ip': '7.7.7.7' });
+  const appProp  = await codigo({ 'sec-fetch-site': 'same-origin', 'x-nf-client-connection-ip': '1.1.1.1' });
+  const velho    = await codigo({ referer: 'https://coastalbrasil.netlify.app/app.html',
+                                  'x-nf-client-connection-ip': '2.2.2.2' });
+
+  ok('Proxy recusa curl cru', curl.s === 403, 'HTTP ' + curl.s);
+  ok('Proxy recusa site de terceiro', terceiro.s === 403, 'HTTP ' + terceiro.s);
+  ok('Proxy recusa endereço digitado na barra', barra.s === 403, 'HTTP ' + barra.s);
+  ok('Proxy recusa referer de fora', foraRef.s === 403, 'HTTP ' + foraRef.s);
+  /* O caso que importa mais que todos os outros juntos: se este falhar, a
+     guarda trancou o passadiço junto com o invasor. */
+  ok('Proxy ATENDE o próprio aplicativo', appProp.s !== 403, 'HTTP ' + appProp.s + ' (403 = app trancado fora)');
+  ok('Proxy atende o tablete velho (sem Sec-Fetch)', velho.s !== 403, 'HTTP ' + velho.s);
+  /* Recusa cacheada pela CDN devolveria 403 a quem tem direito por até 75
+     min — apagão auto-infligido, pior que o abuso que se queria evitar. */
+  ok('Recusa não é cacheável', curl.c === 'no-store' && terceiro.c === 'no-store',
+     `${curl.c} / ${terceiro.c}`);
+
+  /* O laço de abuso, com origem perfeitamente forjada: a guarda de origem
+     deixa passar, e é o LIMITE que precisa cortar. */
+  let passaram = 0, primeira429 = 0;
+  for (let i = 1; i <= 65; i++) {
+    const r = await bater({ 'sec-fetch-site': 'same-origin', 'x-nf-client-connection-ip': '9.9.9.9' });
+    if (r.status === 429) { if (!primeira429) primeira429 = i; } else passaram++;
+  }
+  ok('Laço de abuso é cortado no teto', primeira429 === 61,
+     `passaram ${passaram}, primeira recusa na ${primeira429}ª (esperado 61ª)`);
+
+
   await page.goto('http://localhost:8099/app.html', { waitUntil: 'load', timeout: 30000 });
   await page.waitForTimeout(3500);
 

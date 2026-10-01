@@ -4,7 +4,7 @@
 npm test
 ```
 
-259 provas em 26 suítes, executadas sobre as **funções reais** extraídas do
+269 provas em 27 suítes, executadas sobre as **funções reais** extraídas do
 `app.html` e dos módulos por contagem de chaves — não sobre uma
 reimplementação. Sem dependências: Node puro.
 
@@ -46,7 +46,7 @@ v2.2.0 isso deixou de ser hipotético.
 
 `npm run smoke` abre o app de verdade e percorre o fluxo completo — configurar
 viagem, criar waypoints, apagar o primeiro, exportar GPX, gerar relatório — e
-falha se aparecer **um único** erro de console. São 71 passos.
+falha se aparecer **um único** erro de console. São 79 passos.
 
 Um deles confere a **premissa** das provas do banner — o canal de telemetria
 é bloqueado de propósito (`routeWebSocket`), porque `route()` intercepta HTTP e
@@ -93,3 +93,19 @@ versionado, então no CI os hashes SRI são conferidos contra os bytes reais do
 unpkg e do jsdelivr — mais severo que aqui. Em troca, uma CDN fora do ar deixa
 a fumaça vermelha sem culpa do código; um passo de conferência prévia dá nome
 a essa falha antes que ela se disfarce de regressão.
+
+## Duas armadilhas do próprio banco, fechadas na v2.16.0
+
+**Prova assíncrona passava sempre.** `t()` é síncrono e olha o retorno de
+`fn()`. Uma prova `async` devolve Promise — nem `{warn}` nem `{detail}` — e o
+`throw` acontece depois, longe do `try`. Agora `t()` **recusa** Promise (e a
+neutraliza antes, senão a rejeição derruba o processo antes de o relatório
+sair). Prove a **decisão** aqui, o **efeito** na fumaça.
+
+**`eq()` sobre texto passava sempre.** É numérica: `Math.abs('a' - 'b')` é
+`NaN`, e `NaN > tol` é falso. Para texto, use `ok(a === b, …)`. A `eq()` agora
+recusa o que não for número e diz o porquê.
+
+Os dois são da mesma família: **mecanismo de prova que falha para o lado do
+verde** — pior que código errado, porque desliga o instrumento que encontraria
+o código errado.
