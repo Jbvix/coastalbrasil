@@ -446,6 +446,168 @@ function definirLicenca(codigo) {
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   DIAGNÓSTICO HONESTO DA FALTA DE PREVISÃO                    (C5 · v2.21.0)
+
+   ── O DEFEITO QUE ESTA ETAPA FECHA ────────────────────────────────────────
+
+   Até a v2.20.0, `linhaDeTempoNoPainel()` devolvia STRING VAZIA quando não
+   havia dado. O comandante via SILÊNCIO — e silêncio é a pior mensagem
+   possível, porque ele não tem como distinguir:
+
+     · falta licença (ele resolve, por WhatsApp, em minutos);
+     · a cota diária do autor esgotou (ele NÃO resolve, e não é culpa dele);
+     · o Open-Meteo caiu (ninguém resolve, só esperar);
+     · o aparelho está sem rede (ele resolve, subindo ao convés).
+
+   São quatro ações completamente diferentes atrás da MESMA tela em branco. O
+   comandante que não sabe qual delas é a sua fica mexendo no aparelho quando
+   devia mandar uma mensagem, ou esperando quando devia agir.
+
+   É o mesmo princípio de um alarme de praça de máquinas: não basta tocar, tem
+   de dizer QUAL grupo disparou. Um painel com uma única lâmpada vermelha
+   obriga o chefe a abrir tudo para descobrir o que já poderia estar escrito.
+
+   ── O QUE A TABELA FAZ, QUE É MAIS QUE TRADUZIR CÓDIGO HTTP ───────────────
+
+   Cada entrada carrega, além do texto, a ATRIBUIÇÃO DE CULPA — e é esse campo
+   que decide se o comandante age ou espera:
+
+     'licenca'  → é dele, e tem solução imediata;
+     'autor'    → é do autor do aplicativo; mexer no aparelho não ajuda;
+     'servico'  → é de terceiro; ninguém a bordo resolve;
+     'aparelho' → é do aparelho/rede dele.
+
+   Dizer "não é o seu aparelho" quando não é parece detalhe de redação. Não é:
+   é o que impede meia hora de diagnóstico inútil no passadiço, de madrugada.
+   O espelho já aprendeu isso (ver MIRROR_DIAG em app.html) e esta tabela segue
+   deliberadamente o mesmo molde, para o aplicativo falar UMA língua.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const TEMPO_DIAG = {
+  'licenca': {
+    rotulo: 'licença necessária',
+    culpa: 'licenca',
+    dica: '🔑 A previsão de tempo e o espelhamento dependem de licença de serviço. ' +
+          'O resto do aplicativo — rota, faróis, ETA, combustível, GPX, 3D e a Iara — ' +
+          'continua funcionando. Peça a licença no WhatsApp e cole em ⚙️ Configurar.',
+    link: 'https://wa.me/5585997737230'
+  },
+  'cota': {
+    rotulo: 'cota diária esgotada',
+    culpa: 'autor',
+    /* O teto diário é do AUTOR, não da embarcação. Sem esta frase, o comandante
+       passaria a noite achando que estourou algum limite dele. */
+    dica: '📉 A cota diária do serviço de previsão, custeada pelo autor, acabou por hoje. ' +
+          'NÃO é o seu aparelho nem a sua licença, e não há nada a fazer a bordo — ' +
+          'volta a funcionar na virada do dia (UTC).'
+  },
+  'taxa': {
+    rotulo: 'muitas consultas',
+    culpa: 'aparelho',
+    dica: '⏱️ Este aparelho (ou a rede que ele divide) pediu previsão demais na última hora. ' +
+          'Volta sozinho em cerca de 15 minutos. Se estiverem vários aparelhos no mesmo ' +
+          'sinal de satélite, deixe só um buscando.'
+  },
+  'servico': {
+    rotulo: 'serviço fora do ar',
+    culpa: 'servico',
+    dica: '🛠️ O provedor de previsão não está respondendo. Não é o seu aparelho, não é a sua ' +
+          'licença e não é a cota. O aplicativo tenta de novo sozinho; o último dado conhecido ' +
+          'continua na tela, com a idade dele.'
+  },
+  'sem-chave': {
+    rotulo: 'serviço não configurado',
+    culpa: 'autor',
+    /* Estado anômalo: o proxy está no ar mas sem a chave paga. É falha de
+       implantação do autor, e o comandante precisa saber que é isso, para
+       avisar — não para investigar. */
+    dica: '🧰 O servidor de previsão está no ar, mas sem a chave do provedor. ' +
+          'É falha de configuração do aplicativo, não sua — avise o autor.'
+  },
+  'origem': {
+    rotulo: 'chamada recusada',
+    culpa: 'autor',
+    dica: '🚧 O servidor recusou a chamada por origem. Isso não deveria acontecer dentro do ' +
+          'aplicativo — avise o autor, porque é defeito de configuração.'
+  },
+  'sem-rede': {
+    rotulo: 'sem internet',
+    culpa: 'aparelho',
+    dica: '📵 O aparelho está sem conexão. Toda a navegação continua funcionando offline; ' +
+          'só a previsão depende de rede. Volta sozinha quando o sinal voltar.'
+  },
+  'coordenada': {
+    rotulo: 'posição inválida',
+    culpa: 'aparelho',
+    dica: '📍 A posição enviada não é válida — normalmente é o GPS ainda sem fixo. ' +
+          'Aguarde o primeiro fixo.'
+  }
+};
+
+/*
+classificarFalhaDeTempo({status, motivo, online}) — PURA, e é o coração da C5.
+
+Traduz o que o servidor respondeu na chave do diagnóstico. Recebe `online` por
+parâmetro em vez de ler `navigator.onLine` aqui dentro, para que a prova possa
+simular o aparelho sem rede sem mexer no navegador.
+
+A ORDEM DAS PERGUNTAS importa, e é esta:
+
+  1. sem rede primeiro. Se o aparelho não tem conexão, nada mais que eu
+     observei é confiável — nem status, porque não houve resposta.
+  2. 402 é licença, e é inequívoco.
+  3. 503 pode ser DOIS casos diferentes, e confundi-los seria o erro clássico:
+     cota esgotada (o autor gastou) e portão não configurado. Daí o exame do
+     motivo, não só do número.
+  4. 502 também tem dois casos: chave ausente (falha do autor) e provedor
+     caído (falha de terceiro). "502" sozinho não diz qual.
+
+Juntar 3 e 4 num "erro do servidor" genérico devolveria o comandante
+exatamente ao silêncio que esta etapa veio acabar — só com mais palavras.
+*/
+function classificarFalhaDeTempo(info) {
+  const i = info || {};
+  const st = Number(i.status);
+  const motivo = String(i.motivo == null ? '' : i.motivo).toLowerCase();
+
+  /* Sem rede: não houve resposta, então status nenhum é confiável. */
+  if (i.online === false) return 'sem-rede';
+  if (!isFinite(st) || st === 0) return i.online === false ? 'sem-rede' : 'servico';
+
+  if (st === 402) return 'licenca';
+  if (st === 429) return 'taxa';
+  if (st === 400) return 'coordenada';
+  if (st === 403) return 'origem';
+
+  if (st === 503) {
+    /* "teto diário de consultas atingido (2000/2000)" vem do fusível;
+       "portão não configurado" vem do painel administrativo. */
+    if (/teto|cota/.test(motivo)) return 'cota';
+    return 'sem-chave';
+  }
+
+  if (st === 502) {
+    if (/api_key|apikey|não configurada|nao configurada/.test(motivo)) return 'sem-chave';
+    return 'servico';
+  }
+
+  return 'servico';
+}
+
+/* O texto curto para a linha do HUD, e o longo para o relatório e a dica.
+   Separados porque o passadiço tem três centímetros de linha e o relatório tem
+   a página inteira: a mesma verdade em duas larguras. */
+function rotuloDeFalhaDeTempo(chave) {
+  const d = TEMPO_DIAG[chave];
+  return d ? d.rotulo : 'previsão indisponível';
+}
+function dicaDeFalhaDeTempo(chave) {
+  const d = TEMPO_DIAG[chave];
+  return d ? { dica: d.dica, culpa: d.culpa, link: d.link || null }
+           : { dica: 'A previsão não está disponível agora. O aplicativo tenta de novo sozinho.',
+               culpa: 'servico', link: null };
+}
+
 let tempoAtual = null;            // último pacote bom conhecido
 let tempoBarometro = [];          // série de pressão para a tendência
 let tempoTimer = null;
@@ -453,6 +615,9 @@ let tempoFalhas = 0;
 /* Último estado de licença visto pelo servidor. É o que a C5 vai transformar
    em mensagem; por ora fica registrado e exposto, sem pintar tela. */
 let tempoLicenca = { estado: 'desconhecido', degradada: false, motivo: '' };
+/* Última falha classificada, ou null quando a última busca deu certo.    (C5)
+   É o que transforma o silêncio em frase. */
+let tempoFalhaAtual = null;
 
 async function buscarTempo(lat, lng) {
   if (!isFinite(lat) || !isFinite(lng)) return null;
@@ -471,11 +636,22 @@ async function buscarTempo(lat, lng) {
                        motivo: (j && j.motivo) || 'licença necessária',
                        contato: j && j.contato };
       tempoFalhas++;
+      tempoFalhaAtual = 'licenca';
       console.warn('tempo: licença exigida —', tempoLicenca.motivo);
       return null;
     }
 
-    if (!j || !j.ok) throw new Error((j && j.motivo) || `HTTP ${r.status}`);
+    if (!j || !j.ok) {
+      /* A classificação acontece AQUI, onde ainda existem status e motivo. Se
+         deixássemos para o `catch`, só restaria a mensagem do Error — e o
+         número, que é metade do diagnóstico, estaria perdido. Foi assim que a
+         tela em branco nasceu: a informação existia e era descartada. */
+      tempoFalhaAtual = classificarFalhaDeTempo({
+        status: r.status, motivo: (j && j.motivo) || '',
+        online: typeof navigator === 'undefined' ? true : navigator.onLine
+      });
+      throw new Error((j && j.motivo) || `HTTP ${r.status}`);
+    }
 
     /* Atendido. Pode ter sido atendido em modo DEGRADADO — o verificador de
        licença não respondeu e o proxy serviu assim mesmo. Isso é informação
@@ -487,6 +663,7 @@ async function buscarTempo(lat, lng) {
 
     tempoAtual = j;
     tempoFalhas = 0;
+    tempoFalhaAtual = null;        // deu certo: nada a diagnosticar
     const p = j.ar && Number(j.ar.pressure_msl);
     if (isFinite(p)) {
       tempoBarometro.push({ t: Date.parse(j.emitidoEm) || Date.now(), hPa: p });
@@ -496,9 +673,19 @@ async function buscarTempo(lat, lng) {
     return j;
   } catch (e) {
     tempoFalhas++;
+    /* Se o passo 3 já classificou, respeita: ele tinha o status na mão e este
+       `catch` não tem. Só classifica aqui o que nunca chegou a ter resposta —
+       rede caída, DNS, estouro de tempo. */
+    if (!tempoFalhaAtual) {
+      tempoFalhaAtual = classificarFalhaDeTempo({
+        status: 0, motivo: (e && e.message) || '',
+        online: typeof navigator === 'undefined' ? true : navigator.onLine
+      });
+    }
     // NÃO limpa tempoAtual: o valor velho continua servindo, rotulado com a
     // idade. É a decisão aprovada — cache rotulado em vez de silêncio.
-    console.warn('tempo: falha na busca (', tempoFalhas, ') —', e && e.message);
+    console.warn('tempo: falha na busca (', tempoFalhas, ') —', e && e.message,
+                 '· diagnóstico:', tempoFalhaAtual);
     return null;
   }
 }
@@ -506,12 +693,28 @@ async function buscarTempo(lat, lng) {
 /* O que o relatório consome. Já vem com idade, barômetro e efeito da corrente
    sobre a derrota atual — ou null, se nunca houve uma busca bem-sucedida. */
 function tempoParaRelatorio(rumoDerrota, velAgua) {
-  if (!tempoAtual) return null;
+  /* Sem dado, o relatório devolvia null e a seção de tempo simplesmente não
+     existia — silêncio outra vez, agora em papel. Agora devolve o DIAGNÓSTICO:
+     um relatório que diz "sem previsão porque falta licença" é útil; um que
+     omite a seção faz o leitor pensar que ninguém olhou o tempo.        (C5) */
+  if (!tempoAtual) {
+    if (!tempoFalhaAtual) return null;
+    const d = dicaDeFalhaDeTempo(tempoFalhaAtual);
+    return { semPrevisao: true, causa: tempoFalhaAtual,
+             rotulo: rotuloDeFalhaDeTempo(tempoFalhaAtual),
+             dica: d.dica, culpa: d.culpa, link: d.link };
+  }
   const o = {
     ar: tempoAtual.ar, mar: tempoAtual.mar,
     idade: idadeDoTempo(tempoAtual.emitidoEm),
     barometro: tendenciaBarometrica(tempoBarometro)
   };
+  /* Dado bom na mão E falha corrente: o relatório diz as duas coisas. */
+  if (tempoFalhaAtual) {
+    const d = dicaDeFalhaDeTempo(tempoFalhaAtual);
+    o.falhaCorrente = { causa: tempoFalhaAtual, rotulo: rotuloDeFalhaDeTempo(tempoFalhaAtual),
+                        dica: d.dica, culpa: d.culpa, link: d.link };
+  }
   const mar = tempoAtual.mar || {};
   const drift = nosDeKmh(mar.ocean_current_velocity);
   const set = Number(mar.ocean_current_direction);
@@ -544,7 +747,14 @@ tela. Abreviações que na fala seriam ilegíveis ("NE 24 kt") no olho são o
 formato natural — é a mesma tese dos dois públicos, agora na direção inversa.
 */
 function linhaDeTempoNoPainel() {
-  if (!tempoAtual) return '';
+  /* ⚠️ AQUI ESTAVA O DEFEITO DA C5: isto devolvia '' e o painel ficava em
+     branco. Nunca houve dado e nunca houve explicação — o comandante olhava
+     uma linha vazia e tinha de adivinhar entre quatro causas com quatro ações
+     diferentes. Agora a ausência de dado é ela mesma uma informação. */
+  if (!tempoAtual) {
+    return tempoFalhaAtual ? `⚠️ sem previsão · ${rotuloDeFalhaDeTempo(tempoFalhaAtual)}`
+                           : '⏳ buscando previsão…';
+  }
   const ar = tempoAtual.ar || {}, mar = tempoAtual.mar || {};
   const p = [];
   const v = Number(ar.wind_speed_10m);
@@ -574,6 +784,13 @@ function linhaDeTempoNoPainel() {
   }
   const idade = idadeDoTempo(tempoAtual.emitidoEm);
   if (idade && idade.rotulo) p.push(`⏳ ${idade.minutos} min`);
+
+  /* DADO VELHO + MOTIVO, juntos.                                        (C5)
+     Separados, cada um conta meia verdade: "40 min" não diz por que parou, e
+     "fora do ar" não diz que ainda há número bom na tela. Juntos dizem a
+     coisa inteira — que é o que um diário de bordo faria. */
+  if (tempoFalhaAtual) p.push(`⚠️ ${rotuloDeFalhaDeTempo(tempoFalhaAtual)}`);
+
   return p.join(' · ');
 }
 
@@ -627,4 +844,49 @@ function atualizarPainelTempo() {
   const t = linhaDeTempoNoPainel();
   el.className = 'nav-line nav-tempo' + (t ? ' active' : '');
   el.textContent = t;
+  pintarDicaDeTempo();
+}
+
+/*
+A DICA LONGA NA TELA.                                                   (C5)
+
+Construída com nós do DOM, NUNCA com innerHTML — mesmo sendo texto de uma
+tabela interna e não entrada de usuário. O motivo é disciplina, não paranoia:
+a C1 encontrou um XSS em produção exatamente num lugar onde "o texto é nosso"
+parecia bastar, e a regra que admite exceção por conveniência deixa de ser
+regra. `createElement` + `textContent` custa quatro linhas e nunca executa nada.
+
+A dica SÓ aparece quando há o que explicar. Faixa permanente é faixa invisível:
+o olho aprende a pular o que está sempre ali, e aí a mensagem de verdade some
+junto. Por isso ela desaparece — e não fica cinza — quando a busca volta.
+*/
+function pintarDicaDeTempo() {
+  const box = document.getElementById('navTempoDica');
+  if (!box) return;
+
+  if (!tempoFalhaAtual) {
+    box.className = 'nav-line nav-tempo-dica';
+    box.hidden = true;
+    box.textContent = '';
+    return;
+  }
+
+  const d = dicaDeFalhaDeTempo(tempoFalhaAtual);
+  box.textContent = d.dica;                      // texto, nunca marcação
+
+  /* O link só existe na causa que tem solução imediata. Oferecer contato para
+     "cota esgotada" seria convidar o comandante a cobrar de alguém algo que
+     não se resolve agora — e desgastar o canal que vai importar depois. */
+  if (d.link) {
+    box.appendChild(document.createTextNode(' '));
+    const a = document.createElement('a');
+    a.href = d.link;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.textContent = 'Falar no WhatsApp';
+    box.appendChild(a);
+  }
+
+  box.className = 'nav-line nav-tempo-dica active';
+  box.hidden = false;
 }

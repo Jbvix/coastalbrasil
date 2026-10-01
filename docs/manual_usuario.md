@@ -199,7 +199,33 @@ não o código.
 O código fica guardado **naquele aparelho**. Trocar de aparelho é colar de
 novo. Deixar o campo vazio e tocar em **Guardar** apaga a licença dali.
 
-### Se faltar licença, o aplicativo diz isso — e nada mais para
+### Se faltar previsão, o painel diz POR QUÊ — e de quem é o problema
+
+Antes da v2.21.0, faltando previsão a linha do tempo ficava **em branco**. Quatro
+coisas muito diferentes davam a mesma tela vazia, e você não tinha como saber
+qual era a sua. Agora o painel diz, e diz de quem é:
+
+| O que aparece | O que significa | O que fazer |
+|---|---|---|
+| ⚠️ **licença necessária** | falta licença de serviço | mandar mensagem no WhatsApp — o próprio aviso traz o link |
+| ⚠️ **cota diária esgotada** | a cota do autor acabou hoje | **nada.** Não é o seu aparelho nem a sua licença. Volta na virada do dia (UTC) |
+| ⚠️ **serviço fora do ar** | o provedor de previsão caiu | esperar; o aplicativo tenta sozinho |
+| ⚠️ **sem internet** | o aparelho está sem sinal | o que você já faria — subir, procurar sinal |
+| ⚠️ **muitas consultas** | vários aparelhos no mesmo sinal | deixar só um buscando; volta em ~15 min |
+| ⚠️ **posição inválida** | o GPS ainda não pegou fixo | aguardar o primeiro fixo |
+
+Logo abaixo aparece uma faixa âmbar com a explicação inteira. Ela **desaparece**
+quando a previsão volta — de propósito: aviso que fica para sempre é aviso que a
+gente aprende a não ver.
+
+**Havendo dado velho, ele continua na tela**, com a idade dele e o motivo ao
+lado: *"💨 SW 12 kt · 🌊 1,3 m · ⏳ 47 min · ⚠️ serviço fora do ar"*. Assim você
+decide se confia no número — o que uma tela em branco nunca deixou você fazer.
+
+O **relatório** também passa a dizer isso. Antes, sem previsão, a seção de tempo
+simplesmente não existia, e quem lia podia pensar que ninguém olhou o tempo.
+
+### E nada mais para
 
 Faltando licença, só a **previsão de tempo** e o **espelhamento** deixam de
 responder. Rota, faróis, ETA, combustível, GPX, o painel 3D e a Iara continuam

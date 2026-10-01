@@ -838,6 +838,91 @@ const srv = http.createServer((req, res) => {
        limpo === null ? 'apagada' : 'sobrou');
   }
 
+  /* ══════════════════════════════════════════════════════════════════════
+     DIAGNÓSTICO HONESTO DA FALTA DE PREVISÃO — no navegador      (C5)
+     ══════════════════════════════════════════════════════════════════════
+     O banco de provas confere a classificação e a linha do painel. Aqui se
+     confere o que só o navegador mostra: que a dica APARECE com a frase certa,
+     que o link só existe onde há solução, que nada é executado como marcação,
+     e que a faixa SAI quando a busca volta. */
+  {
+    const diag = await page.evaluate(() => {
+      const r = {};
+      const box = () => document.getElementById('navTempoDica');
+
+      /* ⚠️ VISIBILIDADE MEDIDA PELO ESTILO COMPUTADO, não pelo atributo.
+
+         A primeira versão destes passos conferia `!box().hidden` — e isso é
+         insuficiente de um jeito perigoso. O CSS traz `.nav-tempo-dica
+         { display: none }` e só a classe `.active` devolve `display: block`.
+         Se a classe não fosse aplicada, ou se o arquivo de estilo não chegasse
+         ao navegador, a faixa ficaria INVISÍVEL com `hidden = false` — e os
+         seis passos passariam verdes sobre uma funcionalidade que o comandante
+         não vê.
+
+         Prova verde sobre funcionalidade invisível é exatamente o "mecanismo
+         de prova que falha para o lado do verde" que esta casa trata como pior
+         que código errado. Agora se mede `display` e o retângulo de fato. */
+      const medir = () => {
+        const el = box(), cs = getComputedStyle(el), rc = el.getBoundingClientRect();
+        return { display: cs.display, altura: Math.round(rc.height),
+                 largura: Math.round(rc.width),
+                 visivel: cs.display !== 'none' && rc.height > 0 && rc.width > 0 };
+      };
+
+      /* Falta licença: dica + link. */
+      tempoFalhaAtual = 'licenca';
+      atualizarPainelTempo();
+      const mLic = medir();
+      r.licenca = { texto: box().textContent, visivel: mLic.visivel,
+                    display: mLic.display, altura: mLic.altura,
+                    links: box().querySelectorAll('a').length,
+                    href: box().querySelector('a') ? box().querySelector('a').href : '',
+                    linha: document.getElementById('navTempo').textContent };
+
+      /* Cota do autor: dica SEM link, porque não há ação a bordo. */
+      tempoFalhaAtual = 'cota';
+      atualizarPainelTempo();
+      r.cota = { texto: box().textContent, links: box().querySelectorAll('a').length };
+
+      /* Nada é interpretado como marcação: além do <a>, nenhum elemento. */
+      tempoFalhaAtual = 'servico';
+      atualizarPainelTempo();
+      r.servico = { filhosElemento: box().querySelectorAll('*').length,
+                    texto: box().textContent };
+
+      /* Busca voltou: a faixa SAI — e sair é desaparecer do layout, não ficar
+         com texto escondido num elemento de altura zero que ainda ocupa linha. */
+      tempoFalhaAtual = null;
+      atualizarPainelTempo();
+      const mLimpo = medir();
+      r.limpo = { visivel: mLimpo.visivel, display: mLimpo.display,
+                  atributo: box().hidden, texto: box().textContent };
+      return r;
+    });
+
+    ok('Dica de licença é de fato VISÍVEL e traz o contato',
+       diag.licenca.visivel && diag.licenca.links === 1 && /wa\.me/.test(diag.licenca.href),
+       diag.licenca.visivel
+         ? `display=${diag.licenca.display} ${diag.licenca.altura}px, 1 link`
+         : `INVISÍVEL (display=${diag.licenca.display} altura=${diag.licenca.altura}px)`);
+    ok('A linha do painel não fica em branco sem previsão',
+       /sem previsão/.test(diag.licenca.linha) && /licença necessária/.test(diag.licenca.linha),
+       JSON.stringify(diag.licenca.linha.slice(0, 48)));
+    ok('Dica da cota diz que NÃO é o aparelho do comandante',
+       /não é o seu aparelho/i.test(diag.cota.texto), 
+       /não é o seu aparelho/i.test(diag.cota.texto) ? 'atribui a culpa' : 'OMITE a culpa');
+    ok('Dica da cota NÃO oferece contato (não há ação a bordo)',
+       diag.cota.links === 0, diag.cota.links + ' link(s)');
+    ok('A dica não cria elemento algum além do link',
+       diag.servico.filhosElemento === 0, diag.servico.filhosElemento + ' elemento(s)');
+    ok('A faixa SAI do layout quando a busca volta',
+       !diag.limpo.visivel && diag.limpo.display === 'none' &&
+       diag.limpo.atributo === true && diag.limpo.texto === '',
+       !diag.limpo.visivel ? `display=${diag.limpo.display}, hidden=${diag.limpo.atributo}, vazia`
+                           : 'FICOU GRUDADA');
+  }
+
   await page.screenshot({ path: path.join(__dirname, 'smoke.png'), fullPage: false });
   await browser.close(); srv.close();
 

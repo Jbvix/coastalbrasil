@@ -11,6 +11,158 @@ executável.
 
 ```
 
+## v2.21.0 (01/10/2026) — O FIM DO SILÊNCIO · ETAPA C5 · O CAMINHO C FECHA
+
+Autor: Jossian Brito (Charlie Bravo)
+Data: 01/10/2026 · Versão 2.21.0
+
+### O defeito, em uma linha de código
+
+```js
+function linhaDeTempoNoPainel() {
+  if (!tempoAtual) return '';        // ← o passadiço em branco
+```
+
+Quatro causas completamente diferentes produziam a **mesma tela vazia**:
+
+| O que aconteceu | O que o comandante devia fazer |
+|---|---|
+| Falta licença | mandar uma mensagem no WhatsApp — resolve em minutos |
+| A cota diária do autor esgotou | **nada**; não é dele, não tem solução a bordo |
+| O Open-Meteo caiu | esperar |
+| O aparelho está sem rede | subir ao convés procurar sinal |
+
+Quatro ações, uma delas "não faça nada", atrás de uma única linha em branco. O
+comandante que não sabe qual é a sua passa a madrugada mexendo no aparelho
+quando devia mandar uma mensagem — ou espera quando devia agir.
+
+É o mesmo defeito de um painel de praça de máquinas com **uma** lâmpada
+vermelha: ela toca, e o chefe tem de abrir tudo para descobrir o que já poderia
+estar escrito no vidro.
+
+### O que existe agora
+
+Uma tabela de diagnóstico, `TEMPO_DIAG`, no mesmo molde do `MIRROR_DIAG` que o
+espelho já usava — para o aplicativo falar **uma** língua. Cada entrada carrega
+três coisas:
+
+| Campo | Para quê |
+|---|---|
+| `rotulo` | o texto curto do painel, ≤ 30 caracteres |
+| `dica` | a explicação inteira, para o relatório e a faixa |
+| **`culpa`** | **`licenca` · `autor` · `servico` · `aparelho`** |
+
+**A `culpa` é o campo que importa**, e não é redação: é o que decide se o
+comandante age ou espera. A dica da cota diária diz, com estas letras, *"NÃO é o
+seu aparelho nem a sua licença, e não há nada a fazer a bordo"*. Sem essa
+negativa explícita, ele assume que o limite é dele e vai procurar defeito onde
+não há.
+
+A prova **30.2** verifica a atribuição de culpa de todas as oito causas, porque
+é a parte da mensagem que muda o que acontece a bordo.
+
+### Decisões que valem a leitura
+
+**O número HTTP sozinho não diagnostica.** O `503` é duas coisas (cota esgotada
+do fusível · portão mal configurado) e o `502` também (chave ausente, que é
+falha do autor · provedor caído, que é de terceiro). Juntá-los num "erro do
+servidor" devolveria o comandante ao silêncio, só com mais palavras.
+
+**Sem rede vence qualquer status.** Se não houve resposta, nada que eu observei
+é confiável.
+
+**A classificação acontece onde o status existe**, no tratamento da resposta —
+não no `catch`. Foi exatamente assim que a tela em branco nasceu: a informação
+existia no momento da resposta e era descartada. No `catch` só se classifica o
+que nunca chegou a ter resposta, e sem sobrescrever o diagnóstico melhor.
+
+**Dado velho e motivo aparecem juntos.** Separados, cada um conta meia verdade:
+"47 min" não diz por que parou, "fora do ar" não diz que ainda há número bom na
+tela. Juntos dizem a coisa inteira, que é o que um diário de bordo faria.
+
+**A faixa SAI quando a busca volta.** Faixa permanente é faixa invisível: o olho
+aprende a pular o que está sempre ali, e a mensagem verdadeira some junto.
+
+**Âmbar, não vermelho.** Vermelho a bordo é reservado ao que ameaça o navio.
+Gastar vermelho em "cota esgotada" é gastar a atenção de que o vermelho de
+verdade vai precisar.
+
+**Nós do DOM, nunca `innerHTML`** — mesmo sendo texto de uma tabela interna. A
+C1 encontrou um XSS em produção num lugar onde "o texto é nosso" parecia bastar,
+e regra que admite exceção por conveniência deixa de ser regra.
+
+**O link só existe onde há solução imediata.** Oferecer contato para "cota
+esgotada" convidaria o comandante a cobrar algo que não se resolve agora, e
+desgastaria o canal que vai importar depois.
+
+### 🔴 O que a bancada encontrou — a mesma pedra, três vezes, e eu caí nela consertando-a
+
+Dez mutações. **Uma sobreviveu três rodadas**, e a história merece ficar
+registrada inteira, porque é a mais instrutiva deste repositório:
+
+| Tentativa | A âncora da prova | Por que falhou |
+|---|---|---|
+| 1ª | `/tempoFalhaAtual = null;/` no arquivo todo | a **declaração** `let tempoFalhaAtual = null;` satisfaz o padrão sozinha |
+| 2ª | `indexOf('tempoFalhas = 0;')` + 200 chars | esse texto aparece **2×**, e a primeira é a declaração — com `let tempoFalhaAtual = null;` logo ao lado |
+| 3ª | `indexOf('tempoAtual = j;')`, **medido como único** | ✅ |
+
+A mutação removia a limpeza do diagnóstico no caminho de sucesso — o aviso
+ficaria **grudado para sempre**. E um aviso que não sai é um aviso que se
+aprende a ignorar; depois dele, o próximo, verdadeiro, também é ignorado.
+
+Décima, décima primeira e décima segunda ocorrências da mesma família nesta
+casa. A terceira cometida por mim **ao emendar a segunda**.
+
+> **A lição que faltava: medir quantas vezes a âncora aparece ANTES de confiar
+> nela.** E por isso a contagem agora é uma **asserção dentro da prova**, não um
+> comentário pedindo cuidado — comentário não executa.
+
+```js
+const ocorrencias = (C.match(/tempoAtual = j;/g) || []).length;
+eq(ocorrencias, 1, 0, 'âncora ambígua não prova ordem nenhuma');
+```
+
+Também caiu nisto a prova **29.10**, da C4: ancorava em `indexOf('402')`, e a
+C5 trouxe um segundo `402` (no classificador) que aparece antes.
+
+### Provas
+
+302 provas (294 → 302), 30 suítes, 0 FAIL, 2 WARN. Fumaça **105/105**, nenhum
+erro de console.
+
+A suíte 30 **executa** a classificação e a linha do painel — não varre o texto
+delas. A diferença: provar que a lâmpada acende, em vez de conferir se alguém
+escreveu "lâmpada" no esquema elétrico. Para isso, `tests/harness.js` passou a
+extrair `classificarFalhaDeTempo`, `rotuloDeFalhaDeTempo`, `dicaDeFalhaDeTempo`
+e `tempoParaRelatorio`, com `setTempoFalha` para dirigir o estado.
+
+Seis passos novos de fumaça provam no navegador o que varredura nenhuma prova: a
+faixa aparece com a frase certa, o link só existe onde há solução, nenhum
+elemento é criado além do `<a>`, e a faixa **sai** quando a busca volta.
+
+### O caminho C está fechado
+
+| | |
+|---|---|
+| **C1** v2.17.0 | a vitrine para de prometer um portão — e um XSS em produção cai com ele |
+| **C2** v2.18.0 | o esquema sai da cabeça e vai para o repositório — e uma trava que não trancava é descoberta |
+| **C3** v2.19.0 | o portão administrativo sai do navegador |
+| **C4** v2.20.0 | a licença vira porta, sem virar ponto único de falha |
+| **C5** v2.21.0 | o silêncio acaba |
+
+### ⚠️ O que esta etapa NÃO faz
+
+1. **Nada muda em produção** enquanto `LICENCA_MODO` estiver ausente: sem falha,
+   sem faixa. A C5 só aparece quando algo de fato falha.
+2. **`supabase/licenca.sql` continua NÃO aplicado.**
+3. **A Iara não fala a dica.** Ela está na tela e no relatório, não na voz —
+   interromper o passadiço por "cota esgotada" seria gastar a fala em algo que
+   não exige ação imediata. Candidato a reconsideração, declarado aqui para não
+   passar por esquecimento.
+4. **O limite de aparelhos segue declarado, não imposto.**
+
+---
+
 ## v2.20.0 (01/10/2026) — A LICENÇA VIRA PORTA, SEM VIRAR PONTO ÚNICO DE FALHA · ETAPA C4
 
 Autor: Jossian Brito (Charlie Bravo)
