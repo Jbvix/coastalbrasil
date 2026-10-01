@@ -838,6 +838,62 @@ const srv = http.createServer((req, res) => {
        limpo === null ? 'apagada' : 'sobrou');
   }
 
+  /* ══════════════════════════════════════════════════════════════════════
+     DIAGNÓSTICO HONESTO DA FALTA DE PREVISÃO — no navegador      (C5)
+     ══════════════════════════════════════════════════════════════════════
+     O banco de provas confere a classificação e a linha do painel. Aqui se
+     confere o que só o navegador mostra: que a dica APARECE com a frase certa,
+     que o link só existe onde há solução, que nada é executado como marcação,
+     e que a faixa SAI quando a busca volta. */
+  {
+    const diag = await page.evaluate(() => {
+      const r = {};
+      const box = () => document.getElementById('navTempoDica');
+
+      /* Falta licença: dica + link. */
+      tempoFalhaAtual = 'licenca';
+      atualizarPainelTempo();
+      r.licenca = { texto: box().textContent, visivel: !box().hidden,
+                    links: box().querySelectorAll('a').length,
+                    href: box().querySelector('a') ? box().querySelector('a').href : '',
+                    linha: document.getElementById('navTempo').textContent };
+
+      /* Cota do autor: dica SEM link, porque não há ação a bordo. */
+      tempoFalhaAtual = 'cota';
+      atualizarPainelTempo();
+      r.cota = { texto: box().textContent, links: box().querySelectorAll('a').length };
+
+      /* Nada é interpretado como marcação: além do <a>, nenhum elemento. */
+      tempoFalhaAtual = 'servico';
+      atualizarPainelTempo();
+      r.servico = { filhosElemento: box().querySelectorAll('*').length,
+                    texto: box().textContent };
+
+      /* Busca voltou: a faixa SAI. */
+      tempoFalhaAtual = null;
+      atualizarPainelTempo();
+      r.limpo = { visivel: !box().hidden, texto: box().textContent };
+      return r;
+    });
+
+    ok('Dica de licença aparece com o contato', 
+       diag.licenca.visivel && diag.licenca.links === 1 && /wa\.me/.test(diag.licenca.href),
+       diag.licenca.visivel ? 'visível, 1 link' : 'INVISÍVEL');
+    ok('A linha do painel não fica em branco sem previsão',
+       /sem previsão/.test(diag.licenca.linha) && /licença necessária/.test(diag.licenca.linha),
+       JSON.stringify(diag.licenca.linha.slice(0, 48)));
+    ok('Dica da cota diz que NÃO é o aparelho do comandante',
+       /não é o seu aparelho/i.test(diag.cota.texto), 
+       /não é o seu aparelho/i.test(diag.cota.texto) ? 'atribui a culpa' : 'OMITE a culpa');
+    ok('Dica da cota NÃO oferece contato (não há ação a bordo)',
+       diag.cota.links === 0, diag.cota.links + ' link(s)');
+    ok('A dica não cria elemento algum além do link',
+       diag.servico.filhosElemento === 0, diag.servico.filhosElemento + ' elemento(s)');
+    ok('A faixa SAI quando a busca volta',
+       !diag.limpo.visivel && diag.limpo.texto === '',
+       !diag.limpo.visivel ? 'escondida e vazia' : 'FICOU GRUDADA');
+  }
+
   await page.screenshot({ path: path.join(__dirname, 'smoke.png'), fullPage: false });
   await browser.close(); srv.close();
 

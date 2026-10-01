@@ -5,7 +5,7 @@
   COASTAL NAVIGATOR BRASIL — Sistema de Planejamento de Viagem Costeira
 ════════════════════════════════════════════════════════════════════════════════
 
-  Versão: 2.20.0
+  Versão: 2.21.0
   Autor: Jossian Brito (Charlie Bravo)
   LinkedIn: https://www.linkedin.com/in/jossianbrito/
   X: https://x.com/jossiancosta  ·  Medium: https://medium.com/@jossiancosta
@@ -44,7 +44,7 @@
   <meta name="keywords"
     content="navegação costeira, planejamento de viagem, faróis, Brasil, OpenSeaMap, GPX, rebocadores">
 
-  <title>Coastal Navigator Brasil v2.20.0 - Planejamento de Viagem</title>
+  <title>Coastal Navigator Brasil v2.21.0 - Planejamento de Viagem</title>
 
   <!-- Leaflet CSS -->
   <!-- Subresource Integrity: o navegador recusa o arquivo se o conteúdo servido
@@ -75,7 +75,7 @@
     <header class="app-header">
       <div class="header-content">
         <div class="logo">
-          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.20.0</span></h1>
+          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.21.0</span></h1>
         </div>
 
         <div class="controls">
@@ -247,6 +247,11 @@
              essas coisas. Ou se apagava a frase, ou se tornava verdade. É
              mais útil torná-la verdade. -->
         <div class="nav-line nav-tempo" id="navTempo"></div>
+        <!-- A DICA HONESTA, só aparece quando há o que explicar.          (C5)
+             Linha própria e não o navGpsStatus: aquele já é disputado pelo GPS
+             e pelo modo espelho, e duas verdades no mesmo espaço viram uma
+             mentira alternada. -->
+        <div class="nav-line nav-tempo-dica" id="navTempoDica" hidden></div>
         <div class="nav-line nav-mar" id="navMarMedido"></div>
         <div class="nav-divider"></div>
         <div class="nav-line nav-lh" id="navLighthouse">💡 Nenhum farol no alcance</div>
@@ -3275,7 +3280,7 @@
       updateShareButtons();
 
       console.log('═══════════════════════════════════════════════════════════════');
-      console.log('  Coastal Navigator Brasil v2.20.0 - Inicializado ⚓');
+      console.log('  Coastal Navigator Brasil v2.21.0 - Inicializado ⚓');
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('Autor: Jossian Brito (Charlie Bravo)');
       console.log('58 Faróis curados carregados 💡 (52 DHN + 6 Validados)');

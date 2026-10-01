@@ -336,6 +336,42 @@ SHA-256, nunca o código, e nunca guarda `indisponível`.
 **402, não 403:** a embarcação tem direito ao aplicativo; só não tem licença
 corrente para o serviço pago.
 
+### 4.9 O fim do silêncio: diagnosticar é atribuir culpa (v2.21.0)
+
+Até a v2.20.0, `linhaDeTempoNoPainel()` devolvia `''` quando não havia dado.
+Quatro causas, com quatro ações diferentes — uma delas "não faça nada" —
+produziam a **mesma tela em branco**.
+
+A tabela `TEMPO_DIAG` (molde do `MIRROR_DIAG`, para o aplicativo falar uma só
+língua) carrega `rotulo`, `dica` e, decisivamente, **`culpa`**:
+
+| `culpa` | Significa | Exemplo |
+|---|---|---|
+| `licenca` | é do comandante, e tem solução imediata | 402 |
+| `autor` | é do autor; mexer no aparelho não ajuda | cota esgotada, chave ausente |
+| `servico` | é de terceiro; ninguém a bordo resolve | Open-Meteo caído |
+| `aparelho` | é do aparelho ou da rede dele | offline, GPS sem fixo |
+
+**A culpa não é redação, é a parte da mensagem que muda o que acontece a
+bordo.** A dica da cota diz *"NÃO é o seu aparelho nem a sua licença, e não há
+nada a fazer a bordo"* — sem essa negativa, o comandante procura defeito onde
+não há.
+
+**O número HTTP não diagnostica sozinho.** `503` é cota esgotada **ou** portão
+mal configurado; `502` é chave ausente (autor) **ou** provedor caído (terceiro).
+Juntá-los num "erro do servidor" devolve o comandante ao silêncio com mais
+palavras. Por isso o classificador olha status **e** motivo. Sem rede vence
+qualquer status: se não houve resposta, nada observado é confiável.
+
+**Onde classificar importa.** No tratamento da resposta, onde o status existe —
+não no `catch`. A tela em branco nasceu exatamente de descartar ali a informação
+que existia.
+
+**Dado velho e motivo juntos**, porque separados cada um conta meia verdade. **A
+faixa sai** quando a busca volta: faixa permanente é faixa invisível. **Âmbar,
+não vermelho** — vermelho a bordo é do que ameaça o navio. **Nós do DOM, nunca
+`innerHTML`**, mesmo para texto interno.
+
 ### 4.6 Pendências registradas
 
 Coberta pela prova 9.7, que passa com **alerta**, não em verde:

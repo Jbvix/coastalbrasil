@@ -110,6 +110,9 @@ const FNS = ['calculateDistance','calculateBearing','eyeHeight','calculateVisibi
              'referenciaMaisProxima','referenciasDoPonto','fraseDeReferencia',
              'nosDeKmh','rumoCardeal','beaufort','trianguloDaCorrente',
              'etaComCorrente','tendenciaBarometrica','idadeDoTempo','falarTempo','linhaDeTempoNoPainel',
+             /* C5 — diagnóstico honesto da falta de previsão. Extraídas para que a
+                prova EXECUTE a classificação, em vez de varrer o texto dela. */
+             'classificarFalhaDeTempo','rotuloDeFalhaDeTempo','dicaDeFalhaDeTempo','tempoParaRelatorio',
              // Sprint 4: a lei da hélice e a minimização com restrição de ETA.
              'fracaoMCR','curvaDoMotor','velocidadeDoRpm','rpmDaVelocidade',
              'consumoHora','consumoPorMilha','combustivelAteDestino','velocidadeDeCasco',
@@ -205,6 +208,11 @@ const sandboxSrc = extractLighthouses() + '\n' +
   'let marAcel = [], marRoll = [], marGmHistorico = [];\n' +
   'let marCaixaSoma = 0, marCaixaN = 0, marCaixaRoll = 0, marUltimoT = 0, marHandler = null;\n' +
   'let tempoAtual = null, shipAttitude = null;\n' +
+  /* C5: a falha corrente é o que tira a linha do painel do silêncio. */
+  'let tempoFalhaAtual = null;\n' +
+  /* A série do barômetro alimenta a tendência de 3 h dentro da linha do painel. */
+  'let tempoBarometro = [];\n' +
+  extractDecl('TEMPO_DIAG') + '\n' +
   // shipModelAtual vem de ship3d.js e depende de localStorage; na bancada o
   // casco é injetado direto, que é o que cascoAtual() consulta.
   'let _cascoTeste = null;\n' +
@@ -224,6 +232,8 @@ const sandboxSrc = extractLighthouses() + '\n' +
   + '  setSim: v => { navSimActive = !!v; },\n'
   + '  zerarMar: () => { marAcel = []; marRoll = []; marGmHistorico = []; marCaixaSoma = 0; marCaixaN = 0; marCaixaRoll = 0; marUltimoT = 0; },\n'
   + '  setTempoAtual: v => { tempoAtual = v; },\n'
+  + '  setTempoFalha: v => { tempoFalhaAtual = v; },\n'
+  + '  TEMPO_DIAG,\n'
   + '  setCasco: c => { _cascoTeste = c; },\n'
   + '  getLeg: () => navActiveLeg, '
   + FNS.join(', ') + ' };';

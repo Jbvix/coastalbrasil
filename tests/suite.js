@@ -4967,13 +4967,301 @@ t(S29, '29.10', '402 é tratado como "falta licença", não como "servidor caiu"
   /* Confundir os dois manda o comandante procurar sinal de rádio quando o que
      ele precisa é mandar uma mensagem pelo WhatsApp. */
   ok(/r\.status\s*===\s*402/.test(C), 'o cliente não distingue 402 de falha de serviço');
-  const i = C.indexOf('402');
-  ok(/tempoLicenca\s*=/.test(C.slice(i, i + 500)),
+
+  /* ⚠️ ÂNCORA AMBÍGUA — esta prova nasceu frágil e a C5 cobrou.
+     A versão anterior fazia `C.indexOf('402')` e examinava os 500 caracteres
+     seguintes. Funcionou enquanto só existia um 402 no arquivo. A C5 trouxe
+     `if (st === 402) return 'licenca'` no classificador, que aparece ANTES —
+     e a prova passou a examinar o trecho errado, acusando código correto.
+
+     Décima ocorrência da mesma família nesta casa: a varredura casou com a
+     coisa errada. Agora a âncora é o texto ÚNICO do tratamento da resposta,
+     não um número que pode se repetir. */
+  const i = C.indexOf('if (r.status === 402)');
+  ok(i > 0, 'não encontrei o tratamento do 402 na resposta');
+  const trecho = C.slice(i, i + 500);
+  ok(/tempoLicenca\s*=/.test(trecho),
      'o cliente não registra o estado da licença ao receber 402');
   /* E não apaga o último bom conhecido: o dado velho rotulado continua
      servindo, que é a decisão já aprovada para falha de tempo. */
-  ok(!/tempoAtual\s*=\s*null/.test(C.slice(i, i + 500)),
+  ok(!/\btempoAtual\s*=\s*null/.test(trecho),
      'o 402 apagou o último tempo conhecido — o passadiço ficaria sem nada');
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   30 · DIAGNÓSTICO HONESTO DA FALTA DE PREVISÃO           (C5 · v2.21.0)
+   ══════════════════════════════════════════════════════════════════════════
+   Até a v2.20.0 a linha do painel devolvia STRING VAZIA quando não havia
+   dado. Quatro causas completamente diferentes, com quatro ações diferentes,
+   produziam a MESMA tela em branco.
+
+   Estas provas EXECUTAM a classificação e a linha do painel — não varrem o
+   texto delas. É a diferença entre provar que a lâmpada acende e conferir se
+   alguém escreveu "lâmpada" no esquema elétrico.
+   ══════════════════════════════════════════════════════════════════════════ */
+const S30 = '30 · Diagnóstico de previsão';
+const { classificarFalhaDeTempo: cls30, rotuloDeFalhaDeTempo: rot30,
+        dicaDeFalhaDeTempo: dica30, TEMPO_DIAG: DIAG30,
+        setTempoFalha: setFalha30, setTempoAtual: setTempo30 } = A;
+
+t(S30, '30.0', 'A classificação é executável e a tabela está completa', () => {
+  ok(typeof cls30 === 'function', 'classificarFalhaDeTempo não foi extraída');
+  const chaves = Object.keys(DIAG30 || {});
+  ok(chaves.length >= 8, `a tabela tem só ${chaves.length} causas`);
+  /* Toda entrada precisa de rótulo curto, dica longa e ATRIBUIÇÃO DE CULPA.
+     A culpa é o campo que decide se o comandante age ou espera — uma entrada
+     sem ela é uma mensagem que não diz o que fazer. */
+  for (const k of chaves) {
+    const d = DIAG30[k];
+    ok(d.rotulo && d.rotulo.length <= 30, `"${k}": rótulo ausente ou longo demais para o HUD`);
+    ok(d.dica && d.dica.length >= 40, `"${k}": dica curta demais para explicar`);
+    ok(['licenca', 'autor', 'servico', 'aparelho'].includes(d.culpa),
+       `"${k}": culpa inválida (${d.culpa}) — sem isso a mensagem não diz o que fazer`);
+  }
+  return { detail: chaves.length + ' causas, todas com rótulo, dica e culpa' };
+});
+
+t(S30, '30.1', 'Cada resposta do servidor cai na causa certa', () => {
+  /* Tabela escrita de forma INDEPENDENTE do código: se alguém reescrever o
+     classificador, isto continua sendo o contrato. */
+  const casos = [
+    [{ status: 402, online: true }, 'licenca',    'falta licença'],
+    [{ status: 429, online: true }, 'taxa',       'muitas consultas'],
+    [{ status: 400, online: true }, 'coordenada', 'GPS sem fixo'],
+    [{ status: 403, online: true }, 'origem',     'origem recusada'],
+    [{ status: 200, online: true }, 'servico',    'resposta estranha'],
+    [{ status: 418, online: true }, 'servico',    'código desconhecido cai em serviço'],
+
+    /* 503 tem DOIS casos, e confundi-los seria o erro clássico: um é a cota do
+       autor esgotada, o outro é portão mal configurado. Ações diferentes. */
+    [{ status: 503, motivo: 'teto diário de consultas atingido (2000/2000)', online: true }, 'cota', 'fusível'],
+    [{ status: 503, motivo: 'portão não configurado', online: true }, 'sem-chave', 'má configuração'],
+
+    /* 502 também tem dois: chave ausente (culpa do autor) e provedor caído
+       (culpa de terceiro). O número sozinho não distingue. */
+    [{ status: 502, motivo: 'OPEN_METEO_API_KEY não configurada no ambiente', online: true }, 'sem-chave', 'chave ausente'],
+    [{ status: 502, motivo: 'Open-Meteo respondeu 500', online: true }, 'servico', 'provedor caído'],
+
+    /* Sem rede vence QUALQUER status: não houve resposta, então nada do que eu
+       observei é confiável. */
+    [{ status: 502, online: false }, 'sem-rede', 'offline vence o status'],
+    [{ status: 0,   online: false }, 'sem-rede', 'nada chegou'],
+    [{ status: 0,   online: true  }, 'servico',  'não chegou, mas há rede']
+  ];
+  for (const [info, esperado, porque] of casos) {
+    const r = cls30(info);
+    ok(r === esperado,
+       `status ${info.status}${info.motivo ? ' "' + info.motivo.slice(0, 24) + '"' : ''}` +
+       ` online=${info.online}: esperava "${esperado}", veio "${r}" — ${porque}`);
+  }
+  return { detail: casos.length + ' respostas classificadas' };
+});
+
+t(S30, '30.2', 'A culpa é atribuída a quem realmente é — e isso é a mensagem', () => {
+  /* ═══════════════════════════════════════════════════════════════════════
+     ESTA É A PROVA CENTRAL DA C5, e não é sobre texto bonito.
+
+     O comandante que lê "cota diária esgotada" sem saber que a cota é do AUTOR
+     passa a madrugada mexendo no aparelho. O que lê "sem internet" sabe que
+     tem de subir ao convés. Mesma falta de previsão, ações opostas.
+
+     Por isso a culpa é PROVADA, não revisada: é a parte da mensagem que muda o
+     que acontece a bordo.
+     ═══════════════════════════════════════════════════════════════════════ */
+  const esperado = {
+    'licenca':    'licenca',    // o comandante resolve, por WhatsApp
+    'cota':       'autor',      // 🔴 NÃO é o aparelho dele
+    'sem-chave':  'autor',      // falha de implantação
+    'origem':     'autor',      // defeito de configuração
+    'servico':    'servico',    // terceiro; ninguém a bordo resolve
+    'sem-rede':   'aparelho',   // ele resolve, subindo ao convés
+    'taxa':       'aparelho',
+    'coordenada': 'aparelho'
+  };
+  for (const [causa, culpa] of Object.entries(esperado)) {
+    eq(dica30(causa).culpa === culpa ? 1 : 0, 1, 0,
+       `"${causa}" deveria ser culpa de "${culpa}", veio "${dica30(causa).culpa}"`);
+  }
+
+  /* A cota é do autor, e a dica tem de DIZER isso com estas letras. Sem a
+     negativa explícita, o comandante assume que o limite é dele. */
+  const cota = dica30('cota').dica.toLowerCase();
+  ok(/não é o seu aparelho|nao é o seu aparelho/.test(cota),
+     'a dica da cota não diz que NÃO é o aparelho do comandante — ele vai procurar defeito onde não há');
+  ok(/nada a fazer a bordo|não há nada a fazer/.test(cota),
+     'a dica da cota não diz que não há ação a bordo');
+
+  /* E a de serviço precisa descartar as três causas vizinhas, senão o
+     comandante testa uma por uma. */
+  const serv = dica30('servico').dica.toLowerCase();
+  ok(/não é o seu aparelho/.test(serv) && /licença/.test(serv) && /cota/.test(serv),
+     'a dica de serviço não descarta aparelho, licença e cota — sobra diagnóstico para o passadiço fazer');
+
+  /* Só a de licença traz link, porque só ela tem ação imediata. */
+  ok(dica30('licenca').link && /wa\.me/.test(dica30('licenca').link),
+     'a causa "licenca" não traz o contato — é a única com solução imediata');
+  ok(!dica30('cota').link, 'a cota traz link como se o comandante pudesse resolver');
+});
+
+t(S30, '30.3', '🔴 O PAINEL NUNCA MAIS FICA EM SILÊNCIO', () => {
+  /* ═══════════════════════════════════════════════════════════════════════
+     O DEFEITO QUE A C5 FECHA, provado por EXECUÇÃO.
+
+     `linhaDeTempoNoPainel()` devolvia '' sem dado. Esta prova chama a função
+     de verdade, com cada causa, e exige frase — não varre o código em busca de
+     um `return ''` ausente, porque ausência de texto não prova presença de
+     comportamento.
+     ═══════════════════════════════════════════════════════════════════════ */
+  setTempo30(null);
+
+  /* Sem dado e sem falha = primeira busca em andamento. Nem isso pode ser
+     branco: "buscando" é informação, branco não é. */
+  setFalha30(null);
+  const buscando = A.linhaDeTempoNoPainel();
+  ok(buscando && buscando.length > 0,
+     '🔴 o painel voltou a ficar EM BRANCO durante a primeira busca');
+  ok(/buscando/i.test(buscando), `a linha inicial não diz que está buscando: "${buscando}"`);
+
+  /* E com cada causa, o motivo aparece. */
+  for (const causa of Object.keys(DIAG30)) {
+    setFalha30(causa);
+    const linha = A.linhaDeTempoNoPainel();
+    ok(linha && linha.length > 0, `🔴 painel EM BRANCO com a causa "${causa}"`);
+    ok(linha.includes(rot30(causa)),
+       `a linha não traz o motivo "${rot30(causa)}" — veio: "${linha}"`);
+    ok(/sem previsão/.test(linha),
+       `a linha não diz que não há previsão — veio: "${linha}"`);
+  }
+  setFalha30(null); setTempo30(null);
+  return { detail: Object.keys(DIAG30).length + ' causas, nenhuma em branco' };
+});
+
+t(S30, '30.4', 'Dado velho e motivo aparecem JUNTOS, não um ou outro', () => {
+  /* Separados, cada um conta meia verdade: "40 min" não diz por que parou, e
+     "fora do ar" não diz que ainda há número bom na tela. O comandante precisa
+     das duas para decidir se confia no número. */
+  setTempo30({
+    ok: true, emitidoEm: new Date(Date.now() - 47 * 60000).toISOString(),
+    ar: { wind_speed_10m: 12.5, wind_direction_10m: 228, wind_gusts_10m: 15.9, pressure_msl: 1009.6 },
+    mar: { wave_height: 1.3, wave_period: 8.4 }
+  });
+
+  setFalha30('servico');
+  const comFalha = A.linhaDeTempoNoPainel();
+  ok(/12 kt|13 kt/.test(comFalha), `o dado bom desapareceu: "${comFalha}"`);
+  ok(/47 min/.test(comFalha), `a idade desapareceu: "${comFalha}"`);
+  ok(comFalha.includes('serviço fora do ar'), `o motivo não entrou: "${comFalha}"`);
+
+  /* E quando volta a funcionar, o aviso SAI. Um aviso que não sai é um aviso
+     que se aprende a ignorar — e aí o próximo, verdadeiro, também é ignorado. */
+  setFalha30(null);
+  const semFalha = A.linhaDeTempoNoPainel();
+  ok(!/⚠️/.test(semFalha), `o aviso ficou grudado depois de a busca voltar: "${semFalha}"`);
+  ok(/12 kt|13 kt/.test(semFalha), 'o dado desapareceu quando a falha foi limpa');
+  setTempo30(null);
+});
+
+t(S30, '30.5', 'O relatório diz por que não há previsão, em vez de omitir a seção', () => {
+  /* Antes, `tempoParaRelatorio` devolvia null sem dado e a seção de tempo
+     simplesmente não existia — silêncio em papel. Um relatório que omite faz
+     o leitor pensar que ninguém olhou o tempo. */
+  setTempo30(null);
+
+  setFalha30(null);
+  eq(A.tempoParaRelatorio(0, 10) === null ? 1 : 0, 1, 0,
+     'sem dado E sem falha o relatório deveria devolver null — não há o que dizer ainda');
+
+  setFalha30('licenca');
+  const r = A.tempoParaRelatorio(0, 10);
+  ok(r && r.semPrevisao === true, 'o relatório voltou a omitir a seção de tempo');
+  ok(r.causa === 'licenca' && r.culpa === 'licenca', `causa/culpa erradas: ${r.causa}/${r.culpa}`);
+  ok(r.dica && r.dica.length > 40, 'o relatório não leva a explicação');
+  ok(r.link && /wa\.me/.test(r.link), 'o relatório não leva o contato na causa que tem solução');
+
+  /* Com dado bom E falha corrente, o relatório diz AS DUAS coisas. */
+  setTempo30({ ok: true, emitidoEm: new Date().toISOString(),
+               ar: { wind_speed_10m: 10 }, mar: { wave_height: 1 } });
+  setFalha30('cota');
+  const r2 = A.tempoParaRelatorio(0, 10);
+  ok(r2 && !r2.semPrevisao, 'havendo dado, o relatório não deveria declarar ausência');
+  ok(r2.falhaCorrente && r2.falhaCorrente.causa === 'cota',
+     'o relatório não registra que a busca está falhando apesar de haver dado velho');
+  ok(r2.falhaCorrente.culpa === 'autor', 'a culpa da cota não chegou ao relatório');
+  setFalha30(null); setTempo30(null);
+});
+
+t(S30, '30.7', 'A dica é construída com nós do DOM, nunca com innerHTML', () => {
+  const C = semComentarios(fs16.readFileSync(ROOT + '/assets/js/tempo.js', 'utf8'));
+  const i = C.indexOf('function pintarDicaDeTempo');
+  ok(i > 0, 'pintarDicaDeTempo desapareceu');
+  const fn = C.slice(i, i + 1400);
+
+  /* A C1 encontrou um XSS em produção num lugar onde "o texto é nosso" parecia
+     bastar. Regra que admite exceção por conveniência deixa de ser regra. */
+  ok(!/innerHTML|insertAdjacentHTML|outerHTML/.test(fn),
+     '🔴 a dica voltou a ser escrita como HTML');
+  ok(/textContent/.test(fn), 'a dica não usa textContent');
+  ok(/createElement\('a'\)/.test(fn), 'o link não é criado como nó — provavelmente virou marcação');
+  ok(/rel = 'noopener'/.test(fn), 'o link abre em nova aba sem noopener');
+
+  /* Faixa permanente é faixa invisível: a dica tem de SAIR, não ficar cinza. */
+  ok(/box\.hidden = true/.test(fn), 'a dica não desaparece quando a busca volta');
+
+  /* E a linha é própria, não o navGpsStatus — que já é do GPS e do espelho. */
+  const H = semComentariosHtml(fs16.readFileSync(ROOT + '/app.html', 'utf8'));
+  ok(/id="navTempoDica"/.test(H), 'a linha da dica não existe no painel');
+  ok(!/navGpsStatus/.test(fn), 'a dica disputa o espaço do GPS — duas verdades no mesmo lugar');
+});
+
+t(S30, '30.6', 'A classificação acontece onde o status existe, não no catch', () => {
+  const C = semComentarios(fs16.readFileSync(ROOT + '/assets/js/tempo.js', 'utf8'));
+  /* Classificar só no `catch` perderia o número HTTP — e o número é metade do
+     diagnóstico. Foi exatamente assim que a tela em branco nasceu: a
+     informação existia no momento da resposta e era descartada. */
+  const iResp = C.indexOf('if (!j || !j.ok) {');
+  ok(iResp > 0, 'o tratamento da resposta não-ok mudou de forma');
+  ok(/classificarFalhaDeTempo\(\{/.test(C.slice(iResp, iResp + 400)),
+     'a resposta não-ok não é classificada onde o status ainda existe');
+  ok(/status:\s*r\.status/.test(C.slice(iResp, iResp + 400)),
+     'o status HTTP não entra na classificação — metade do diagnóstico se perde');
+
+  /* O catch classifica só o que nunca teve resposta, e NÃO sobrescreve. */
+  const iCatch = C.lastIndexOf('} catch (e) {');
+  ok(/if \(!tempoFalhaAtual\)/.test(C.slice(iCatch, iCatch + 400)),
+     'o catch sobrescreve um diagnóstico melhor, feito com o status na mão');
+
+  /* ⚠️ E O SUCESSO LIMPA — asserção que nasceu inútil, DÉCIMA PRIMEIRA vez
+     que esta casa cai na mesma família.
+
+     A versão anterior era `/tempoFalhaAtual = null;/.test(C)`, varrendo o
+     arquivo inteiro. A DECLARAÇÃO `let tempoFalhaAtual = null;` satisfaz esse
+     padrão sozinha — então removi a limpeza no caminho de sucesso e a prova
+     seguiu verde, deixando o aviso grudado para sempre. Um aviso que não sai é
+     um aviso que se aprende a ignorar, e aí o próximo, verdadeiro, também é.
+
+     O engodo mudou de forma (antes `function guardar(chave, dado)`, agora um
+     `let`), a armadilha é a mesma: o padrão existe em dois lugares e só um
+     deles é o comportamento. A âncora agora é o bloco de SUCESSO, identificado
+     por `tempoFalhas = 0;`, que só existe lá. */
+  /* 🔴 E A PRIMEIRA EMENDA TAMBÉM ERROU — décima segunda ocorrência, cometida
+     ao consertar a décima primeira.
+
+     Ancorei em `tempoFalhas = 0;`. Esse texto aparece DUAS vezes: na
+     declaração `let tempoFalhas = 0;` e no bloco de sucesso. A declaração vem
+     primeiro, e logo ao lado dela está `let tempoFalhaAtual = null;` — então
+     os 200 caracteres examinados eram os das DECLARAÇÕES, e a mutação
+     sobreviveu de novo.
+
+     A lição que faltava: **medir quantas vezes a âncora aparece ANTES de
+     confiar nela**. Por isso a contagem abaixo é parte da prova, e não um
+     comentário pedindo cuidado. Comentário não executa; asserção executa. */
+  const ocorrencias = (C.match(/tempoAtual = j;/g) || []).length;
+  eq(ocorrencias, 1, 0,
+     `a âncora "tempoAtual = j;" aparece ${ocorrencias}x — âncora ambígua não prova ordem nenhuma`);
+
+  const iOk = C.indexOf('tempoAtual = j;');
+  ok(/tempoFalhaAtual = null/.test(C.slice(iOk, iOk + 200)),
+     'o sucesso não limpa o diagnóstico — o aviso fica grudado e se aprende a ignorá-lo');
 });
 
 /* ═══ RELATÓRIO ═══ */
