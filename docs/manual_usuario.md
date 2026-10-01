@@ -179,14 +179,39 @@ A partir da v2.19.0 existe uma **licença de serviço**: um código emitido por
 embarcação, com prazo (24h, 72h, 7 dias ou 15 dias) e número de aparelhos. Ela
 é pedida pelo WhatsApp [+55 85 99773-7230](https://wa.me/5585997737230).
 
-**Seja franco com o estado disto:** hoje a licença é **emitida e guardada, mas
-ainda não é exigida por nada**. Nenhuma função do aplicativo pergunta por ela.
-A etapa que liga a licença ao proxy de tempo (C4) ainda não foi feita, e este
-manual não vai fingir o contrário — um manual que descreve o que o programa
-*vai* fazer é um manual errado.
+**Onde isto está hoje, sem floreio:** o aplicativo já sabe **receber** a
+licença e o servidor já sabe **conferi-la** — mas a exigência vem **desligada
+de fábrica**. Na prática, hoje nada é barrado. O autor liga a cobrança quando
+decidir, numa configuração do servidor, e não por acidente de atualização.
 
-Quando a exigência entrar, ela entrará com aviso dentro do aplicativo e com o
-link do WhatsApp à mão, nunca com uma porta fechada sem explicação.
+Quando ligar, será em dois tempos: primeiro um período em que o sistema apenas
+**observa** quem está sem licença, sem barrar ninguém; só depois a exigência de
+fato. Ninguém perde o tempo de uma hora para a outra sem aviso.
+
+### Onde guardar a licença
+
+Abra **⚙️ Configurar** e cole o código no campo **Licença de serviço**, depois
+toque em **Guardar**. O campo fica em branco logo em seguida, de propósito: 64
+caracteres parados numa tela que pode estar sendo espelhada ou fotografada é a
+licença entregue a quem estiver olhando. O que fica na tela é a confirmação,
+não o código.
+
+O código fica guardado **naquele aparelho**. Trocar de aparelho é colar de
+novo. Deixar o campo vazio e tocar em **Guardar** apaga a licença dali.
+
+### Se faltar licença, o aplicativo diz isso — e nada mais para
+
+Faltando licença, só a **previsão de tempo** e o **espelhamento** deixam de
+responder. Rota, faróis, ETA, combustível, GPX, o painel 3D e a Iara continuam
+funcionando normalmente, inclusive sem internet.
+
+### E se o sistema de licenças estiver fora do ar?
+
+**Você recebe a previsão assim mesmo.** Essa é uma decisão deliberada do
+projeto, não uma falha: previsão de tempo é dado de segurança da navegação, e
+negá-la porque um banco de dados em terra está dormindo seria o tipo errado de
+rigor. Um *damper* de incêndio falha fechado; a alimentação da máquina
+principal, não.
 
 ### Guarde o código quando ele aparecer
 

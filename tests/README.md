@@ -4,7 +4,7 @@
 npm test
 ```
 
-283 provas em 28 suítes, executadas sobre as **funções reais** extraídas do
+294 provas em 29 suítes, executadas sobre as **funções reais** extraídas do
 `app.html` e dos módulos por contagem de chaves — não sobre uma
 reimplementação. Sem dependências: Node puro.
 
@@ -30,6 +30,7 @@ integração contínua — que é quem não tem olhos para ver o `✘` vermelho.
 | 26 · Integração contínua | O workflow dispara, roda as duas provas, não pede segredo — e `FAIL` derruba a obra |
 | 27 · Guarda do proxy | Quem o proxy atende, quantas vezes por hora, e o fusível diário que protege a chave paga |
 | 28 · Painel administrativo | A senha é conferida no servidor com scrypt, o token aparece uma vez, e a chave de serviço não vaza |
+| 29 · Licença no serviço | A tabela de decisão inteira: modo × veredito, inclusive o cruzamento em que o verificador falha e o proxy **atende assim mesmo** |
 
 Provas em vermelho são defeitos **conhecidos e documentados**, não regressões.
 Cada uma traz na mensagem de falha o arquivo, a linha e a consequência a bordo.
@@ -48,7 +49,7 @@ v2.2.0 isso deixou de ser hipotético.
 
 `npm run smoke` abre o app de verdade e percorre o fluxo completo — configurar
 viagem, criar waypoints, apagar o primeiro, exportar GPX, gerar relatório — e
-falha se aparecer **um único** erro de console. São 93 passos.
+falha se aparecer **um único** erro de console. São 99 passos.
 
 Um deles confere a **premissa** das provas do banner — o canal de telemetria
 é bloqueado de propósito (`routeWebSocket`), porque `route()` intercepta HTTP e

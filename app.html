@@ -5,7 +5,7 @@
   COASTAL NAVIGATOR BRASIL — Sistema de Planejamento de Viagem Costeira
 ════════════════════════════════════════════════════════════════════════════════
 
-  Versão: 2.19.0
+  Versão: 2.20.0
   Autor: Jossian Brito (Charlie Bravo)
   LinkedIn: https://www.linkedin.com/in/jossianbrito/
   X: https://x.com/jossiancosta  ·  Medium: https://medium.com/@jossiancosta
@@ -44,7 +44,7 @@
   <meta name="keywords"
     content="navegação costeira, planejamento de viagem, faróis, Brasil, OpenSeaMap, GPX, rebocadores">
 
-  <title>Coastal Navigator Brasil v2.19.0 - Planejamento de Viagem</title>
+  <title>Coastal Navigator Brasil v2.20.0 - Planejamento de Viagem</title>
 
   <!-- Leaflet CSS -->
   <!-- Subresource Integrity: o navegador recusa o arquivo se o conteúdo servido
@@ -75,7 +75,7 @@
     <header class="app-header">
       <div class="header-content">
         <div class="logo">
-          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.19.0</span></h1>
+          <h1>⚓ COASTAL NAVIGATOR BRASIL <span class="version">v2.20.0</span></h1>
         </div>
 
         <div class="controls">
@@ -437,6 +437,30 @@
             <label for="fuelConsumption">Consumo (L/h)</label>
             <input type="number" id="fuelConsumption" required min="0" step="0.1" placeholder="Ex: 85.5">
             <div class="form-help">Consumo em litros por hora</div>
+          </div>
+        </div>
+
+        <!-- LICENÇA DE SERVIÇO.                                          (C4)
+             Fica junto da identidade da embarcação porque a licença é POR
+             EMBARCAÇÃO, não por pessoa: rebocador tem rendição de tripulação,
+             e licença por pessoa transformaria cada troca de turno em chamado.
+
+             NÃO é `required`. O aplicativo é livre e abre sem licença; o campo
+             só alimenta os dois serviços que custam ao autor (previsão de
+             tempo e espelhamento). Marcar como obrigatório aqui seria mentir
+             sobre o produto no próprio formulário. -->
+        <div class="form-group">
+          <label for="licencaCodigo">Licença de serviço (opcional)</label>
+          <div style="display:flex;gap:8px;align-items:flex-start;">
+            <input type="text" id="licencaCodigo" autocomplete="off" spellcheck="false"
+                   placeholder="64 caracteres, recebidos por WhatsApp"
+                   style="flex:1;font-family:monospace;font-size:0.8rem;">
+            <button type="button" id="licencaGuardar" class="btn-sm">Guardar</button>
+          </div>
+          <div class="form-help" id="licencaAviso">
+            Libera previsão de tempo e espelhamento. O resto do aplicativo
+            funciona sem ela. Pedir em
+            <a href="https://wa.me/5585997737230" target="_blank" rel="noopener">WhatsApp</a>.
           </div>
         </div>
 
@@ -3251,7 +3275,7 @@
       updateShareButtons();
 
       console.log('═══════════════════════════════════════════════════════════════');
-      console.log('  Coastal Navigator Brasil v2.19.0 - Inicializado ⚓');
+      console.log('  Coastal Navigator Brasil v2.20.0 - Inicializado ⚓');
       console.log('═══════════════════════════════════════════════════════════════');
       console.log('Autor: Jossian Brito (Charlie Bravo)');
       console.log('58 Faróis curados carregados 💡 (52 DHN + 6 Validados)');

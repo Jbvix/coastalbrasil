@@ -295,6 +295,47 @@ não entrega acesso a ninguém.
 **Não aplicado:** `supabase/licenca.sql` está no repositório para revisão, não
 na produção.
 
+### 4.8 A licença no caminho do serviço, e o modo de falhar invertido (v2.20.0)
+
+A C4 faz o proxy de tempo perguntar pela licença. Feita do jeito óbvio, ela põe
+o **Supabase no caminho crítico de um dado de segurança da navegação** — o
+mesmo Supabase que ficou pausado três dias em setembro, com o monitor falhando
+duas vezes sem ninguém atender.
+
+Por isso, e isto é a decisão central da etapa:
+
+> **Quando o verificador de licença não responde, o proxy ATENDE.**
+
+Não é furo, é desenho. A assimetria com o portão administrativo da C3 é
+deliberada:
+
+| O que se protege | Falha | Porque |
+|---|---|---|
+| Portão administrativo | **fechado** | o que está em jogo é autoridade |
+| Previsão de tempo | **aberto** | o que está em jogo é o barco |
+
+Analogia de praxe a bordo: *damper* de incêndio falha fechado; a alimentação de
+combustível da MCP não falha fechada porque um sensor morreu — ela alarma e
+continua. O que a licença protege aqui é **orçamento**, e o orçamento já tem
+origem, limite por IP e fusível diário.
+
+**Três modos** (`LICENCA_MODO`): `desligado` (padrão, custo zero, nada muda),
+`observar` (anota sem barrar) e `exigir`. Valor desconhecido cai em desligado —
+erro de digitação não pode barrar a frota. Note que aqui o padrão desconhecido
+aponta para o lado **permissivo**, ao contrário de `admin.mjs`.
+
+**Ordem:** `origem → taxa → coordenadas → licença → cache → fusível`. Antes do
+cache de propósito: servir cache a quem não tem licença abriria carona para
+quem pedisse logo depois de um licenciado.
+
+**`x-licenca` em cabeçalho, nunca em URL** — URL vaza em log de CDN, histórico
+e `Referer`. **3 s** de estouro contra os 8 s do Open-Meteo: o Open-Meteo é o
+serviço, o Supabase aqui é só o porteiro. O cache de vereditos guarda o
+SHA-256, nunca o código, e nunca guarda `indisponível`.
+
+**402, não 403:** a embarcação tem direito ao aplicativo; só não tem licença
+corrente para o serviço pago.
+
 ### 4.6 Pendências registradas
 
 Coberta pela prova 9.7, que passa com **alerta**, não em verde:
