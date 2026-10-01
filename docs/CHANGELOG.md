@@ -11,6 +11,117 @@ executável.
 
 ```
 
+## v2.19.0 (01/10/2026) — O PORTÃO SAI DO NAVEGADOR · ETAPA C3
+
+Autor: Jossian Brito (Charlie Bravo)
+Data: 01/10/2026 · Versão 2.19.0
+
+### O defeito que esta versão fecha
+
+Até aqui o painel administrativo conferia a frase-senha **dentro do
+navegador**: calculava o SHA-256 do que você digitava e comparava com
+`window.ADMIN_GATE_HASH`, publicado pelo próprio build. Isso é o aviso **9.4**,
+aberto há dez versões.
+
+Três problemas, em ordem crescente de gravidade:
+
+1. **O hash viajava junto.** Quem abre a página tem o alvo e tem tempo
+   infinito para quebrá-lo offline, sem nunca tocar no servidor. SHA-256 cru
+   é rápido de propósito — bilhões de tentativas por segundo numa placa de
+   vídeo comum. A fechadura vinha com o molde da chave.
+2. **O veredito era do cliente.** Quem controla o navegador controla o `if`.
+   Três linhas no console abriam o painel sem senha nenhuma.
+3. **Sem configuração, o portão ABRIA.** Se `ADMIN_GATE_HASH` não estivesse
+   definida, o painel entrava direto, exibindo um aviso na tela. Ambiente mal
+   configurado virava porta escancarada — o modo de falhar apontava para o
+   lado errado, que é o pior defeito que um portão pode ter. Um disjuntor que
+   fecha o circuito quando queima não é um disjuntor.
+
+### O que mudou
+
+A conferência passou para `/.netlify/functions/licenca`, onde **scrypt**
+(N=16384, r=8, p=1) compara contra `ADMIN_SENHA_HASH`, variável que **nunca é
+publicada**. O custo deixa de ser bilhões por segundo e passa a ~50 ms por
+tentativa: a mesma lista de senhas que levava minutos passa a levar séculos.
+A comparação final usa `timingSafeEqual`, porque `===` para no primeiro
+caractere diferente e o tempo da resposta conta quantos você acertou.
+
+**Sem `ADMIN_SENHA_HASH` configurada, o portão NEGA.** Esta é a inversão que
+importa: o modo de falhar virou para o lado seguro.
+
+### A licença
+
+O cartão "Gerador de Acesso" gerava links `?token=…&user=…` que a vitrine
+nunca validou e que a etapa C1 parou de ler — era um chaveiro para uma porta
+que não existe. Agora emite **licença de serviço**, por embarcação, com faixa
+de validade (24h · 72h · 7d · 15d) e número de aparelhos.
+
+O código da licença **aparece uma única vez**, na tela de quem emitiu. O banco
+guarda apenas o SHA-256 dele: um vazamento do banco não entrega acesso a
+ninguém. É a mesma disciplina de uma chave de cofre — o estaleiro guarda o
+registro, não a cópia.
+
+A ordem de defesa no servidor é a defesa inteira, e nesta ordem:
+`método → origem → limite de taxa → senha → chave de serviço → banco`. A senha
+só é conferida **depois** do limite de taxa (12 tentativas/hora por IP);
+inverter isso transformaria o portão em oráculo de força bruta com custo zero.
+
+### Arquivos
+
+| Arquivo | O que é |
+|---|---|
+| `netlify/lib/admin.mjs` | Decisões puras: faixas, scrypt, geração e resumo do token, validação do pedido |
+| `netlify/functions/licenca.mjs` | O portão. Nega por método, origem, taxa, senha e configuração ausente |
+| `scripts/gerar-hash-admin.mjs` | Gera o `ADMIN_SENHA_HASH`. Lê do terminal sem ecoar, e também de entrada canalizada — script que só funciona com humano olhando é script que nunca é PROVADO |
+| `assets/js/admin.js` | v2.0.0 · 300 → 179 linhas. Senha só em memória, sem `localStorage`, sem `innerHTML`, sem hash no cliente |
+| `admin.html` | Cartão de emissão de licença. **Zero** manipuladores embutidos |
+| `supabase/licenca.sql` | Tabela `licenses` + `check/create/revoke`. **Não aplicado** — entra no repositório para ser revisado |
+
+### O que a bancada encontrou
+
+Nove mutações foram soltas contra este código. **Duas sobreviveram na primeira
+rodada**, e as duas são lições:
+
+- **`timingSafeEqual` → `===`**: nenhuma prova notou. As duas devolvem o mesmo
+  veredito, e a prova só olhava o veredito — a diferença está no **tempo**.
+  Cronometrar seria frágil numa máquina compartilhada, então a prova 28.1 passou
+  a exigir o **mecanismo**. É varredura, e ela declara que é; varredura é pior
+  que medição, e muito melhor que nada.
+- **Erro cru do banco para o cliente**: a prova 28.7 exigia que a palavra
+  `mascarar(` existisse no arquivo — e a **definição** da função já satisfazia
+  isso. Removi a **chamada** no `catch` e a prova seguiu verde. *Exigir que a
+  ferramenta exista não é exigir que ela seja usada.* Agora a prova olha dentro
+  do bloco `catch`, que é onde o erro vira resposta.
+
+E a própria prova **9.4** estava **verde pelo motivo errado**: ela lia
+`assets/js/admin.js` **cru**, e o comentário que explica a remoção contém as
+duas palavras que ela procurava. A prova casava com a explicação do conserto,
+não com o conserto. Sétima vez que esta casa tropeça na mesma pedra:
+**varredura de código lê código** — por isso toda varredura passa primeiro pelo
+`semComentarios`.
+
+### Provas
+
+283 provas (277 → 283), 28 suítes. Suíte **28 · Painel administrativo**, nove
+provas. Fumaça em 93 passos, nenhum erro de console. Comportamento conferido no
+servidor de verdade: `405 / 403 / 403 / 401 / 401 / 503`, e a força bruta
+cortada na 13ª tentativa.
+
+**Avisos: 3 → 2.** O **9.4 está encerrado**. Seguem abertos o 3.9 (três
+registros sem respaldo na LF-40ED) e o 9.7 (`unsafe-inline` na CSP, por causa
+dos 51 `onclick=` que ainda vivem no `app.html` e no `index.html`).
+
+### ⚠️ Esta versão é inerte até você configurar duas variáveis no Netlify
+
+- `ADMIN_SENHA_HASH` — gere com `node scripts/gerar-hash-admin.mjs`
+- `SUPABASE_SERVICE_KEY` — a chave que ignora RLS; **nunca** no repositório
+
+Sem elas o portão responde **503** e nega, que é o comportamento correto — mas
+nega também para você. `supabase/licenca.sql` **não foi aplicado**: fica para
+sua revisão e sua autorização.
+
+---
+
 ## v2.18.0 (01/10/2026) — O ESQUEMA SAI DA CABEÇA E VAI PARA O REPOSITÓRIO · ETAPA C2
 
 Autor: Jossian Brito (Charlie Bravo)

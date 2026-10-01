@@ -252,24 +252,52 @@ como pares de coordenadas numéricos e dentro de faixa antes de entrar no mapa.
   incompatível com intervalo flutuante, e o Supabase estava em `@2`.
 - Content-Security-Policy e cabeçalhos de segurança no `netlify.toml`.
 
-### 4.5 Controle de acesso — o limite honesto
+### 4.5 Controle de acesso — o portão saiu do navegador (v2.19.0)
 
-Um site estático não tem onde guardar segredo. O que foi feito:
+Um site estático não tem onde guardar segredo. Por dez versões o painel
+administrativo conviveu com isso da pior forma possível: calculava o SHA-256 da
+frase-senha **no navegador** e comparava com `window.ADMIN_GATE_HASH`, que o
+build publicava. Era o aviso **9.4**.
 
-- a senha do painel saiu do repositório; o build publica apenas o SHA-256, de
-  `ADMIN_GATE_HASH` (ver `scripts/build-config.js`);
-- o painel exibe aviso permanente de que é ferramenta local;
-- `gatekeeper.js` declara no próprio código que o token é convite rastreável, e
-  não credencial.
+Três defeitos empilhados, e o terceiro é o grave:
 
-O que **não** foi resolvido e não pode ser no cliente: o hash está no navegador
-e é atacável por dicionário. Controle de acesso real exige validação no
-servidor. O projeto já tem esse caminho montado — a função `check_nav_share`, no
-Supabase, valida token, revogação e expiração dos links de acompanhamento.
+1. **O alvo viajava junto da porta.** Quem abre a página leva o hash para casa
+   e ataca offline, sem tocar no servidor, sem limite de tentativas. SHA-256
+   cru é rápido por projeto — bilhões por segundo numa placa de vídeo comum.
+2. **O veredito era do cliente.** Quem controla o navegador controla o `if`.
+3. **A ausência da variável ABRIA o painel.** Ambiente mal configurado virava
+   porta escancarada. O modo de falhar apontava para o lado errado — e um
+   disjuntor que fecha o circuito quando queima não é um disjuntor.
+
+**O que existe agora.** A frase-senha vai para `/.netlify/functions/licenca` e
+é conferida com **scrypt** (N=16384, r=8, p=1, 32 bytes) contra
+`ADMIN_SENHA_HASH`, variável que nunca é publicada. O custo por tentativa sai
+de ~0,000001 ms para ~50 ms: a mesma lista que levava minutos passa a levar
+séculos. A comparação final usa `timingSafeEqual` — `===` para no primeiro
+caractere diferente, e o tempo da resposta conta quantos acertos houve.
+
+**Sem a variável, o portão NEGA (503).** É a inversão que importa.
+
+A ordem no servidor é a defesa inteira:
+`método → origem → limite de taxa → senha → chave de serviço → banco`.
+A senha é conferida **depois** do limite de taxa (12 tentativas/hora por IP).
+Inverter isso daria ao atacante um oráculo de força bruta de custo zero.
+
+`ADMIN_GATE_HASH` **segue publicada e não é mais lida por nada**. A variável é
+do autor e a decisão sobre ela é dele; o painel apenas deixou de depender dela.
+
+**Licença.** O antigo "Gerador de Acesso" produzia links `?token=…&user=…` que
+a vitrine nunca validou — chaveiro para porta inexistente. Agora emite licença
+de serviço (embarcação, faixa 24h/72h/7d/15d, aparelhos). O código **aparece
+uma vez**; o banco guarda só o SHA-256 dele, de modo que um vazamento do banco
+não entrega acesso a ninguém.
+
+**Não aplicado:** `supabase/licenca.sql` está no repositório para revisão, não
+na produção.
 
 ### 4.6 Pendências registradas
 
-Estão cobertas pelas provas 9.4 e 9.7, que passam com **alerta**, não em verde:
+Coberta pela prova 9.7, que passa com **alerta**, não em verde:
 
 - `script-src` ainda admite `'unsafe-inline'` (a interface usa atributos
   `onclick=`) e `'unsafe-eval'` (o Cesium compila WebAssembly). Reduzir os dois

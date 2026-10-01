@@ -1,300 +1,178 @@
 /**
- * Painel administrativo — gerador de links de acesso.
+ * Painel administrativo — cliente.
+ * Autor: Jossian Brito (Charlie Bravo)
+ * Versão 2.0.0 — 01/10/2026 · Etapa C3 do caminho C
  *
- * AVISO DE PROJETO: este painel roda inteiramente no navegador e NÃO constitui
- * controle de acesso. A sessão fica no localStorage do próprio visitante e o
- * portão de entrada é um trinco de conveniência (ver login()). Não coloque aqui
- * nada que dependa de sigilo.
+ * ══════════════════════════════════════════════════════════════════════════
+ * DUAS ENCENAÇÕES ACABARAM AQUI
  *
- * Autenticação de verdade precisa acontecer no servidor. O aplicativo já tem
- * esse caminho montado para os links de acompanhamento em terra: a função
- * check_nav_share, no Supabase, valida token, revogação e expiração antes de
- * liberar a telemetria.
+ * 1 · O PORTÃO COMPARAVA O HASH NO NAVEGADOR  (aviso 9.4)
+ *
+ *     const esperado = (window.ADMIN_GATE_HASH || '').trim();
+ *     if (!esperado) { this.createSession('Administrador', true); … }
+ *     if (informado === esperado) { … }
+ *
+ *     O próprio arquivo já dizia o que era: "um trinco, não uma fechadura".
+ *     Todo o painel é público; quem abrisse o console passava. E a primeira
+ *     linha era pior que o resto: AMBIENTE SEM A VARIÁVEL ABRIA DIRETO.
+ *
+ *     Agora a senha vai para `/.netlify/functions/licenca`, onde é conferida
+ *     com scrypt contra ADMIN_SENHA_HASH — variável que nunca chega ao
+ *     navegador. E ambiente sem configuração passa a NEGAR: um deploy onde
+ *     alguém esqueceu a variável não pode virar balcão público de emissão.
+ *
+ * 2 · O PAINEL EMITIA CHAVES QUE NÃO ABREM NADA
+ *
+ *     Ele gerava links `?token=…&user=…`. Desde a etapa C1 a vitrine não os
+ *     lê mais — e nunca os validou de verdade. Era um gerador de chaves
+ *     para uma porta que não existe.
+ *
+ *     Agora ele emite LICENÇA, que é o que a C2 definiu: por embarcação,
+ *     com faixa de validade, guardada no banco como SHA-256.
+ *
+ * A SENHA FICA NA MEMÓRIA, NUNCA NO DISCO
+ *
+ * Enquanto a aba estiver aberta ela vive numa variável e viaja por HTTPS a
+ * cada operação. Em `localStorage` sobreviveria ao fechar o navegador, ao
+ * compartilhar o aparelho e a um XSS — e acabamos de tirar um XSS desta
+ * mesma origem na C1. Fechou a aba, acabou a sessão. É menos cômodo e é o
+ * certo para um painel usado algumas vezes por semana.
+ * ══════════════════════════════════════════════════════════════════════════
  */
 
-class AccessManager {
+const LICENCA_URL = '/.netlify/functions/licenca';
+
+class PainelAdmin {
     constructor() {
-        this.params = new URLSearchParams(window.location.search);
-        this.token = this.params.get('token');
-        this.STORAGE_KEY_USED_TOKENS = 'coastal_admin_used_tokens';
-        this.STORAGE_KEY_SESSION = 'coastal_admin_session';
-        this.CONSTANTS = {
-            EMAIL: 'jossiancosta@gmail.com',
-            WHATSAPP: '5585997737230' // International format for Brazil
+        /* Só memória. Nunca localStorage, nunca sessionStorage, nunca cookie. */
+        this.senha = null;
+        this.el = {};
+    }
+
+    ligar() {
+        const g = (id) => document.getElementById(id);
+        this.el = {
+            hero: g('hero-section'), painel: g('dashboard-section'),
+            formLogin: g('admin-login-form'), senha: g('admin-pass'),
+            erroLogin: g('login-error'), quem: g('user-display'),
+            vessel: g('lic-vessel'), faixa: g('lic-faixa'),
+            devices: g('lic-devices'), contact: g('lic-contact'),
+            emitir: g('lic-emitir'), resultado: g('lic-resultado'),
+            token: g('lic-token'), resumoNota: g('lic-nota'),
+            copiar: g('lic-copiar'), sair: g('admin-sair')
         };
-
-        this.init();
-    }
-
-    init() {
-        // DOM Elements
-        this.elements = {
-            hero: document.getElementById('hero-section'),
-            loginModal: document.getElementById('login-modal'),
-            dashboard: document.getElementById('dashboard-section'),
-            errorScreen: document.getElementById('error-screen'),
-            errorText: document.getElementById('error-text'),
-            loginForm: document.getElementById('login-form'),
-            usernameInput: document.getElementById('username'),
-            userDisplay: document.getElementById('user-display'),
-            // Generator Elements
-            genUsername: document.getElementById('gen-username'),
-            genResult: document.getElementById('gen-result'),
-            genDisplay: document.getElementById('gen-url-display'),
-            // Portão do painel (ver login(): é trinco, não fechadura)
-            adminPass: document.getElementById('admin-pass'),
-            loginError: document.getElementById('login-error')
-        };
-
-        // Attach event listeners
-        if (this.elements.loginForm) {
-            this.elements.loginForm.addEventListener('submit', (e) => this.handleLogin(e));
+        if (this.el.formLogin) {
+            this.el.formLogin.addEventListener('submit', (ev) => { ev.preventDefault(); this.entrar(); });
         }
-
-        // Check Access State
-        this.checkState();
+        if (this.el.emitir) this.el.emitir.addEventListener('click', () => this.emitirLicenca());
+        if (this.el.copiar) this.el.copiar.addEventListener('click', () => this.copiarToken());
+        if (this.el.sair) this.el.sair.addEventListener('click', () => this.sair());
     }
 
-    /**
-     * Determines current view based on Token and Session state.
-     */
-    checkState() {
-        // 1. Check Admin Session
-        const session = this.getSession();
-        if (session && session.isAdmin) {
-            this.showDashboard('Administrador');
-            return;
-        }
-
-        // 2. Default -> Show Hero with Login
-        this.showHero();
-    }
-
-    /**
-     * Portão do painel administrativo.
-     *
-     * ANTES: a senha estava escrita em texto claro neste arquivo, que é
-     * servido a qualquer visitante. Qualquer pessoa que abrisse o código-fonte
-     * lia a senha — e senhas costumam ser reaproveitadas em outros lugares.
-     *
-     * AGORA: o build publica apenas o SHA-256 da frase-senha, vindo da variável
-     * de ambiente ADMIN_GATE_HASH (ver scripts/build-config.js). A senha em si
-     * não existe no repositório.
-     *
-     * O QUE ISSO NÃO É: uma barreira de segurança. O hash está no cliente e é
-     * atacável por dicionário; todo o código do painel é público. É um trinco,
-     * não uma fechadura. Sem hash configurado, o painel abre direto e exibe o
-     * aviso — melhor do que uma falsa sensação de proteção.
-     *
-     * Controle de acesso real exige validação no servidor. O app já faz isso
-     * para os links de acompanhamento, pela função check_nav_share no Supabase;
-     * o mesmo caminho serviria aqui.
-     */
-    async sha256Hex(texto) {
-        const bytes = new TextEncoder().encode(texto);
-        const digest = await crypto.subtle.digest('SHA-256', bytes);
-        return Array.from(new Uint8Array(digest))
-            .map(b => b.toString(16).padStart(2, '0')).join('');
-    }
-
-    async login() {
-        const esperado = (window.ADMIN_GATE_HASH || '').trim().toLowerCase();
-
-        if (!esperado) {
-            this.createSession('Administrador', true);
-            this.showDashboard('Administrador');
-            return;
-        }
-
-        const pass = this.elements.adminPass.value;
-        let informado = '';
-        try {
-            informado = await this.sha256Hex(pass);
-        } catch (e) {
-            // crypto.subtle exige contexto seguro (https ou localhost)
-            this.elements.loginError.textContent =
-                'Verificação indisponível: abra a página por HTTPS ou localhost.';
-            this.elements.loginError.style.display = 'block';
-            return;
-        }
-
-        if (informado === esperado) {
-            this.createSession('Administrador', true);
-            this.showDashboard('Administrador');
-            this.elements.loginError.style.display = 'none';
-        } else {
-            this.elements.loginError.textContent = 'Frase-senha incorreta.';
-            this.elements.loginError.style.display = 'block';
-        }
-    }
-
-    /**
-     * Simulation of Token Validation.
-     * In a real app, this would verify signature with backend.
-     * Here, checks if token is in 'used' list in localStorage.
-     */
-    isTokenValid(token) {
-        if (!token || token.length < 5) return false;
-
-        const usedTokens = JSON.parse(localStorage.getItem(this.STORAGE_KEY_USED_TOKENS) || '[]');
-        return !usedTokens.includes(token);
-    }
-
-    /**
-     * Marks a token as used to prevent re-entry.
-     */
-    burnToken(token) {
-        const usedTokens = JSON.parse(localStorage.getItem(this.STORAGE_KEY_USED_TOKENS) || '[]');
-        if (!usedTokens.includes(token)) {
-            usedTokens.push(token);
-            localStorage.setItem(this.STORAGE_KEY_USED_TOKENS, JSON.stringify(usedTokens));
-        }
-    }
-
-    /**
-     * Handles the username submission.
-     */
-    handleLogin(e) {
-        e.preventDefault();
-        const username = this.elements.usernameInput.value.trim();
-
-        if (username && this.token) {
-            // 1. Burn the token so it can't be used again
-            this.burnToken(this.token);
-
-            // 2. Create Session
-            this.createSession(username);
-
-            // 3. Update UI
-            this.showDashboard(username);
-
-            // 4. (Optional) Remove token from URL for cleanliness without reload
-            window.history.replaceState({}, document.title, window.location.pathname);
-        }
-    }
-
-    createSession(username, isAdmin = false) {
-        const sessionData = {
-            username: username,
-            isAdmin: isAdmin,
-            loginTime: new Date().toISOString()
-        };
-        localStorage.setItem(this.STORAGE_KEY_SESSION, JSON.stringify(sessionData));
-    }
-
-    getSession() {
-        const data = localStorage.getItem(this.STORAGE_KEY_SESSION);
-        return data ? JSON.parse(data) : null;
-    }
-
-    logout() {
-        localStorage.removeItem(this.STORAGE_KEY_SESSION);
-        location.reload(); // Refresh to return to Hero
-    }
-
-    /**
-     * Generator Tools
-     */
-    generateToken() {
-        const username = this.elements.genUsername.value.trim();
-        if (!username) {
-            alert('Por favor, digite o nome do usuário.');
-            return;
-        }
-
-        // Generate a pseudo-random token (8 chars)
-        const randomStr = Math.random().toString(36).substring(2, 10).toUpperCase();
-        const token = `CN${randomStr}`;
-
-        // Build URL relative to current origin, pointing to index.html
-        const baseUrl = window.location.origin + window.location.pathname.replace('admin.html', 'index.html');
-        const fullUrl = `${baseUrl}?token=${token}&user=${encodeURIComponent(username)}`;
-
-        // Display Result
-        this.elements.genDisplay.value = fullUrl;
-        this.elements.genResult.classList.remove('hidden');
-    }
-
-    copyLink() {
-        const url = this.elements.genDisplay.value;
-        const username = this.elements.genUsername.value;
-        // Extract token from URL for display
-        const tokenMatch = url.match(/token=([^&]*)/);
-        const token = tokenMatch ? tokenMatch[1] : 'N/A';
-
-        const message = `Olá ${username},\n\nSeu acesso ao Coastal Navigator foi aprovado.\n\n🔗 Link de Acesso: ${url}\n🔑 Token: ${token}\n\nClique no link para acessar.`;
-
-        navigator.clipboard.writeText(message).then(() => {
-            alert('Mensagem completa copiada para a área de transferência!');
+    /* Toda conversa com o servidor passa por aqui. A senha entra em TODA
+       chamada porque não há sessão: sem cookie e sem token de sessão, não há
+       o que roubar de um aparelho esquecido aberto. */
+    async falar(corpo) {
+        const r = await fetch(LICENCA_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...corpo, senha: this.senha })
         });
+        let j = {};
+        try { j = await r.json(); } catch (e) { /* resposta sem corpo */ }
+        return { status: r.status, ...j };
     }
 
-    shareLink(method) {
-        const url = this.elements.genDisplay.value;
-        const username = this.elements.genUsername.value;
-        const tokenMatch = url.match(/token=([^&]*)/);
-        const token = tokenMatch ? tokenMatch[1] : 'N/A';
+    async entrar() {
+        const digitada = (this.el.senha && this.el.senha.value) || '';
+        this.mostrarErro('');
+        if (!digitada) return this.mostrarErro('Digite a frase-senha.');
 
-        const text = `Olá ${username},\n\nSeu acesso ao Coastal Navigator foi aprovado.\n\n🔗 Link de Acesso: ${url}\n🔑 Token: ${token}\n\nClique no link para acessar.`;
-        const encodedMsg = encodeURIComponent(text);
+        this.senha = digitada;
+        /* Uma emissão inválida de propósito serve de prova de senha: a função
+           confere a senha ANTES de olhar a ação, então uma ação vazia volta
+           400 quando a senha está certa e 401 quando está errada. Assim não
+           é preciso um endpoint só para "entrar". */
+        const r = await this.falar({ acao: '' });
 
-        if (method === 'whatsapp') {
-            window.open(`https://wa.me/?text=${encodedMsg}`, '_blank');
+        if (r.status === 401) { this.senha = null; return this.mostrarErro('Frase-senha incorreta.'); }
+        if (r.status === 429) { this.senha = null; return this.mostrarErro('Tentativas demais. Aguarde alguns minutos.'); }
+        if (r.status === 503) { this.senha = null; return this.mostrarErro('Portão não configurado no servidor: ' + (r.motivo || '')); }
+        if (r.status === 403) { this.senha = null; return this.mostrarErro('Chamada recusada pela origem.'); }
+
+        /* 400 "ação desconhecida" significa senha ACEITA. */
+        if (this.el.senha) this.el.senha.value = '';
+        this.abrirPainel();
+    }
+
+    abrirPainel() {
+        if (this.el.hero) this.el.hero.classList.add('hidden');
+        if (this.el.painel) this.el.painel.classList.remove('hidden');
+        if (this.el.quem) this.el.quem.textContent = 'Administrador';
+    }
+
+    sair() {
+        this.senha = null;
+        if (this.el.painel) this.el.painel.classList.add('hidden');
+        if (this.el.hero) this.el.hero.classList.remove('hidden');
+        if (this.el.resultado) this.el.resultado.classList.add('hidden');
+        if (this.el.token) this.el.token.value = '';
+    }
+
+    async emitirLicenca() {
+        const vessel = (this.el.vessel && this.el.vessel.value || '').trim();
+        const faixa = (this.el.faixa && this.el.faixa.value) || '';
+        const devices = Number((this.el.devices && this.el.devices.value) || 3);
+        const contact = (this.el.contact && this.el.contact.value || '').trim();
+
+        if (!vessel) return this.mostrarErro('Informe a embarcação.', true);
+        this.mostrarErro('', true);
+
+        const r = await this.falar({ acao: 'emitir', vessel, faixa, devices, contact });
+
+        if (r.status === 401 || r.status === 429) { this.sair(); return this.mostrarErro('Sessão encerrada: ' + (r.motivo || '')); }
+        if (!r.ok) return this.mostrarErro(r.motivo || `Falha (HTTP ${r.status}).`, true);
+
+        /* O TOKEN APARECE UMA ÚNICA VEZ. O banco guarda só o SHA-256 dele e
+           este painel não grava nada — não há como recuperá-lo depois. Dizer
+           isso na tela não é formalidade: é o que evita o chamado de
+           "perdi o código, me manda de novo" que não tem resposta. */
+        if (this.el.token) this.el.token.value = r.token;
+        if (this.el.resumoNota) {
+            const vence = new Date(r.expires_at);
+            this.el.resumoNota.textContent =
+                `${r.vessel} · ${r.faixa} · vence ${vence.toLocaleString('pt-BR')} · ` +
+                `${r.devices} aparelho(s). Copie agora: o código não pode ser recuperado depois.`;
+        }
+        if (this.el.resultado) this.el.resultado.classList.remove('hidden');
+    }
+
+    copiarToken() {
+        const campo = this.el.token;
+        if (!campo || !campo.value) return;
+        campo.select();
+        try {
+            navigator.clipboard.writeText(campo.value);
+            if (this.el.copiar) {
+                const antes = this.el.copiar.textContent;
+                this.el.copiar.textContent = 'Copiado';
+                setTimeout(() => { this.el.copiar.textContent = antes; }, 1500);
+            }
+        } catch (e) {
+            /* Sem área de transferência (contexto não seguro): o campo já
+               está selecionado, e Ctrl+C resolve. Não há por que falhar. */
         }
     }
 
-    /**
-     * Request Access Action
-     */
-    requestAccess(method) {
-        const subject = encodeURIComponent("Solicitação de Acesso Administrativo - Coastal Navigator");
-        const body = encodeURIComponent("Olá, solicito um token de acesso administrativo para o sistema Coastal Navigator.");
-
-        if (method === 'email') {
-            window.location.href = `mailto:${this.CONSTANTS.EMAIL}?subject=${subject}&body=${body}`;
-        } else if (method === 'whatsapp') {
-            window.open(`https://wa.me/${this.CONSTANTS.WHATSAPP}?text=${body}`, '_blank');
-        }
-    }
-
-    // --- VIEW MANAGERS ---
-
-    showHero() {
-        this.hideAll();
-        this.elements.hero.classList.remove('hidden');
-    }
-
-    showLoginModal() {
-        this.hideAll();
-        // Keep hero visible behind modal for aesthetics? Or just deep blue bg?
-        // Let's hide hero to focus attention, or keep it blurred.
-        // Implementation: show modal on top of a dark background.
-        // For simplicity with current CSS:
-        this.elements.hero.classList.add('hidden');
-        this.elements.loginModal.classList.remove('hidden');
-    }
-
-    showDashboard(username) {
-        this.hideAll();
-        this.elements.userDisplay.textContent = username;
-        this.elements.dashboard.classList.remove('hidden');
-    }
-
-    showError(message) {
-        this.hideAll();
-        this.elements.errorText.textContent = message;
-        this.elements.errorScreen.classList.remove('hidden');
-    }
-
-    hideAll() {
-        this.elements.hero.classList.add('hidden');
-        this.elements.loginModal.classList.add('hidden');
-        this.elements.dashboard.classList.add('hidden');
-        this.elements.errorScreen.classList.add('hidden');
+    /* textContent, NUNCA innerHTML. A mensagem pode vir do servidor, e a C1
+       acabou de tirar um XSS desta mesma origem. */
+    mostrarErro(texto, noPainel = false) {
+        const alvo = noPainel ? this.el.resumoNota : this.el.erroLogin;
+        if (!alvo) return;
+        alvo.textContent = texto || '';
+        if (!noPainel) alvo.style.display = texto ? 'block' : 'none';
     }
 }
 
-// Initialize on Load
-document.addEventListener('DOMContentLoaded', () => {
-    window.accessManager = new AccessManager();
-});
+const painelAdmin = new PainelAdmin();
+document.addEventListener('DOMContentLoaded', () => painelAdmin.ligar());

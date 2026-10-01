@@ -609,12 +609,54 @@ t(S9, '9.3', 'Nenhuma credencial em texto claro no repositório', () => {
     fs9.readFileSync(ROOT + '/' + f, 'utf8')));
   ok(maus.length === 0, 'comparação com senha literal em: ' + maus.join(', '));
 });
-t(S9, '9.4', 'O portão administrativo compara hash, não senha literal', () => {
-  const adm = require('fs').readFileSync(ROOT + '/assets/js/admin.js', 'utf8');
-  ok(/ADMIN_GATE_HASH/.test(adm) && /SHA-256/.test(adm),
-     'a frase-senha deve vir como SHA-256 de variável de ambiente, gerada no build');
-  return { warn: 'continua sendo trinco, não fechadura: o hash está no cliente. ' +
-                 'Controle real exige validação no servidor (ver check_nav_share)' };
+t(S9, '9.4', 'O portão administrativo é conferido no servidor, não no navegador', () => {
+  /* ═══════════════════════════════════════════════════════════════════════
+     AVISO ENCERRADO NA v2.19.0 — E A PROVA ESTAVA VERDE PELO MOTIVO ERRADO.
+
+     Durante dez versões esta prova exigiu que `admin.js` contivesse
+     `ADMIN_GATE_HASH` e `SHA-256`, e devolvia um WARN admitindo que isso é
+     trinco e não fechadura: o hash viajava para o navegador, e quem tem o
+     hash e a página tem tempo infinito para quebrá-lo offline. Pior: a
+     ausência da variável ABRIA o painel, com um aviso na tela. Ambiente mal
+     configurado virava porta escancarada — o modo de falhar era para o lado
+     errado, que é o pior defeito que um portão pode ter.
+
+     A etapa C3 moveu a conferência para /.netlify/functions/licenca, onde
+     scrypt compara contra ADMIN_SENHA_HASH, variável que nunca é publicada.
+     Sem configuração, agora o portão NEGA.
+
+     ⚠️ E AQUI A LIÇÃO DE BANCADA, a sétima vez que esta casa tropeça nela:
+     quando o código foi removido, esta prova CONTINUOU VERDE. Ela lia o
+     arquivo CRU, e o comentário que explica a remoção contém as duas
+     palavras que ela procurava. A prova estava casando com a explicação do
+     conserto, não com o conserto. Varredura de código lê CÓDIGO — por isso
+     o `semComentarios` abaixo não é zelo, é a diferença entre provar e
+     fingir que provou.
+     ═══════════════════════════════════════════════════════════════════════ */
+  const adm = semComentarios(require('fs').readFileSync(ROOT + '/assets/js/admin.js', 'utf8'));
+
+  /* O navegador não conhece o segredo, nem em forma de hash. */
+  ok(!/ADMIN_GATE_HASH/.test(adm),
+     'o painel voltou a ler o hash publicado — segredo no navegador é segredo perdido');
+
+  /* Nem o navegador calcula hash nenhum: se ele calculasse, o veredito
+     seria dele, e um veredito do cliente é um veredito do atacante. */
+  ok(!/subtle|digest|sha-?256/i.test(adm),
+     'o painel voltou a decidir no cliente — quem calcula o veredito manda nele');
+
+  /* A senha vai para o servidor, que é onde existe segredo de verdade. */
+  ok(/functions\/licenca/.test(adm),
+     'o painel não fala com o servidor — então não há conferência de verdade');
+
+  /* E não fica guardada: memória morre com a aba, localStorage não. */
+  ok(!/localStorage|sessionStorage/.test(adm),
+     'a frase-senha ficou guardada no navegador — sobrevive à aba e ao dono');
+
+  /* Do outro lado, a fechadura precisa ser cara de testar. scrypt a 16384
+     custa ~50 ms por tentativa; SHA-256 cru custa bilhões por segundo. É a
+     diferença entre uma amarra e um cabo de varal. */
+  const srv = semComentarios(require('fs').readFileSync(ROOT + '/netlify/lib/admin.mjs', 'utf8'));
+  ok(/scrypt/.test(srv), 'o servidor não usa scrypt — a derivação ficou barata de atacar');
 });
 t(S9, '9.5', 'A vitrine não finge autenticar — nem com ressalva', () => {
   /* ═══════════════════════════════════════════════════════════════════════
@@ -4433,6 +4475,220 @@ t(S27, '27.9', 'O banco recusa prova assíncrona, que passaria sempre', () => {
   eq(results.length, antes, 0, 'a sonda ficou no relatório');
   ok(sonda.status === 'FAIL', 'uma prova assíncrona que falha foi dada como aprovada');
   ok(/assíncrona/.test(sonda.detail), 'a mensagem não explica por que foi recusada');
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SUÍTE 28 · PAINEL ADMINISTRATIVO (etapa C3)                     (v2.19.0)
+   ═══════════════════════════════════════════════════════════════════════════
+
+   O aviso 9.4 dizia: "o portão administrativo compara hash, não senha
+   literal". O próprio admin.js descrevia o que era — "um trinco, não uma
+   fechadura" — e a comparação acontecia NO NAVEGADOR.
+
+   Pior que o trinco era a primeira linha dele:
+
+       if (!esperado) { this.createSession('Administrador', true); … }
+
+   ambiente sem a variável = painel ABERTO. Deploy mal configurado virava
+   balcão público.
+
+   Aqui as decisões do portão são EXECUTADAS, como a guarda do proxy na
+   suíte 27. O efeito — o handler respondendo 401/403/429 — vai para a
+   fumaça, que é onde o assíncrono tem casa (prova 27.9).
+   ═══════════════════════════════════════════════════════════════════════════ */
+const S28 = '28 · Painel administrativo';
+let A28 = null, A28ERRO = '';
+try { A28 = require(ROOT + '/netlify/lib/admin.mjs'); }
+catch (e) { A28ERRO = (e && e.message) || String(e); }
+
+t(S28, '28.0', 'As decisões do portão são executáveis', () => {
+  ok(A28, 'não foi possível carregar netlify/lib/admin.mjs — ' + A28ERRO);
+  ok(typeof A28.conferirSenha === 'function', 'sem conferirSenha');
+  return { detail: 'admin v' + A28.ADMIN_VERSAO + ' · scrypt N=' + A28.SCRYPT_N };
+});
+
+t(S28, '28.1', 'A senha é conferida com scrypt, e a tabela inteira é medida', () => {
+  const h = A28.gerarHashDeSenha('frase-de-bordo-longa');
+  ok(/^scrypt\$[0-9a-f]+\$[0-9a-f]+$/.test(h), 'o hash não declara o algoritmo nem o sal');
+
+  ok(A28.conferirSenha('frase-de-bordo-longa', h).ok, 'a senha certa foi recusada');
+  ok(!A28.conferirSenha('frase-de-bordo-long', h).ok, 'uma senha quase certa passou');
+  ok(!A28.conferirSenha('', h).ok, 'senha vazia passou');
+
+  /* ESTA É A INVERSÃO QUE MAIS IMPORTA. O admin.js antigo abria o painel
+     quando a variável estava ausente. Agora falta de configuração NEGA. */
+  const semConfig = A28.conferirSenha('qualquer', '');
+  ok(!semConfig.ok, 'SEM HASH CONFIGURADO O PORTÃO ABRIU — era o defeito do admin.js antigo');
+  ok(/não configurado/.test(semConfig.motivo), 'o motivo não distingue ausência de erro de senha');
+
+  /* Hash torto não pode virar "senha certa" nem derrubar a função. */
+  ['sha256$a$b', 'scrypt$só-duas', 'scrypt$zz$ww', 'lixo'].forEach(ruim =>
+    ok(!A28.conferirSenha('x', ruim).ok, 'hash malformado aceito: ' + ruim));
+
+  /* Sal diferente a cada geração: dois hashes da MESMA senha não podem ser
+     iguais, senão uma tabela arco-íris serve para todos. */
+  ok(A28.gerarHashDeSenha('igual') !== A28.gerarHashDeSenha('igual'),
+     'o sal não é aleatório — dois hashes da mesma senha saíram idênticos');
+
+  /* ───────────────────────────────────────────────────────────────────
+     COMPARAÇÃO EM TEMPO CONSTANTE — e esta asserção FALTAVA.
+
+     Uma mutação trocou `timingSafeEqual` por `===` e sobreviveu a tudo
+     acima: as duas devolvem o mesmo veredito, e o teste só olhava o
+     veredito. A diferença está no TEMPO — `===` para na primeira
+     diferença, e quem mede a resposta descobre quantos caracteres
+     acertou, um a um. É ataque sutil, real, e invisível para qualquer
+     prova que só compare resultados.
+
+     Cronometrar é ruim aqui (ruído de máquina compartilhada derrubaria a
+     prova ao acaso), então a exigência é sobre o MECANISMO. É varredura,
+     e ela sabe disso — mas varredura é melhor que asserção nenhuma. */
+  const FONTE = semComentarios(fs16.readFileSync(ROOT + '/netlify/lib/admin.mjs', 'utf8'));
+  ok(/timingSafeEqual\(/.test(FONTE),
+     'a senha voltou a ser comparada sem tempo constante — o tempo da resposta vaza acertos');
+  ok(!/obtido\s*===\s*esperado|esperado\s*===\s*obtido/.test(FONTE),
+     'há comparação direta de senha além da de tempo constante');
+});
+
+t(S28, '28.2', 'scrypt é LENTO de propósito, e isso é a defesa', () => {
+  /* SHA-256 faz bilhões por segundo numa placa de vídeo. scrypt não — e é
+     exatamente o que se quer numa senha. Se alguém "otimizar" os parâmetros
+     um dia, esta prova acusa. */
+  ok(A28.SCRYPT_N >= 16384, `N=${A28.SCRYPT_N} é baixo demais para senha`);
+  const t0 = Date.now();
+  A28.derivar('medindo-o-custo', 'a'.repeat(32));
+  const custo = Date.now() - t0;
+  ok(custo >= 10, `derivação levou só ${custo} ms — rápido demais para resistir a dicionário`);
+  return { detail: `N=${A28.SCRYPT_N} · ${custo} ms por tentativa` };
+});
+
+t(S28, '28.3', 'As faixas são as combinadas, e o que não está na lista não sai', () => {
+  const agora = Date.UTC(2026, 9, 1, 12, 0, 0);
+  const h = 3600e3, d = 24 * h;
+  [['24h', 24 * h], ['72h', 72 * h], ['7d', 7 * d], ['15d', 15 * d]].forEach(([f, ms]) => {
+    const v = A28.vencimentoDaFaixa(f, agora);
+    ok(v, 'faixa combinada recusada: ' + f);
+    eq(v.getTime() - agora, ms, 0, 'a faixa ' + f + ' não dá o prazo certo');
+  });
+
+  /* Faixa livre convidaria ao engano de digitação: "150" em vez de "15"
+     emitiria cinco meses sem ninguém notar. O que não está na lista não sai. */
+  ['30d', '1y', '', null, '15', 'd15', '24H '].forEach(ruim =>
+    ok(A28.vencimentoDaFaixa(ruim, agora) === null, 'faixa fora da lista aceita: ' + JSON.stringify(ruim)));
+});
+
+t(S28, '28.4', 'O token tem 256 bits e o banco só vê o resumo', () => {
+  const t1 = A28.gerarToken(), t2 = A28.gerarToken();
+  ok(/^[0-9a-f]{64}$/.test(t1), 'o token não são 32 bytes em hexadecimal');
+  ok(t1 !== t2, 'dois tokens saíram iguais — a fonte de aleatoriedade está quebrada');
+
+  const r = A28.resumoDoToken(t1);
+  ok(/^[0-9a-f]{64}$/.test(r), 'o resumo não é SHA-256 em hexadecimal');
+  ok(r !== t1, 'o resumo é igual ao token — não houve resumo nenhum');
+  eq(A28.resumoDoToken(t1) === r ? 1 : 0, 1, 0, 'o resumo não é estável');
+  ok(A28.resumoDoToken(t2) !== r, 'tokens diferentes deram o mesmo resumo');
+});
+
+t(S28, '28.5', 'O pedido de emissão é validado ANTES de tocar no banco', () => {
+  const bom = A28.validarEmissao({ vessel: '  SAAM ORION  ', faixa: '15d', devices: 3, contact: ' 5585 ' });
+  ok(bom.ok, 'um pedido legítimo foi recusado: ' + bom.motivo);
+  ok(bom.vessel === 'SAAM ORION', 'os espaços das pontas não foram removidos');
+  ok(bom.contact === '5585', 'o contato não foi limpo');
+
+  const ruins = [
+    [{ faixa: '15d' }, 'sem embarcação'],
+    [{ vessel: '   ', faixa: '15d' }, 'embarcação só com espaços'],
+    [{ vessel: 'X'.repeat(61), faixa: '15d' }, 'nome longo demais'],
+    [{ vessel: 'X', faixa: '30d' }, 'faixa fora da lista'],
+    [{ vessel: 'X', faixa: '' }, 'faixa vazia'],
+    [{ vessel: 'X', faixa: '15d', devices: 0 }, 'zero aparelhos'],
+    [{ vessel: 'X', faixa: '15d', devices: 21 }, 'aparelhos demais'],
+    [{ vessel: 'X', faixa: '15d', devices: 2.5 }, 'aparelhos fracionários'],
+    [{ vessel: 'X', faixa: '15d', contact: 'c'.repeat(121) }, 'contato longo demais']
+  ];
+  ruins.forEach(([pedido, oque]) =>
+    ok(!A28.validarEmissao(pedido).ok, 'passou o que devia ser recusado: ' + oque));
+
+  /* Sem dispositivos informados vale o padrão, não um erro: o campo é
+     opcional no painel. */
+  ok(A28.validarEmissao({ vessel: 'X', faixa: '24h' }).devices === 3,
+     'o padrão de 3 aparelhos se perdeu');
+});
+
+t(S28, '28.6', 'O cliente não confere senha, não guarda senha e não escreve innerHTML', () => {
+  const C = semComentarios(fs16.readFileSync(ROOT + '/assets/js/admin.js', 'utf8'));
+
+  /* O aviso 9.4 em uma linha: nada de comparar hash no navegador. */
+  ok(!/ADMIN_GATE_HASH/.test(C), 'o cliente voltou a ler o hash do portão');
+  ok(!/sha256|scrypt|digest/i.test(C), 'o cliente voltou a calcular hash de senha');
+  ok(/\.netlify\/functions\/licenca/.test(C), 'o cliente não fala com o servidor');
+
+  /* Senha em localStorage sobreviveria ao fechar o navegador, ao aparelho
+     compartilhado e a um XSS — e acabamos de tirar um XSS desta origem. */
+  ok(!/localStorage|sessionStorage|document\.cookie/.test(C),
+     'a senha (ou a sessão) voltou a ser guardada fora da memória');
+
+  /* innerHTML foi o vetor do XSS da C1, e aqui a mensagem vem do servidor. */
+  ok(!/innerHTML/.test(C), 'o painel voltou a escrever innerHTML');
+  ok(/textContent/.test(C), 'as mensagens não vão por textContent');
+
+  /* E o painel não pode mais emitir link de acesso: a C1 matou esse caminho. */
+  ok(!/\?token=|gen-url|generateToken/.test(C),
+     'o painel voltou a gerar links de acesso, que não abrem porta nenhuma');
+});
+
+t(S28, '28.7', 'O servidor nega sem configuração e não vaza a chave de serviço', () => {
+  const F = semComentarios(fs16.readFileSync(ROOT + '/netlify/functions/licenca.mjs', 'utf8'));
+
+  ok(/conferirSenha\(/.test(F), 'a função não confere a senha');
+  ok(/ADMIN_SENHA_HASH/.test(F), 'a função não lê o hash do ambiente');
+  ok(/SUPABASE_SERVICE_KEY/.test(F), 'a função não usa a chave de serviço');
+
+  /* Sem chave, NÃO cair num caminho degradado — mesma regra do tempo.mjs. */
+  ok(/não configurada no ambiente/.test(F), 'sem chave de serviço a função não declara o motivo');
+
+  /* A guarda de origem vem ANTES da senha: sem isso, um varredor esgotaria
+     as tentativas por hora e trancaria o administrador para fora. */
+  const iOrigem = F.indexOf('origemDeConfianca('), iTaxa = F.indexOf('limiteDeTaxa(');
+  const iSenha = F.indexOf('conferirSenha(');
+  ok(iOrigem > 0 && iTaxa > 0 && iSenha > 0, 'falta origem, taxa ou senha no caminho');
+  ok(iOrigem < iTaxa && iTaxa < iSenha,
+     'a ordem está errada: origem e limite têm de vir antes de gastar uma tentativa de senha');
+
+  /* O erro do PostgREST pode ecoar cabeçalho, e cabeçalho contém a chave.
+
+     ESTA ASSERÇÃO ERA FRACA e uma mutação provou: ela exigia que a palavra
+     `mascarar(` existisse no arquivo — e a DEFINIÇÃO da função já satisfaz
+     isso. Removi a CHAMADA no catch e a prova continuou verde.
+
+     Exigir que a ferramenta exista não é exigir que ela seja usada. Agora a
+     prova olha o bloco do catch, que é onde o erro vira resposta. */
+  const iCatch = F.lastIndexOf('catch');
+  ok(iCatch > 0, 'a função não trata falha do banco');
+  const blocoCatch = F.slice(iCatch);
+  ok(/mascarar\(/.test(blocoCatch),
+     'o erro do banco vai CRU para o cliente — pode conter a chave de serviço');
+  ok(!/motivo:\s*\(e && e\.message\)/.test(blocoCatch),
+     'a mensagem crua do banco ainda chega ao cliente');
+  ok(/'no-store'|"no-store"/.test(F), 'as respostas do painel podem ser cacheadas');
+
+  /* Teto apertado: aqui o limite protege uma SENHA, não uma fatura. */
+  const m = /TETO_ADMIN_HORA\s*=\s*(\d+)/.exec(F);
+  ok(m, 'não há teto declarado para tentativas no painel');
+  ok(Number(m[1]) <= 20, `teto de ${m[1]}/h é frouxo demais para proteger senha`);
+  return { detail: `teto ${m[1]} tentativas/h` };
+});
+
+t(S28, '28.8', 'O painel administrativo não tem mais manipulador inline', () => {
+  /* O aviso 9.7 conta `onclick=` e irmãos, que são o que obriga a CSP a
+     aceitar 'unsafe-inline'. Código novo não aumenta a dívida — e aqui ela
+     zerou neste arquivo. */
+  const H = semComentariosHtml(fs16.readFileSync(ROOT + '/admin.html', 'utf8'));
+  const inline = (H.match(/\son(click|submit|change|input|load)=/gi) || []).length;
+  eq(inline, 0, 0, `ainda há ${inline} manipulador(es) inline no admin.html`);
+  /* E nada pode chamar o objeto que deixou de existir. */
+  ok(!/accessManager/.test(H), 'o HTML ainda chama accessManager, que não existe mais');
+  return { detail: 'zero manipuladores inline' };
 });
 
 /* ═══ RELATÓRIO ═══ */
