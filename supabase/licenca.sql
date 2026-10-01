@@ -208,6 +208,53 @@ as $function$
   update public.licenses set revoked = true where token_hash = p_token_hash;
 $function$;
 
+--  ════════════════════════════════════════════════════════════════════════
+--  LISTAR — a operação que faltava para o painel ser utilizável      (C6)
+--  ════════════════════════════════════════════════════════════════════════
+--  Sem isto, quem emite não tem como saber o que emitiu. O autor ficaria
+--  dependendo de uma planilha paralela, e planilha paralela diverge do banco
+--  no primeiro dia corrido — vira o diário de bordo que ninguém atualizou
+--  depois da manobra.
+--
+--  DEVOLVE O `token_hash`, e isso é deliberado: é o SHA-256, não o token.
+--  Não se inverte, não serve para entrar em lugar nenhum, e é a ÚNICA chave
+--  por onde a revogação pega a linha certa. Quem recebe esta listagem já
+--  passou pelo scrypt do portão.
+--
+--  NÃO devolve nada que o banco não tenha: o token em claro não existe aqui,
+--  e por isso nenhuma listagem pode vazá-lo. A propriedade vem do desenho,
+--  não da disciplina de quem escreve a consulta.
+--
+--  ORDEM: ativas primeiro, e dentro delas as que vencem mais cedo. É a ordem
+--  em que o autor precisa agir — quem vence amanhã importa mais que quem
+--  venceu mês passado. Teto de 200 porque a frota é pequena e uma listagem
+--  sem limite é uma surpresa esperando o banco crescer.
+create or replace function public.list_licenses()
+returns table(token_hash text, vessel text, contact text,
+              created_at timestamptz, expires_at timestamptz,
+              revoked boolean, devices smallint, note text,
+              valid boolean, expired boolean)
+language sql
+security definer
+set search_path to 'public'
+as $function$
+  select l.token_hash, l.vessel, l.contact, l.created_at, l.expires_at,
+         l.revoked, l.devices, l.note,
+         (not l.revoked and l.expires_at > now())  as valid,
+         (l.expires_at <= now())                   as expired
+    from public.licenses l
+   order by (not l.revoked and l.expires_at > now()) desc,
+            l.expires_at asc
+   limit 200;
+$function$;
+
+--  Mesma tranca das outras: REVOGAR DE `public` PRIMEIRO. O Postgres concede
+--  EXECUTE a `public` por padrão, e revogar só de `anon` seria revogar uma
+--  concessão direta que nunca existiu — foi o defeito que a C2 mediu e que
+--  nenhuma leitura de texto tinha pegado.
+revoke execute on function public.list_licenses() from public, anon, authenticated;
+grant  execute on function public.list_licenses() to service_role;
+
 --  Emitir e revogar NÃO são operações de navegador. Ficam com o serviço, e a
 --  etapa C3 (portão administrativo com validação de servidor) é quem vai
 --  chamá-las. Enquanto a C3 não existir, nenhuma delas é alcançável pelo

@@ -59,7 +59,9 @@ class PainelAdmin {
             devices: g('lic-devices'), contact: g('lic-contact'),
             emitir: g('lic-emitir'), resultado: g('lic-resultado'),
             token: g('lic-token'), resumoNota: g('lic-nota'),
-            copiar: g('lic-copiar'), sair: g('admin-sair')
+            copiar: g('lic-copiar'), sair: g('admin-sair'),
+            /* C6 — listagem e revogação. */
+            listar: g('lic-listar'), lista: g('lic-lista'), listaNota: g('lic-lista-nota')
         };
         if (this.el.formLogin) {
             this.el.formLogin.addEventListener('submit', (ev) => { ev.preventDefault(); this.entrar(); });
@@ -67,6 +69,7 @@ class PainelAdmin {
         if (this.el.emitir) this.el.emitir.addEventListener('click', () => this.emitirLicenca());
         if (this.el.copiar) this.el.copiar.addEventListener('click', () => this.copiarToken());
         if (this.el.sair) this.el.sair.addEventListener('click', () => this.sair());
+        if (this.el.listar) this.el.listar.addEventListener('click', () => this.listarLicencas());
     }
 
     /* Toda conversa com o servidor passa por aqui. A senha entra em TODA
@@ -117,6 +120,16 @@ class PainelAdmin {
         if (this.el.hero) this.el.hero.classList.remove('hidden');
         if (this.el.resultado) this.el.resultado.classList.add('hidden');
         if (this.el.token) this.el.token.value = '';
+        /* A lista sai junto da sessão: deixar nomes de embarcação e contatos
+           na tela de um aparelho que acabou de "sair" é não ter saído. */
+        this.limparLista();
+        if (this.el.listaNota) this.el.listaNota.textContent = '';
+    }
+
+    limparLista() {
+        const box = this.el.lista;
+        if (!box) return;
+        while (box.firstChild) box.removeChild(box.firstChild);
     }
 
     async emitirLicenca() {
@@ -145,6 +158,111 @@ class PainelAdmin {
                 `${r.devices} aparelho(s). Copie agora: o código não pode ser recuperado depois.`;
         }
         if (this.el.resultado) this.el.resultado.classList.remove('hidden');
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       LISTAGEM — e tudo é construído com nós do DOM.               (C6)
+
+       Nenhum innerHTML, nem para montar a tabela. Os campos vêm do banco,
+       mas foram DIGITADOS por quem emitiu: nome de embarcação e contato são
+       entrada de usuário que deu a volta pelo servidor e voltou. Montar isso
+       como marcação seria reabrir, pela porta dos fundos, o mesmo XSS que a
+       C1 tirou de produção — com o agravante de parecer seguro por ter vindo
+       "do nosso banco".
+
+       Entrada de usuário não deixa de ser entrada de usuário por ter
+       dormido numa tabela.
+       ═══════════════════════════════════════════════════════════════════ */
+    async listarLicencas() {
+        if (!this.el.lista) return;
+        if (this.el.listaNota) this.el.listaNota.textContent = 'Carregando…';
+
+        const r = await this.falar({ acao: 'listar' });
+        if (r.status === 401 || r.status === 429) { this.sair(); return this.mostrarErro('Sessão encerrada: ' + (r.motivo || '')); }
+        if (!r.ok) {
+            this.limparLista();
+            if (this.el.listaNota) this.el.listaNota.textContent = r.motivo || `Falha (HTTP ${r.status}).`;
+            return;
+        }
+
+        const linhas = Array.isArray(r.licencas) ? r.licencas : [];
+        this.limparLista();
+        if (this.el.listaNota) {
+            this.el.listaNota.textContent = linhas.length
+                ? `${linhas.length} licença(s). Ativas primeiro, vencendo mais cedo no topo.`
+                : 'Nenhuma licença emitida ainda.';
+        }
+        for (const L of linhas) this.el.lista.appendChild(this.linhaDaLicenca(L));
+    }
+
+    /* Uma linha da lista, como elementos — nunca como texto de marcação. */
+    linhaDaLicenca(L) {
+        const linha = document.createElement('div');
+        linha.style.cssText = 'display:flex;gap:10px;align-items:center;padding:8px 10px;' +
+            'margin-bottom:6px;border-radius:4px;background:rgba(255,255,255,0.04);' +
+            'border-left:3px solid ' + (L.valid ? '#4caf50' : (L.revoked ? '#ff6b6b' : '#FFA726')) + ';';
+
+        /* O estado em palavra, não só em cor: quem enxerga mal ou imprime em
+           preto e branco precisa ler o mesmo que os outros veem. */
+        const estado = document.createElement('span');
+        estado.textContent = L.revoked ? 'REVOGADA' : (L.valid ? 'ativa' : 'vencida');
+        estado.style.cssText = 'font-size:0.7rem;font-weight:bold;min-width:72px;' +
+            'color:' + (L.valid ? '#4caf50' : (L.revoked ? '#ff6b6b' : '#FFA726')) + ';';
+
+        const corpo = document.createElement('div');
+        corpo.style.cssText = 'flex:1;min-width:0;';
+
+        const nome = document.createElement('div');
+        nome.textContent = L.vessel || '(sem nome)';          // textContent, sempre
+        nome.style.cssText = 'font-weight:bold;font-size:0.85rem;';
+
+        const detalhe = document.createElement('div');
+        const vence = new Date(L.expires_at);
+        const quando = isNaN(vence) ? '(data ilegível)' : vence.toLocaleString('pt-BR');
+        detalhe.textContent = `vence ${quando} · ${L.devices} aparelho(s)` +
+                              (L.contact ? ` · ${L.contact}` : '');
+        detalhe.style.cssText = 'font-size:0.75rem;color:#90A4AE;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+
+        corpo.appendChild(nome);
+        corpo.appendChild(detalhe);
+        linha.appendChild(estado);
+        linha.appendChild(corpo);
+
+        /* Revogar só aparece onde faz sentido. Botão que não faz nada ensina
+           a ignorar botões. */
+        if (!L.revoked) {
+            const btn = document.createElement('button');
+            btn.className = 'btn-sm btn-outline';
+            btn.textContent = 'Revogar';
+            btn.style.cssText = 'font-size:0.72rem;';
+            btn.addEventListener('click', () => this.revogarLicenca(L, btn));
+            linha.appendChild(btn);
+        }
+        return linha;
+    }
+
+    async revogarLicenca(L, botao) {
+        /* Confirmação com o NOME da embarcação dentro. "Tem certeza?" sozinho
+           é pergunta que se responde no automático; com o nome, o dedo para.
+           Revogar é ato deliberado — a trava é proporcional. */
+        const nome = L.vessel || '(sem nome)';
+        if (!window.confirm(`Revogar a licença de ${nome}?\n\nO acesso para por até 5 minutos ` +
+                            `(cache de vereditos) e NÃO há como desfazer: para liberar de novo, ` +
+                            `emita outra licença.`)) return;
+
+        if (botao) { botao.disabled = true; botao.textContent = 'revogando…'; }
+        const r = await this.falar({ acao: 'revogar', token_hash: L.token_hash });
+
+        if (r.status === 401 || r.status === 429) { this.sair(); return this.mostrarErro('Sessão encerrada: ' + (r.motivo || '')); }
+        if (!r.ok) {
+            if (botao) { botao.disabled = false; botao.textContent = 'Revogar'; }
+            if (this.el.listaNota) this.el.listaNota.textContent = r.motivo || `Falha (HTTP ${r.status}).`;
+            return;
+        }
+        /* Relê do servidor em vez de riscar a linha na tela: o que vale é o
+           que o banco diz, e pintar o resultado presumido esconderia uma
+           revogação que não pegou. */
+        await this.listarLicencas();
     }
 
     copiarToken() {

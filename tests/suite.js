@@ -4851,6 +4851,95 @@ t(S28, '28.10', 'Tolerância a colagem: embalagem perdoada, conteúdo nunca', ()
                    recusaveis.length + ' conteúdos recusados com código' };
 });
 
+t(S28, '28.11', 'O painel lista e revoga — e monta a lista com nós, não com marcação', () => {
+  /* ═══════════════════════════════════════════════════════════════════════
+     A C6 fecha o buraco que tornava o painel um EMISSOR CEGO: até a v2.22.0
+     ele só sabia emitir. Quem emitia não tinha como saber o que havia
+     emitido, e revogar exigiria conhecer de cor o resumo de 64 caracteres da
+     licença certa. Um diário de bordo que só aceita escrita e não deixa
+     reler não é diário, é desabafo.
+     ═══════════════════════════════════════════════════════════════════════ */
+  const F = semComentarios(fs16.readFileSync(ROOT + '/netlify/functions/licenca.mjs', 'utf8'));
+  const C = semComentarios(fs16.readFileSync(ROOT + '/assets/js/admin.js', 'utf8'));
+  const Q = semComentarios(fs16.readFileSync(ROOT + '/supabase/licenca.sql', 'utf8'));
+
+  /* ── servidor ──────────────────────────────────────────────────────────── */
+  ok(/acao === 'listar'/.test(F), 'o servidor não conhece a ação listar');
+  ok(/rpc\('list_licenses'/.test(F), 'a ação listar não chama list_licenses');
+
+  /* A listagem vem DEPOIS da senha e da chave de serviço, como as outras.
+     Se viesse antes, qualquer um com origem válida leria a frota inteira. */
+  const iSenha = F.indexOf('conferirSenha(');
+  const iChave = F.indexOf('SUPABASE_SERVICE_KEY');
+  const iListar = F.indexOf("acao === 'listar'");
+  ok(iSenha > 0 && iChave > 0 && iListar > 0, 'não encontrei os três degraus');
+  ok(iSenha < iListar, '🔴 listar vem ANTES da senha — exporia a frota a quem tiver origem válida');
+  ok(iChave < iListar, 'listar vem antes da checagem da chave de serviço');
+
+  /* ── SQL ───────────────────────────────────────────────────────────────── */
+  ok(/create or replace function public\.list_licenses\(\)/.test(Q), 'list_licenses não existe no SQL');
+  /* A tranca que a C2 ensinou: REVOGAR DE `public` PRIMEIRO. Revogar só de
+     `anon` revoga uma concessão direta que nunca existiu — e isso não
+     aparece em leitura nenhuma, só executando. */
+  ok(/revoke execute on function public\.list_licenses\(\) from public/.test(Q),
+     '🔴 list_licenses não revoga de `public` — o Postgres concede EXECUTE a public por padrão');
+  ok(/grant\s+execute on function public\.list_licenses\(\) to service_role/.test(Q),
+     'list_licenses não é concedida ao service_role');
+  /* Teto: listagem sem limite é surpresa esperando o banco crescer. */
+  const bloco = Q.slice(Q.indexOf('list_licenses'), Q.indexOf('list_licenses') + 900);
+  ok(/limit\s+\d+/.test(bloco), 'list_licenses não tem teto de linhas');
+
+  /* ── cliente ───────────────────────────────────────────────────────────── */
+  ok(/listarLicencas\(\)/.test(C), 'o painel não sabe listar');
+  ok(/revogarLicenca\(/.test(C), 'o painel não sabe revogar');
+
+  /* 🔴 NÓS DO DOM, NUNCA MARCAÇÃO. Nome de embarcação e contato são entrada
+     de USUÁRIO que deu a volta pelo servidor e voltou. Montar a lista como
+     HTML reabriria, pela porta dos fundos, o XSS que a C1 tirou de produção
+     — com o agravante de parecer seguro por ter vindo "do nosso banco".
+     Entrada de usuário não deixa de ser entrada de usuário por ter dormido
+     numa tabela. */
+  ok(!/innerHTML|insertAdjacentHTML|outerHTML/.test(C),
+     '🔴 a lista voltou a ser montada como marcação');
+  ok(/createElement\('div'\)/.test(C) && /createElement\('button'\)/.test(C),
+     'a lista não é construída com nós do DOM');
+  const iLinha = C.indexOf('linhaDaLicenca(L)');
+  const corpoLinha = C.slice(iLinha, iLinha + 2200);
+  ok(/nome\.textContent = L\.vessel/.test(corpoLinha),
+     'o nome da embarcação não vai para textContent');
+
+  /* O estado em PALAVRA, não só em cor: quem enxerga mal ou imprime em preto
+     e branco precisa ler o mesmo que os outros veem. */
+  ok(/REVOGADA/.test(corpoLinha) && /vencida/.test(corpoLinha) && /ativa/.test(corpoLinha),
+     'o estado da licença é comunicado só por cor');
+
+  /* A confirmação traz o NOME. "Tem certeza?" sozinho se responde no
+     automático; com o nome dentro, o dedo para. */
+  const iRev = C.indexOf('async revogarLicenca');
+  ok(/confirm\(/.test(C.slice(iRev, iRev + 700)), 'revogar não pede confirmação');
+  ok(/\$\{nome\}/.test(C.slice(iRev, iRev + 700)),
+     'a confirmação não diz QUAL embarcação — pergunta genérica se responde no automático');
+
+  /* Depois de revogar, RELÊ do servidor em vez de pintar o resultado
+     presumido: o que vale é o que o banco diz. */
+  ok(/await this\.listarLicencas\(\)/.test(C.slice(iRev, iRev + 1400)),
+     'o painel pinta a revogação sem reler — esconderia uma revogação que não pegou');
+
+  /* E a lista sai junto da sessão. Deixar embarcações e contatos na tela de
+     um aparelho que acabou de "sair" é não ter saído. */
+  const iSair = C.indexOf('    sair() {');
+  ok(/limparLista\(\)/.test(C.slice(iSair, iSair + 400)),
+     'sair não limpa a lista — nomes e contatos ficam na tela');
+
+  /* Zero manipuladores embutidos no HTML novo: o aviso 9.7 não piora. */
+  const H = semComentariosHtml(fs16.readFileSync(ROOT + '/admin.html', 'utf8'));
+  ok(/id="lic-listar"/.test(H) && /id="lic-lista"/.test(H), 'o cartão da listagem não existe');
+  eq((H.match(/\son(click|submit|change|input|load)=/gi) || []).length, 0, 0,
+     'voltou manipulador inline ao admin.html');
+
+  return { detail: 'listar e revogar · nós do DOM · relê após revogar' };
+});
+
 /* ══════════════════════════════════════════════════════════════════════════
    29 · LICENÇA NO CAMINHO DO SERVIÇO                        (C4 · v2.20.0)
    ══════════════════════════════════════════════════════════════════════════
@@ -4940,36 +5029,64 @@ t(S29, '29.2', 'O modo desconhecido cai para DESLIGADO, não para exigir', () =>
   eq(lerModo({})                            === MODO.DESLIGADO ? 1 : 0, 1, 0, 'ambiente vazio não caiu em desligado');
 });
 
-t(S29, '29.3', 'Revogada vence vencida — a mensagem manda a pessoa ao lugar certo', () => {
+t(S29, '29.3', 'O veredito lê as colunas que o banco REALMENTE devolve', () => {
   const { ESTADO, vereditoDaLinha } = L29;
   const agora = Date.parse('2026-10-01T12:00:00Z');
   const h = n => new Date(agora + n * 3600000).toISOString();
 
-  /* Uma licença revogada E já vencida deve dizer REVOGADA. Se dissesse
-     "vencida", o comandante pediria renovação quando o acesso foi CORTADO —
-     a mensagem errada manda a pessoa para o caminho errado, e ela só descobre
-     depois de esperar. */
-  const r = vereditoDaLinha({ vessel: 'SAAM ORION', expires_at: h(-48), revoked_at: h(-72) }, agora);
-  ok(r.estado === ESTADO.REVOGADA, `revogada+vencida virou "${r.estado}" — devia ser revogada`);
+  /* ⚠️ ESTAS FIXTURES ESTAVAM ERRADAS, e o erro era meu em dobro.
 
-  ok(vereditoDaLinha({ vessel: 'X', expires_at: h(-1),  revoked_at: null }, agora).estado === ESTADO.VENCIDA,
+     Até a C6 elas traziam `revoked_at` — campo que NÃO EXISTE. O
+     `check_license` de supabase/licenca.sql devolve:
+
+         valid boolean, revoked boolean, expired boolean,
+         vessel text, expires_at timestamptz, devices smallint
+
+     O código lia `revoked_at`, as fixtures escreviam `revoked_at`, e os dois
+     concordavam — numa coluna imaginária. Uma licença revogada e dentro do
+     prazo passaria como VÁLIDA.
+
+     É a armadilha de escrever a prova a partir do mesmo modelo mental do
+     código: duas coisas que partem da mesma suposição errada não se
+     contradizem nunca. Por isso a prova de INTEGRAÇÃO (tests/integracao_*)
+     passou a existir — ela pega as linhas do Postgres de verdade. */
+  const doBanco = (o) => Object.assign(
+    { valid: true, revoked: false, expired: false,
+      vessel: 'SAAM ORION', expires_at: h(+24), devices: 3 }, o);
+
+  /* Revogação vence vencimento. Revogada E vencida tem de dizer REVOGADA —
+     senão o comandante pede renovação quando o acesso foi cortado. */
+  const r = vereditoDaLinha(doBanco({ valid: false, revoked: true, expired: true,
+                                      expires_at: h(-48) }), agora);
+  ok(r.estado === ESTADO.REVOGADA, `revogada+vencida virou "${r.estado}"`);
+
+  ok(vereditoDaLinha(doBanco({ valid: false, revoked: true }), agora).estado === ESTADO.REVOGADA,
+     'revogada dentro do prazo não foi reconhecida — ESTE era o defeito da C4');
+  ok(vereditoDaLinha(doBanco({ valid: false, expired: true, expires_at: h(-1) }), agora).estado === ESTADO.VENCIDA,
      'vencida há uma hora não foi reconhecida');
-  ok(vereditoDaLinha({ vessel: 'X', expires_at: h(+1),  revoked_at: null }, agora).ok,
-     'válida por mais uma hora foi recusada');
-  ok(vereditoDaLinha(null, agora).estado === ESTADO.DESCONHECIDA,
-     'linha ausente devia ser desconhecida');
+  ok(vereditoDaLinha(doBanco({}), agora).ok, 'válida por mais 24 h foi recusada');
+  ok(vereditoDaLinha(null, agora).estado === ESTADO.DESCONHECIDA, 'linha ausente devia ser desconhecida');
 
-  /* Data ilegível é tratada como vencida: o custo é pedir renovação, e o
-     custo do contrário seria acesso indevido e perpétuo. */
-  ok(vereditoDaLinha({ vessel: 'X', expires_at: 'banana', revoked_at: null }, agora).estado === ESTADO.VENCIDA,
+  /* 🔴 A PROVA QUE FALTAVA e que teria pego o defeito: uma linha com o campo
+     IMAGINÁRIO não pode revogar nada. Se alguém reintroduzir `revoked_at`,
+     isto acusa. */
+  const campoFantasma = vereditoDaLinha(
+    { valid: true, revoked: false, expired: false, vessel: 'X',
+      expires_at: h(+24), revoked_at: '2026-01-01T00:00:00Z' }, agora);
+  ok(campoFantasma.ok,
+     'o veredito está olhando `revoked_at`, coluna que o banco NÃO devolve');
+
+  /* Rede de segurança: data ilegível recusa, em vez de liberar. */
+  ok(vereditoDaLinha(doBanco({ expires_at: 'banana' }), agora).estado === ESTADO.VENCIDA,
      'data ilegível devia recusar, não liberar');
-
-  /* A borda exata: vencer AGORA é estar vencida, não válida. */
-  ok(!vereditoDaLinha({ vessel: 'X', expires_at: new Date(agora).toISOString(), revoked_at: null }, agora).ok,
+  /* Vencer AGORA é estar vencida. */
+  ok(!vereditoDaLinha(doBanco({ expires_at: new Date(agora).toISOString() }), agora).ok,
      'uma licença que vence neste instante não pode valer');
+  /* Contradição: o banco diz que não vale e nenhuma razão explicou. Manda o banco. */
+  ok(!vereditoDaLinha(doBanco({ valid: false }), agora).ok,
+     'o banco disse que não vale e o veredito liberou assim mesmo');
 
-  /* Horas restantes alimentam o aviso "sua licença vence em N h". */
-  eq(vereditoDaLinha({ vessel: 'X', expires_at: h(9.5), revoked_at: null }, agora).horasRestantes, 9, 0,
+  eq(vereditoDaLinha(doBanco({ expires_at: h(9.5) }), agora).horasRestantes, 9, 0,
      'horas restantes arredondou para cima — avisaria tarde demais');
 });
 

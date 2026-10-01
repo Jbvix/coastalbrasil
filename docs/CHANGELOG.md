@@ -11,6 +11,138 @@ executável.
 
 ```
 
+## v2.23.0 (01/10/2026) — O PAINEL DEIXA DE SER CEGO · ETAPA C6
+##            E UM DEFEITO QUE DUAS BATERIAS DE PROVAS NÃO VIRAM
+
+Autor: Jossian Brito (Charlie Bravo)
+Data: 01/10/2026 · Versão 2.23.0
+
+### 🔴 Primeiro o defeito, porque é mais grave que a etapa
+
+Ao abrir a C6, antes de escrever uma linha, encontrei isto:
+
+```sql
+check_license(...) returns table(valid, revoked, expired, vessel, ...)
+                                        ↑ booleano `revoked`
+```
+```js
+if (linha.revoked_at) return { estado: REVOGADA }   // ← coluna que não existe
+```
+
+A C4 lia **`revoked_at`**. O banco devolve **`revoked`**. Campo inexistente é
+`undefined`, `undefined` é falso, e o código caía no teste seguinte:
+**uma licença revogada, ainda dentro do prazo, voltava como VÁLIDA.**
+
+Revogar não revogaria nada. Dormente apenas porque `LICENCA_MODO` nunca foi
+ligado e o SQL nunca foi aplicado — teria acordado no primeiro corte de acesso.
+
+#### Por que nenhuma prova viu
+
+| Bateria | Mede | Não vê |
+|---|---|---|
+| `tests/esquema_provas.sql` | o SQL, num Postgres de verdade | o JavaScript |
+| Suíte 29 | o JavaScript | o SQL — as fixtures eram **minhas** |
+
+E as fixtures diziam `revoked_at` porque **nasceram do mesmo modelo mental
+errado que o código**. As duas concordavam numa coluna imaginária.
+
+> **Duas provas que partem da mesma suposição não são duas provas.**
+
+É a bomba aprovada no banco de ensaio, a tubulação aprovada na bancada, e
+ninguém ligando uma na outra: cada metade conferida, o conjunto sem prova.
+
+#### A prova que fecha a fronteira
+
+`tests/integracao_licenca.sql` monta as três situações num Postgres real e
+imprime as linhas **como o `check_license` as devolve**;
+`tests/integracao_licenca.mjs` entrega cada uma à `vereditoDaLinha` que roda em
+produção. Roda no job `esquema` da CI, onde o Postgres descartável já sobe.
+
+É a única das três baterias que **não pode ser enganada por uma suposição
+minha** — as fixtures são do banco.
+
+Medido: com o código antigo reintroduzido, ela fica **vermelha**.
+
+#### O conserto
+
+`vereditoDaLinha` passou a confiar nas colunas que o banco realmente devolve —
+`revoked`, `expired`, `valid` — calculadas com o `now()` **do banco**.
+Recalcular no Node abriria divergência de relógio entre Netlify e Supabase:
+dois juízes para a mesma causa. O JavaScript apenas **ordena as razões**
+(revogação vence vencimento) e deriva as horas restantes.
+
+---
+
+### A etapa C6: o painel deixa de ser emissor cego
+
+Até aqui o painel **só emitia**. Quem emitia não tinha como saber o que havia
+emitido, e revogar exigiria conhecer de cor o resumo de 64 caracteres da
+licença certa.
+
+> Um diário de bordo que só aceita escrita e não deixa reler não é diário, é
+> desabafo.
+
+| Camada | O que ganhou |
+|---|---|
+| `supabase/licenca.sql` | `list_licenses()` — ativas primeiro, vencendo mais cedo no topo, teto de 200 |
+| `netlify/functions/licenca.mjs` v1.1.0 | ação `listar`, **depois** da senha e da chave de serviço |
+| `assets/js/admin.js` v2.1.0 | lista e botão de revogar |
+| `admin.html` | cartão da listagem, **zero** manipuladores embutidos |
+
+#### Decisões que valem a leitura
+
+**A listagem devolve `token_hash`** — o SHA-256, não o token. Não se inverte,
+não abre nada, e é a única chave por onde a revogação pega a linha certa. O
+token em claro **não existe** no banco: a propriedade vem do desenho, não da
+disciplina de quem escreve a consulta.
+
+**`revoke ... from public` PRIMEIRO**, a lição que a C2 mediu: o Postgres
+concede `EXECUTE` a `public` por padrão, e revogar só de `anon` revoga uma
+concessão direta que nunca existiu.
+
+**Nós do DOM, nunca marcação.** Nome de embarcação e contato são entrada de
+usuário que deu a volta pelo servidor e voltou. Montá-los como HTML reabriria,
+pela porta dos fundos, o XSS que a C1 tirou de produção — com o agravante de
+parecer seguro por ter vindo "do nosso banco". **Entrada de usuário não deixa
+de ser entrada de usuário por ter dormido numa tabela.**
+
+**O estado em palavra, não só em cor** — quem enxerga mal ou imprime em preto e
+branco precisa ler o mesmo que os outros veem.
+
+**A confirmação traz o NOME da embarcação.** "Tem certeza?" sozinho se responde
+no automático; com o nome dentro, o dedo para.
+
+**Depois de revogar, relê do servidor** em vez de pintar o resultado presumido:
+pintar esconderia uma revogação que não pegou.
+
+**Sair limpa a lista.** Deixar embarcações e contatos na tela de um aparelho
+que acabou de "sair" é não ter saído.
+
+**Revogada não mostra botão de revogar.** Botão que não faz nada ensina a
+ignorar botões.
+
+### Provas
+
+306 provas (305 → 306), 30 suítes, 0 FAIL, 2 WARN. Fumaça **111/111**.
+22 asserções SQL no `esquema_provas.sql`, incluindo `anon` negado no
+`list_licenses` — a mais perigosa das funções se vazar, porque devolve a frota
+inteira de uma vez, sem precisar adivinhar hash nenhum.
+
+Oito mutações contra a C6, todas acusadas. E a fumaça abriu o `admin.html` num
+navegador pela primeira vez: uma carga `<img src=x onerror=…>` no nome da
+embarcação **não executa**, e aparece como texto literal.
+
+### ⚠️ O que esta etapa NÃO faz
+
+1. **`supabase/licenca.sql` continua NÃO aplicado** — e agora é melhor assim: o
+   `list_licenses` entra junto, sem migração.
+2. **A revogação leva até 5 minutos** para cortar (cache de vereditos).
+   Aceitável para orçamento; declarado para não surpreender.
+3. **`LICENCA_MODO` continua ausente.** Nada barra ninguém.
+4. **Sem busca nem paginação** na lista — a frota é pequena e o teto é 200.
+
+---
+
 ## v2.22.0 (01/10/2026) — EMBALAGEM PERDOADA, CONTEÚDO NUNCA
 
 Autor: Jossian Brito (Charlie Bravo)

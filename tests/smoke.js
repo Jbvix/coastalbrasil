@@ -267,6 +267,67 @@ const srv = http.createServer((req, res) => {
   ok('Força bruta no painel é cortada no teto', admPrimeira === 13,
      `respondidas ${adm401}, primeira recusa na ${admPrimeira}ª (esperado 13ª)`);
 
+  /* ══════════════════════════════════════════════════════════════════════
+     A LISTA DE LICENÇAS, NUM NAVEGADOR DE VERDADE                     (C6)
+     ══════════════════════════════════════════════════════════════════════
+     Até aqui a fumaça exercitava o MANIPULADOR administrativo, mas nunca
+     tinha aberto o admin.html. A lista nova monta cada linha com nós do DOM
+     a partir de dados que o ADMINISTRADOR digitou e que deram a volta pelo
+     servidor — nome de embarcação e contato são entrada de usuário que
+     dormiu numa tabela, e não deixam de ser entrada de usuário por isso.
+
+     Varredura de código diz que não há innerHTML. Só o navegador diz que
+     uma carga hostil não executa. */
+  {
+    const adm = await ctx.newPage();
+    const errosAdm = [];
+    adm.on('console', m => { if (m.type() === 'error') errosAdm.push(m.text()); });
+    await adm.goto('http://localhost:8099/admin.html', { waitUntil: 'load', timeout: 30000 });
+
+    const CARGA = '<img src=x onerror="window.__xssAdmin=1">MV PIRATA';
+    const r = await adm.evaluate((carga) => {
+      const alvo = document.getElementById('lic-lista');
+      const linha = painelAdmin.linhaDaLicenca({
+        token_hash: 'a'.repeat(64), vessel: carga, contact: carga,
+        expires_at: new Date(Date.now() + 864e5).toISOString(),
+        revoked: false, devices: 3, valid: true, expired: false
+      });
+      alvo.appendChild(linha);
+      return {
+        xss: !!window.__xssAdmin,
+        imgs: alvo.querySelectorAll('img').length,
+        texto: alvo.textContent,
+        temBotao: alvo.querySelectorAll('button').length
+      };
+    }, CARGA);
+
+    ok('Nome de embarcação hostil NÃO executa na lista', !r.xss && r.imgs === 0,
+       r.xss ? '🔴 XSS DISPAROU no painel' : 'nenhum elemento criado da carga');
+    ok('O nome hostil aparece como TEXTO', r.texto.includes(CARGA),
+       r.texto.includes(CARGA) ? 'textContent preservou a carga literal' : 'o texto sumiu');
+    ok('Licença ativa mostra o estado em palavra, não só em cor',
+       /ativa/.test(r.texto), r.texto.slice(0, 40));
+    ok('Licença ativa oferece o botão de revogar', r.temBotao === 1, r.temBotao + ' botão(ões)');
+
+    /* Revogada: sem botão, e a palavra muda. Botão que não faz nada ensina
+       a ignorar botões. */
+    const rv = await adm.evaluate(() => {
+      const alvo = document.getElementById('lic-lista');
+      while (alvo.firstChild) alvo.removeChild(alvo.firstChild);
+      alvo.appendChild(painelAdmin.linhaDaLicenca({
+        token_hash: 'b'.repeat(64), vessel: 'BRAVO DOIS', contact: null,
+        expires_at: new Date(Date.now() + 864e5).toISOString(),
+        revoked: true, devices: 2, valid: false, expired: false
+      }));
+      return { botoes: alvo.querySelectorAll('button').length, texto: alvo.textContent };
+    });
+    ok('Licença revogada não oferece botão de revogar', rv.botoes === 0, rv.botoes + ' botão(ões)');
+    ok('Licença revogada diz REVOGADA em palavra', /REVOGADA/.test(rv.texto), rv.texto.slice(0, 40));
+
+    if (errosAdm.length) erros.push('admin.html: ' + errosAdm[0]);
+    await adm.close();
+  }
+
   const curl     = await codigo({});
   const terceiro = await codigo({ 'sec-fetch-site': 'cross-site',  'x-nf-client-connection-ip': '5.5.5.5' });
   const barra    = await codigo({ 'sec-fetch-site': 'none',        'x-nf-client-connection-ip': '6.6.6.6' });
