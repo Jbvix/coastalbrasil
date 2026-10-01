@@ -133,14 +133,94 @@ export function gerarHashDeSenha(senha) {
    primeira diferença, e o tempo da resposta vaza quantos caracteres estavam
    certos. É ataque sutil e real; a comparação de tempo constante custa nada.
    ───────────────────────────────────────────────────────────────────────── */
+/*
+═══════════════════════════════════════════════════════════════════════════════
+  limparValorColado — tolerância a artefatos de COLAGEM            (v1.1.0)
+═══════════════════════════════════════════════════════════════════════════════
+
+  Escrita depois de a primeira configuração real em produção custar cinco
+  rodadas de diagnóstico. Três artefatos reais, todos de copiar-e-colar:
+
+    1. o prefixo `ADMIN_SENHA_HASH=`, porque o gerador imprimia `CHAVE=valor`
+       numa linha só e o gesto natural é selecionar a linha inteira;
+    2. aspas em volta, que alguns painéis e editores acrescentam sozinhos;
+    3. ESPAÇO DE LARGURA ZERO (U+200B..U+200D, U+FEFF) — invisível, inserido
+       por terminais e navegadores ao copiar. O `.trim()` do JavaScript NÃO o
+       remove, porque ele não é whitespace. Um caractere que ninguém vê e que
+       nenhuma inspeção visual encontra.
+
+  ── POR QUE ISTO NÃO AFROUXA SEGURANÇA, e a distinção é o ponto ────────────
+
+  Tolerância aqui é sobre a EMBALAGEM, nunca sobre o conteúdo. A comparação do
+  hash continua idêntica, em tempo constante, com o mesmo scrypt. Nada do que
+  se remove aqui pode transformar uma senha errada em certa — remover uma aspa
+  não aproxima ninguém de adivinhar 32 bytes.
+
+  É a lei de Postel aplicada exatamente onde ela é segura: rigoroso no que se
+  COMPARA, tolerante no que se aceita como invólucro. A bordo é o bocal de
+  abastecimento que aceita o bico com folga: não muda uma gota do que entra no
+  tanque, só impede que a operação falhe por um milímetro.
+
+  O que NÃO se tolera, de propósito: hash de outro algoritmo, pedaço faltando,
+  caractere não-hexadecimal. Isso não é embalagem, é conteúdo errado — e aí a
+  resposta tem de ser recusa, com o motivo dito.
+*/
+const LIXO_INVISIVEL = /^[\s\u200B-\u200D\uFEFF]+|[\s\u200B-\u200D\uFEFF]+$/g;
+
+/* DESEMBRULHO EM LAÇO, e não em ordem fixa — a primeira versão errou aqui.
+
+   Ela tirava invisíveis, depois o prefixo, depois as aspas. Funcionava para
+   cada artefato sozinho e FALHAVA com os três juntos:
+
+       \u200B"ADMIN_SENHA_HASH=scrypt$…"\u200B
+
+   Tirados os invisíveis, a cadeia começa por aspa — então a regra do prefixo
+   não casa. Tiradas as aspas, o prefixo reaparece, mas o passo dele já
+   passou. Ordem fixa só desembrulha a ordem que o autor imaginou.
+
+   Descascar em laço resolve qualquer combinação e qualquer aninhamento. O
+   teto de 5 voltas existe para que nenhuma regra futura, mal escrita, possa
+   girar para sempre — a cada volta algo é removido, então 5 é folga larga. */
+export function limparValorColado(bruto) {
+  let v = String(bruto == null ? '' : bruto);
+  for (let volta = 0; volta < 5; volta++) {
+    const antes = v;
+    v = v.replace(LIXO_INVISIVEL, '');                  // invisíveis nas pontas
+    v = v.replace(/^(['"])([\s\S]*)\1$/, '$2');        // aspas envolventes
+    v = v.replace(/^ADMIN_SENHA_HASH\s*=\s*/i, '');     // prefixo do gerador antigo
+    if (v === antes) break;                             // nada mudou: acabou
+  }
+  return v;
+}
+
 export function conferirSenha(senha, guardado) {
-  const g = String(guardado || '').trim();
+  const g = limparValorColado(guardado);
   if (!g) return { ok: false, motivo: 'portão não configurado' };
 
+  /* ═══════════════════════════════════════════════════════════════════════
+     A RECUSA PASSA A DIZER QUAL É O DEFEITO.
+
+     Até aqui, qualquer formato inválido devolvia só "mal configurado" — e
+     foi isso que custou cinco rodadas de sonda em produção, porque a
+     mensagem não distinguia "hash de outro algoritmo" de "faltou um pedaço"
+     de "tem caractere que não é hexadecimal".
+
+     O código do defeito vai junto, e é DELIBERADAMENTE estrutural: diz a
+     FORMA do problema, nunca o conteúdo. Nada de comprimento, nada de
+     prefixo recebido — porque se alguém colar a própria frase-senha no lugar
+     do hash, ecoar o que veio seria entregá-la a quem fizer a chamada.
+
+     Diagnóstico sem vazamento: nomear o defeito, não exibir o dado.
+     ═══════════════════════════════════════════════════════════════════════ */
   const partes = g.split('$');
-  if (partes.length !== 3 || partes[0] !== 'scrypt' ||
-      !/^[0-9a-f]+$/i.test(partes[1]) || !/^[0-9a-f]+$/i.test(partes[2])) {
-    return { ok: false, motivo: 'portão mal configurado' };
+  if (partes.length !== 3) {
+    return { ok: false, motivo: 'portão mal configurado (pedaços)' };
+  }
+  if (partes[0] !== 'scrypt') {
+    return { ok: false, motivo: 'portão mal configurado (prefixo)' };
+  }
+  if (!/^[0-9a-f]+$/i.test(partes[1]) || !/^[0-9a-f]+$/i.test(partes[2])) {
+    return { ok: false, motivo: 'portão mal configurado (hex)' };
   }
   if (!String(senha || '')) return { ok: false, motivo: 'senha vazia' };
 

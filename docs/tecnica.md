@@ -372,6 +372,38 @@ faixa sai** quando a busca volta: faixa permanente é faixa invisível. **Âmbar
 não vermelho** — vermelho a bordo é do que ameaça o navio. **Nós do DOM, nunca
 `innerHTML`**, mesmo para texto interno.
 
+### 4.10 Tolerância a colagem: embalagem perdoada, conteúdo nunca (v2.22.0)
+
+A primeira configuração real do portão em produção custou **cinco rodadas de
+diagnóstico**. Nenhuma delas por defeito de lógica — todas por artefatos de
+copiar-e-colar e por mensagens de erro que não distinguiam causas.
+
+`conferirSenha` desembrulha, **em laço até estabilizar**, três artefatos reais:
+o prefixo `ADMIN_SENHA_HASH=`, aspas envolventes, e **espaço de largura zero**
+(`U+200B`–`U+200D`, `U+FEFF`) — este último invisível e **não removido pelo
+`.trim()`**, porque não é whitespace.
+
+Laço e não ordem fixa: com os três aninhados, tirar os invisíveis faz a cadeia
+começar por aspa, a regra do prefixo não casa, e quando as aspas saem o passo
+do prefixo já passou. **Ordem fixa só desembrulha a ordem que o autor
+imaginou.**
+
+**A fronteira é a regra:** tolera-se o invólucro, nunca o conteúdo. A
+comparação segue sendo o mesmo scrypt em tempo constante — remover uma aspa não
+aproxima ninguém de adivinhar 32 bytes. Hash de outro algoritmo, pedaço
+faltando ou caractere não-hexadecimal continuam recusados.
+
+**A recusa nomeia o defeito** — `(pedaços)`, `(prefixo)`, `(hex)` — e o código é
+deliberadamente **estrutural**: diz a forma do erro, nunca o conteúdo. Se
+alguém colar a frase-senha no lugar do hash, ecoá-la na mensagem seria
+entregá-la a quem chamar. Diagnóstico sem vazamento.
+
+Vale junto o que o campo ensinou sobre o Netlify: variáveis só alcançam as
+Functions **num deploy novo**, e não há sinal na tela avisando que o deploy em
+serviço é mais velho que a última edição. Um deploy do diretório local
+**quebraria** este site, porque `cesium-config.js` nasce no build e está no
+`.gitignore`.
+
 ### 4.6 Pendências registradas
 
 Coberta pela prova 9.7, que passa com **alerta**, não em verde:
