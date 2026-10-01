@@ -115,6 +115,15 @@ async function buscar(url, sinal) {
   return j;
 }
 
+import {
+  lerConfig, novoEstado, origemDeConfianca, enderecoDoCliente,
+  limiteDeTaxa, limparOciosos, pedirGasto, GUARDA_JANELA_MS
+} from '../lib/guarda.mjs';
+
+/* O estado do guarda vive na memória da instância, igual ao cache acima.
+   A limitação está declarada em netlify/lib/guarda.mjs e é dívida conhecida. */
+const guarda = novoEstado();
+
 export default async (req) => {
   const u = new URL(req.url);
   const lat = Number(u.searchParams.get('lat'));
@@ -128,9 +137,49 @@ export default async (req) => {
     'Cache-Control': 'public, max-age=900, stale-while-revalidate=3600'
   };
 
+  /* RECUSA NUNCA É CACHEADA.                                      (v2.16.0)
+     O cabeçalho de sucesso manda a CDN guardar por 15 min e servir velho por
+     mais uma hora. Se uma recusa herdasse isso, a CDN passaria a devolver 403
+     a QUEM TEM DIREITO, por até 75 minutos, e o passadiço ficaria sem vento
+     por causa de um varredor que passou. Apagão auto-infligido. */
+  const semCache = Object.assign({}, cabecalhos, { 'Cache-Control': 'no-store' });
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     A GUARDA VEM ANTES DE TUDO QUE CUSTA.                        (v2.16.0)
+
+     A ordem aqui é a defesa inteira, e cada degrau existe por um motivo:
+
+       1. origem   — barra site de terceiro e varredor, sem gastar nada;
+       2. taxa     — barra o laço, por chamador;
+       3. coords   — valida antes de tocar em cache ou rede;
+       4. cache    — responde de graça quando já se sabe;
+       5. fusível  — último portão ANTES do Open-Meteo, e só ele conta gasto.
+
+     Pôr a origem depois do cache pareceria inofensivo (cache não custa), mas
+     entregaria dado de graça a quem não deveria sequer ser atendido. E pôr o
+     fusível depois da chamada seria contar o que já queimou.
+     ═══════════════════════════════════════════════════════════════════════ */
+  const cfg = lerConfig(process.env);
+  const ler = n => req.headers.get(n);
+
+  const origem = origemDeConfianca(ler, cfg.hosts);
+  if (!origem.ok) {
+    return new Response(JSON.stringify({ ok: false, motivo: `chamada recusada: ${origem.motivo}` }),
+                        { status: 403, headers: semCache });
+  }
+
+  const cliente = enderecoDoCliente(ler);
+  const agora = Date.now();
+  limparOciosos(guarda, agora, GUARDA_JANELA_MS);
+  const taxa = limiteDeTaxa(guarda, agora, cliente, cfg.limiteIp, GUARDA_JANELA_MS);
+  if (!taxa.ok) {
+    return new Response(JSON.stringify({ ok: false, motivo: 'limite de chamadas excedido' }),
+                        { status: 429, headers: Object.assign({}, semCache, { 'Retry-After': '900' }) });
+  }
+
   if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
     return new Response(JSON.stringify({ ok: false, motivo: 'coordenadas inválidas' }),
-                        { status: 400, headers: cabecalhos });
+                        { status: 400, headers: semCache });
   }
 
   const la = arredondar(lat), ln = arredondar(lng);
@@ -147,12 +196,23 @@ export default async (req) => {
   // Falhar declarando o motivo deixa a decisão com quem é dono dela.
   if (!apikey) {
     return new Response(JSON.stringify({ ok: false, motivo: 'OPEN_METEO_API_KEY não configurada no ambiente' }),
-                        { status: 502, headers: cabecalhos });
+                        { status: 502, headers: semCache });
   }
 
   const comum = `latitude=${la}&longitude=${ln}&apikey=${encodeURIComponent(apikey)}`;
   const urlMar = `https://customer-marine-api.open-meteo.com/v1/marine?${comum}&current=${VARS_MAR.join(',')}`;
   const urlAr = `https://customer-api.open-meteo.com/v1/forecast?${comum}&current=${VARS_AR.join(',')}&wind_speed_unit=kn`;
+
+  /* O FUSÍVEL, no último instante possível.                        (v2.16.0)
+     Duas chamadas lá fora (mar + ar) é o que a fatura conta, então é 2 que se
+     pede. Aberto o fusível, NADA é chamado: o 503 custa zero. */
+  const gasto = pedirGasto(guarda, agora, 2, cfg.tetoDiario);
+  if (!gasto.ok) {
+    return new Response(JSON.stringify({
+      ok: false,
+      motivo: `teto diário de consultas atingido (${gasto.usados}/${gasto.teto})`
+    }), { status: 503, headers: Object.assign({}, semCache, { 'Retry-After': '3600' }) });
+  }
 
   const aborta = AbortSignal.timeout(8000);
   try {
@@ -183,6 +243,6 @@ export default async (req) => {
     // A mensagem do Open-Meteo pode conter a URL, e a URL contém a chave.
     // Nunca repassar o erro cru para o cliente.
     const motivo = String((e && e.message) || 'falha ao consultar o Open-Meteo').replace(/apikey=[^&\s]*/gi, 'apikey=***');
-    return new Response(JSON.stringify({ ok: false, motivo }), { status: 502, headers: cabecalhos });
+    return new Response(JSON.stringify({ ok: false, motivo }), { status: 502, headers: semCache });
   }
 };

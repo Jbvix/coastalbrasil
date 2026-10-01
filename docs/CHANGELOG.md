@@ -11,6 +11,170 @@ executável.
 
 ```
 
+## v2.16.0 (01/10/2026) — A TRANCA QUE FALTAVA NO PROXY · SPRINT A
+
+Autor: Jossian Brito (Charlie Bravo)
+
+### O achado
+
+Desde a v2.9.0 o `tempo.mjs` guarda a chave paga do Open-Meteo longe do
+navegador. Durante todo esse tempo ele validou **apenas as coordenadas**:
+
+```js
+if (!isFinite(lat) || !isFinite(lng) || …) → 400
+const apikey = process.env.OPEN_METEO_API_KEY;   // e gasta
+```
+
+Sem verificação de origem, sem limite de taxa, sem teto. Qualquer pessoa que
+descobrisse o endereço podia torrar a cota paga com um laço de `curl`:
+
+```
+/.netlify/functions/tempo?lat=-23&lng=-42
+```
+
+**Protegemos a chave e esquecemos a fechadura.**
+
+### O que entra, e o que isto honestamente é
+
+Não é autenticação — aplicativo estático não tem segredo que o navegador não
+entregue, e quem forjar os cabeçalhos passa. É **trinco e fusível**:
+
+| Camada | O que faz | Força |
+|---|---|---|
+| **Origem** | barra site de terceiro, varredor e `curl` ingênuo | trinco |
+| **Limite por chamador** | 60/h em janela deslizante | real contra laço |
+| **Fusível diário** | teto de chamadas ao Open-Meteo | **real contra tudo** |
+
+O fusível é a peça que importa: **o disjuntor não pergunta quem causou o
+curto, ele abre.** Ele protege a conta até contra quem forje tudo — e contra o
+caso mais provável de todos, que não é ataque nenhum, e sim um laço defeituoso
+no nosso próprio código.
+
+### `Sec-Fetch-Site`, e não `Origin` — medido, não suposto
+
+Medido em Chromium, numa chamada idêntica à do `assets/js/tempo.js`:
+
+```
+origin           (AUSENTE)
+referer          http://…/app.html
+sec-fetch-site   same-origin
+```
+
+**O navegador não manda `Origin` em GET de mesma origem.** Exigir `Origin`
+teria trancado o aplicativo inteiro no primeiro deploy — e uma mutação provou
+isso: a fumaça acusou *"Proxy ATENDE o próprio aplicativo → HTTP 403 (403 =
+app trancado fora)"*.
+
+`Sec-Fetch-Site` é melhor por dois motivos: chega, e é **nome de cabeçalho
+proibido** — página nenhuma o escreve por JavaScript. Quando ele diz
+`cross-site`, foi o navegador que disse.
+
+**Tablete velho:** sem `Sec-Fetch-*`, cai para lista de hosts pelo `Referer`.
+Defesa mais fraca, deliberada: entre um `curl` a mais e um comandante sem
+vento, a escolha é óbvia.
+
+### A ordem é a defesa inteira
+
+```
+1. origem   → barra sem gastar nada
+2. taxa     → barra o laço, por chamador
+3. coords   → valida antes de tocar em cache ou rede
+4. cache    → responde de graça
+5. fusível  → último portão ANTES do Open-Meteo
+```
+
+Origem **depois** do cache entregaria dado de graça a quem não devia ser
+atendido. Fusível **depois** da chamada contaria o que já queimou.
+
+E **recusa nunca é cacheada**: o cabeçalho de sucesso manda a CDN guardar 15
+min e servir velho por mais uma hora. Uma recusa herdando isso faria a CDN
+devolver 403 a **quem tem direito** por até 75 minutos — apagão
+auto-infligido, pior que o abuso.
+
+### A guarda é EXECUTADA, não varrida
+
+Até aqui o proxy só era provado por regex no código-fonte (suíte 21) — a forma
+mais fraca, e esta bancada já apanhou cinco vezes de comentário respondendo por
+código. As decisões foram para `netlify/lib/guarda.mjs` (ESM puro) e a **suíte
+27 as executa**, porque o Node 22 permite `require()` de ESM. O efeito — o
+handler de verdade, com `Request` real — foi para a fumaça.
+
+### Treze mutações, treze acusações — duas delas contra as PROVAS
+
+| Mutação | Acusou |
+|---|---|
+| Guarda aceita `none` (digitado na barra) | 27.1 |
+| Referer forjado vence o navegador | 27.1 |
+| Curinga `*` libera tudo | 27.2 |
+| **Janela deslizante vira balde por hora** | 27.3 *(só após reforço)* |
+| Fusível conta o gasto que recusou | 27.4 |
+| Config inválida vira teto | 27.5 |
+| **`x-forwarded-for` pega o último (forjável)** | 27.6 *(só após correção)* |
+| Varredura apaga chamador ativo | 27.8 |
+| Fusível pedido depois da chamada | 27.7 |
+| Recusa volta a ser cacheável | 27.7 |
+| Guarda existe só no comentário | 27.7 |
+| Guarda some inteira | 27.7 |
+| Exigir `Origin` (tranca o app) | **fumaça** |
+
+### Dois defeitos no próprio banco de provas, descobertos nesta sprint
+
+**1 · Prova assíncrona passava SEMPRE.** `t()` é síncrono e olha o retorno de
+`fn()`. Uma prova `async` devolve Promise — nem `{warn}` nem `{detail}` — e o
+`throw` dela acontece depois, longe do `try`. Verde garantido, falhe o que
+falhar. Agora `t()` recusa Promise e manda o assíncrono para a fumaça. Ao
+escrever a prova disso, descobriu-se ainda que a rejeição não tratada
+**derrubava o processo antes de imprimir o relatório** — reprovar sem relatório
+é quase tão inútil quanto aprovar sem verificar; a Promise passou a ser
+neutralizada antes da reprovação.
+
+**2 · `eq()` sobre texto passava SEMPRE.** `Math.abs('a' - 'b')` é `NaN`, e
+`NaN > tol` é **falso**. A mutação do `x-forwarded-for` sobreviveu por isso.
+Varrido o banco inteiro após endurecer a `eq()`: **uma única prova** usava
+`eq()` sobre texto — a recém-escrita. A armadilha existia e ninguém a tinha
+pisado. Fica fechada antes que alguém pise.
+
+> Os dois são da mesma família e vale nomeá-la: **mecanismo de prova que
+> falha para o lado do verde.** É pior que código errado, porque desliga o
+> instrumento que encontraria o código errado.
+
+### Configuração no Netlify — o que ajustar
+
+| Variável | Padrão | Para que serve |
+|---|---:|---|
+| `TEMPO_TETO_DIARIO` | 2000 | chamadas/dia ao Open-Meteo. **Só quem contratou o plano sabe o número certo.** |
+| `TEMPO_LIMITE_IP` | 60 | chamadas por hora por chamador |
+| `TEMPO_HOSTS` | — | domínio próprio, separado por vírgula |
+
+Valor inválido (texto, zero, negativo) **cai no padrão** em vez de desligar a
+guarda por engano.
+
+### Limitações declaradas
+
+**O estado mora na memória da instância**, mesma limitação que o cache já
+aceita desde a v2.9.0: o limite por chamador vale por instância, não
+globalmente. Enfraquece contra ataque distribuído; o fusível diário continua
+sendo teto. Contagem durável exigiria Netlify Blobs ou Supabase, com latência
+em toda chamada. Para tranca de emergência não se justifica — **dívida
+registrada, não descuido**.
+
+**Conferência manual do proxy por navegador deixa de funcionar** (`sec-fetch-site:
+none` é recusado). É de propósito: este endereço é serviço, não página. A
+verificação de ponta a ponta se faz pelo aplicativo no Deploy Preview.
+
+**Dizer ao usuário POR QUE o tempo parou** — distinguir fusível aberto de
+backend fora do ar — é o Sprint E. Hoje o cliente degrada como já degradava:
+guarda o último valor bom rotulado com a idade, e avisa por `console.warn`.
+
+| | v2.15.0 | v2.16.0 |
+|---|---:|---:|
+| Provas do banco | 259 | **269** |
+| Passos da fumaça | 71 | **79** |
+| Guardas no proxy | **0** | 3 |
+| Defeitos achados no próprio banco | — | **2** |
+
+---
+
 ## v2.15.0 (21/09/2026) — O ESPELHO PARA DE ACUSAR O LINK DE QUEM ESTÁ EM TERRA
 
 Autor: Jossian Brito (Charlie Bravo)
