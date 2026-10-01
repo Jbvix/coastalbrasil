@@ -220,3 +220,91 @@ O estado vive na **memória da instância**, como o cache desde a v2.9.0: o
 limite por chamador vale por instância, não globalmente. Contagem durável
 exigiria Netlify Blobs ou Supabase, com latência em toda chamada de tempo —
 não se justifica numa tranca de emergência. **Registrado, não escondido.**
+
+---
+
+## DECISÃO ARQUITETURAL — o modo de falhar da licença  (v2.20.0, etapa C4)
+
+**Data:** 01/10/2026 · **Autor:** Jossian Brito (Charlie Bravo)
+**Implementa:** `netlify/lib/licenca.mjs`, `netlify/functions/tempo.mjs` v2.0.0
+
+### O problema
+
+A C3 passou a emitir licenças. Fazer o proxy de tempo **exigi-las** parece
+trivial — uma consulta e um `if`. Não é. Exigir licença põe o **Supabase no
+caminho crítico da previsão de tempo**, e previsão de tempo é dado de
+**segurança da navegação**.
+
+O precedente é concreto e desta casa: o projeto Supabase ficou **pausado de
+~28/09 a 01/10/2026**, e o monitor `manter-supabase-ativo.yml` falhou duas
+vezes sem ninguém atender. Com "sem licença, sem tempo" implementado do jeito
+óbvio, aqueles três dias teriam sido **três dias sem vento, onda e pressão em
+todo rebocador em serviço**.
+
+### A decisão
+
+> **Quando o verificador de licença não responde, o proxy ATENDE**, marcando a
+> resposta como degradada. Ele nunca nega por falha própria.
+
+Isto **inverte** o modo de falhar do portão administrativo da C3, e a inversão
+é o ponto, não uma incoerência:
+
+| O que se protege | Falha | Raciocínio |
+|---|---|---|
+| Portão administrativo | **fechado** | o que está em jogo é **autoridade**; na dúvida, ninguém entra |
+| Previsão de tempo | **aberto** | o que está em jogo é **o barco**; na dúvida, o passadiço recebe o vento |
+
+A bordo a distinção é rotina. Um *damper* de incêndio falha **fechado**, porque
+fechado é o estado seguro. A alimentação de combustível da máquina principal
+**não** falha fechada porque um sensor morreu — ela alarma e continua, porque
+parar no meio do canal é pior que o risco que o sensor media. Projetar o modo
+de falhar é escolher **qual** acidente se prefere ter.
+
+### O argumento econômico aponta para o mesmo lado
+
+O que a licença protege aqui é **orçamento**, não segurança. E o orçamento já
+tem três travas independentes, todas da Sprint A e todas locais à função:
+
+1. trava de **origem** — barra site de terceiro e varredor;
+2. **limite por IP** — 60/hora, corta o laço;
+3. **fusível diário** — teto absoluto da fatura.
+
+Negar previsão a uma embarcação no mar para poupar uma fração de centavo,
+quando o fusível já garante o teto, é trocar um custo de segurança **real** por
+uma economia **marginal**.
+
+### Os três modos, e por que não dois
+
+Ligar cobrança de uma vez num aplicativo em uso é desligar o serviço de todo
+mundo ao mesmo tempo. `LICENCA_MODO` tem uma escada:
+
+| Valor | Efeito |
+|---|---|
+| ausente / `desligado` | **padrão**; nada muda e **nada custa** — sem leitura de cabeçalho, sem rede, sem latência |
+| `observar` | confere e **anota**, atende todos — o alarme novo rodando em paralelo antes de ser ligado ao desligamento automático |
+| `exigir` | barra, exceto quando o verificador falha |
+
+Valor desconhecido cai em **desligado**: um `exijir` digitado no painel não
+pode barrar a frota. Note que aqui o padrão desconhecido aponta para o lado
+**permissivo** — exatamente o contrário de `admin.mjs`, pelo mesmo princípio.
+
+### Consequências aceitas, ditas em voz alta
+
+- Uma licença **revogada** continua valendo por até 5 min (TTL do cache de
+  vereditos). Aceitável para controle de orçamento; **não** seria aceitável
+  para controle de acesso a dado sensível.
+- Com o verificador fora do ar, **qualquer um** com origem válida recebe
+  previsão. É o custo explícito da decisão acima, e o fusível diário continua
+  sendo o teto real da fatura.
+- O limite de **aparelhos** é declarado e **não** imposto. Declarar um limite
+  que não se aplica é aceitável; fingir que ele se aplica não seria.
+
+### O que foi rejeitado
+
+- **Negar quando o verificador falha.** Rejeitado pelo argumento acima.
+- **Licença por pessoa.** Rebocador tem rendição de tripulação; cada troca de
+  turno viraria chamado de suporte. É por **embarcação**.
+- **Licença em parâmetro de URL.** URL vaza em log de CDN, histórico, `Referer`
+  e na barra de endereço. Vai em cabeçalho `x-licenca`.
+- **Guardar o código no banco.** O banco guarda o SHA-256; nem o autor
+  recupera um código perdido, e um vazamento do banco não entrega acesso.

@@ -4691,6 +4691,291 @@ t(S28, '28.8', 'O painel administrativo não tem mais manipulador inline', () =>
   return { detail: 'zero manipuladores inline' };
 });
 
+/* ══════════════════════════════════════════════════════════════════════════
+   29 · LICENÇA NO CAMINHO DO SERVIÇO                        (C4 · v2.20.0)
+   ══════════════════════════════════════════════════════════════════════════
+   A etapa inteira cabe numa tabela de decisão, e é a tabela que estas provas
+   atacam. O que se prova aqui não é "o código roda" — é que cada CRUZAMENTO
+   de modo × veredito produz o resultado certo, inclusive os dois que um leitor
+   desatento chamaria de furo (indisponível atende; observar atende sempre).
+   ══════════════════════════════════════════════════════════════════════════ */
+const S29 = '29 · Licença no serviço';
+let L29 = null, L29ERRO = '';
+try { L29 = require(ROOT + '/netlify/lib/licenca.mjs'); }
+catch (e) { L29ERRO = (e && e.message) || String(e); }
+
+t(S29, '29.0', 'As decisões da licença são executáveis', () => {
+  ok(L29, 'não foi possível carregar netlify/lib/licenca.mjs — ' + L29ERRO);
+  ok(typeof L29.decidirAtendimento === 'function', 'sem decidirAtendimento');
+  return { detail: 'licenca v' + L29.LICENCA_VERSAO + ' · TTL ' +
+                   (L29.VEREDITO_TTL_MS / 60000) + ' min' };
+});
+
+t(S29, '29.1', 'A TABELA INTEIRA de modo × veredito, cruzamento por cruzamento', () => {
+  const { MODO, ESTADO, decidirAtendimento: d } = L29;
+  const valida   = { ok: true,  estado: ESTADO.VALIDA };
+  const vencida  = { ok: false, estado: ESTADO.VENCIDA,  motivo: 'licença vencida' };
+  const ausente  = { ok: false, estado: ESTADO.AUSENTE,  motivo: 'nenhuma' };
+  const revogada = { ok: false, estado: ESTADO.REVOGADA, motivo: 'revogada' };
+  const indisp   = { ok: false, estado: ESTADO.INDISPONIVEL };
+
+  /* Esta é a prova central da C4. Cada linha é um cruzamento da tabela do
+     cabeçalho de licenca.mjs, escrita aqui de forma INDEPENDENTE do código —
+     se alguém reescrever decidirAtendimento, a tabela continua sendo o
+     contrato. É a diferença entre testar o que o código faz e testar o que
+     ele DEVE fazer. */
+  const esperado = [
+    //  modo              veredito    atende  degradado
+    [MODO.DESLIGADO, valida,   true,  false, 'desligado atende quem tem'],
+    [MODO.DESLIGADO, ausente,  true,  false, 'desligado NÃO muda nada — é o padrão'],
+    [MODO.DESLIGADO, vencida,  true,  false, 'desligado ignora vencimento'],
+    [MODO.DESLIGADO, indisp,   true,  false, 'desligado nem consulta'],
+
+    [MODO.OBSERVAR,  valida,   true,  false, 'observar atende'],
+    [MODO.OBSERVAR,  ausente,  true,  false, 'observar atende MESMO sem licença'],
+    [MODO.OBSERVAR,  vencida,  true,  false, 'observar atende vencida — só anota'],
+    [MODO.OBSERVAR,  revogada, true,  false, 'observar atende revogada — só anota'],
+
+    [MODO.EXIGIR,    valida,   true,  false, 'exigir atende quem tem'],
+    [MODO.EXIGIR,    ausente,  false, false, 'exigir NEGA sem licença'],
+    [MODO.EXIGIR,    vencida,  false, false, 'exigir NEGA vencida'],
+    [MODO.EXIGIR,    revogada, false, false, 'exigir NEGA revogada'],
+    /* 🔴 A LINHA QUE PARECE FURO E NÃO É. Ver o cabeçalho de licenca.mjs:
+       negar previsão porque o VERIFICADOR caiu seria transformar o Supabase
+       — que já dormiu três dias em setembro — em ponto único de falha de um
+       dado de segurança da navegação. */
+    [MODO.EXIGIR,    indisp,   true,  true,  'exigir ATENDE quando o verificador falha']
+  ];
+
+  for (const [modo, ver, atende, degradado, porque] of esperado) {
+    const r = d(modo, ver);
+    ok(r.atende === atende,
+       `${modo} × ${ver.estado}: esperava atende=${atende}, veio ${r.atende} — ${porque}`);
+    ok(!!r.degradado === degradado,
+       `${modo} × ${ver.estado}: esperava degradado=${degradado}, veio ${!!r.degradado}`);
+  }
+
+  /* O código HTTP da recusa importa: 402 diz "falta licença", 403 diria
+     "você não deveria estar aqui". A embarcação DEVERIA estar aqui. */
+  eq(d(MODO.EXIGIR, ausente).status, 402, 0,
+     'a recusa por licença deve ser 402, não 403 — ela tem direito ao aplicativo');
+
+  return { detail: esperado.length + ' cruzamentos, todos conferidos' };
+});
+
+t(S29, '29.2', 'O modo desconhecido cai para DESLIGADO, não para exigir', () => {
+  const { MODO, lerModo } = L29;
+  /* Erro de digitação no painel do Netlify não pode barrar a frota. Aqui o
+     padrão seguro aponta para o lado PERMISSIVO — ao contrário do portão
+     administrativo, e pelo motivo explicado em licenca.mjs. */
+  for (const bruto of ['', 'exijir', 'EXIGIR ', 'sim', 'true', '1', undefined, null, '  ']) {
+    const m = lerModo({ LICENCA_MODO: bruto });
+    if (String(bruto).trim().toLowerCase() === 'exigir') continue;   // 'EXIGIR ' é válido
+    ok(m === MODO.DESLIGADO,
+       `LICENCA_MODO=${JSON.stringify(bruto)} virou "${m}" — um erro de digitação barraria a frota`);
+  }
+  /* E os dois válidos funcionam, inclusive com caixa e espaço. */
+  eq(lerModo({ LICENCA_MODO: 'EXIGIR ' })   === MODO.EXIGIR   ? 1 : 0, 1, 0, 'EXIGIR com caixa alta falhou');
+  eq(lerModo({ LICENCA_MODO: ' observar' }) === MODO.OBSERVAR ? 1 : 0, 1, 0, 'observar com espaço falhou');
+  eq(lerModo({})                            === MODO.DESLIGADO ? 1 : 0, 1, 0, 'ambiente vazio não caiu em desligado');
+});
+
+t(S29, '29.3', 'Revogada vence vencida — a mensagem manda a pessoa ao lugar certo', () => {
+  const { ESTADO, vereditoDaLinha } = L29;
+  const agora = Date.parse('2026-10-01T12:00:00Z');
+  const h = n => new Date(agora + n * 3600000).toISOString();
+
+  /* Uma licença revogada E já vencida deve dizer REVOGADA. Se dissesse
+     "vencida", o comandante pediria renovação quando o acesso foi CORTADO —
+     a mensagem errada manda a pessoa para o caminho errado, e ela só descobre
+     depois de esperar. */
+  const r = vereditoDaLinha({ vessel: 'SAAM ORION', expires_at: h(-48), revoked_at: h(-72) }, agora);
+  ok(r.estado === ESTADO.REVOGADA, `revogada+vencida virou "${r.estado}" — devia ser revogada`);
+
+  ok(vereditoDaLinha({ vessel: 'X', expires_at: h(-1),  revoked_at: null }, agora).estado === ESTADO.VENCIDA,
+     'vencida há uma hora não foi reconhecida');
+  ok(vereditoDaLinha({ vessel: 'X', expires_at: h(+1),  revoked_at: null }, agora).ok,
+     'válida por mais uma hora foi recusada');
+  ok(vereditoDaLinha(null, agora).estado === ESTADO.DESCONHECIDA,
+     'linha ausente devia ser desconhecida');
+
+  /* Data ilegível é tratada como vencida: o custo é pedir renovação, e o
+     custo do contrário seria acesso indevido e perpétuo. */
+  ok(vereditoDaLinha({ vessel: 'X', expires_at: 'banana', revoked_at: null }, agora).estado === ESTADO.VENCIDA,
+     'data ilegível devia recusar, não liberar');
+
+  /* A borda exata: vencer AGORA é estar vencida, não válida. */
+  ok(!vereditoDaLinha({ vessel: 'X', expires_at: new Date(agora).toISOString(), revoked_at: null }, agora).ok,
+     'uma licença que vence neste instante não pode valer');
+
+  /* Horas restantes alimentam o aviso "sua licença vence em N h". */
+  eq(vereditoDaLinha({ vessel: 'X', expires_at: h(9.5), revoked_at: null }, agora).horasRestantes, 9, 0,
+     'horas restantes arredondou para cima — avisaria tarde demais');
+});
+
+t(S29, '29.4', 'O código viaja em cabeçalho, nunca em URL', () => {
+  const { CABECALHO_LICENCA, extrairLicenca } = L29;
+  eq(CABECALHO_LICENCA === 'x-licenca' ? 1 : 0, 1, 0, 'o nome do cabeçalho mudou');
+
+  /* Normaliza o que chega colado de WhatsApp: espaço nas pontas e caixa. */
+  const cod = 'A'.repeat(0) + 'abcdef0123456789'.repeat(4);
+  eq(extrairLicenca(n => n === 'x-licenca' ? ('  ' + cod.toUpperCase() + ' ') : null) === cod ? 1 : 0, 1, 0,
+     'não normalizou espaço e caixa — o código colado de WhatsApp seria recusado');
+  eq(extrairLicenca(() => null) === '' ? 1 : 0, 1, 0, 'ausência devia virar string vazia, não null');
+
+  /* E o proxy NÃO pode aceitar a licença por parâmetro de URL: URL vai para
+     log de CDN, histórico e Referer. Varredura de código, declarada. */
+  const F = semComentarios(fs16.readFileSync(ROOT + '/netlify/functions/tempo.mjs', 'utf8'));
+  ok(!/searchParams\.get\(\s*['"]licenca['"]/.test(F),
+     'o proxy voltou a aceitar licença por URL — ela vazaria em log e Referer');
+  ok(/extrairLicenca\(/.test(F), 'o proxy não lê a licença do cabeçalho');
+});
+
+t(S29, '29.5', 'Formato é conferido ANTES de gastar viagem de rede', () => {
+  const { formatoDeLicenca } = L29;
+  const bom = 'abcdef0123456789'.repeat(4);                 // 64 hex
+  ok(formatoDeLicenca(bom), 'um código legítimo foi recusado pelo formato');
+  for (const ruim of ['', 'abc', bom.slice(0, 63), bom + 'a', bom.toUpperCase(),
+                      bom.slice(0, 63) + 'g', null, undefined, 123]) {
+    ok(!formatoDeLicenca(ruim), `"${String(ruim).slice(0, 12)}…" passou pelo formato e iria ao banco à toa`);
+  }
+});
+
+t(S29, '29.6', 'O cache guarda o resumo, nunca o código — e nunca o indisponível', () => {
+  const { ESTADO, novoCacheVeredito, lerVeredito, guardarVeredito, VEREDITO_TTL_MS } = L29;
+  const cod = 'abcdef0123456789'.repeat(4);
+  const agora = 1759330000000;
+  const c = novoCacheVeredito();
+
+  guardarVeredito(c, cod, { ok: true, estado: ESTADO.VALIDA }, agora);
+  ok(lerVeredito(c, cod, agora), 'o veredito guardado não foi encontrado');
+
+  /* A chave é o SHA-256: um despejo de memória não entrega licença de
+     ninguém. Mesma disciplina com que o banco guarda só o resumo. */
+  const chaves = [...c.keys()];
+  ok(!chaves.includes(cod), '🔴 o cache guardou o CÓDIGO em claro');
+  ok(/^[0-9a-f]{64}$/.test(chaves[0]) && chaves[0] !== cod, 'a chave do cache não é o resumo');
+
+  /* Expira. Um segundo DEPOIS do TTL já não vale. */
+  ok(!lerVeredito(c, cod, agora + VEREDITO_TTL_MS + 1), 'o veredito venceu e continuou valendo');
+
+  /* INDISPONÍVEL nunca entra: guardá-lo prenderia a embarcação ao modo
+     degradado por cinco minutos depois de o banco já ter voltado. */
+  const c2 = novoCacheVeredito();
+  guardarVeredito(c2, cod, { ok: false, estado: ESTADO.INDISPONIVEL }, agora);
+  eq(c2.size, 0, 0, 'o cache guardou um "indisponível" — a degradação ficaria presa 5 min');
+
+  /* Negativo legítimo É guardado: sem isso, um código digitado errado bateria
+     no banco a cada busca de tempo. */
+  const c3 = novoCacheVeredito();
+  guardarVeredito(c3, cod, { ok: false, estado: ESTADO.VENCIDA }, agora);
+  eq(c3.size, 1, 0, 'o cache não guardou um veredito negativo legítimo — um engano de digitação viraria enxurrada');
+});
+
+t(S29, '29.7', 'O proxy desligado não toca no Supabase, e o degrau fica no lugar certo', () => {
+  const F = semComentarios(fs16.readFileSync(ROOT + '/netlify/functions/tempo.mjs', 'utf8'));
+
+  /* Em modo desligado a C4 custa ZERO: sem leitura de cabeçalho, sem rede.
+     Uma etapa que pesa mesmo desligada é uma etapa que ninguém deixa
+     desligada em paz. */
+  ok(/if\s*\(\s*modo\s*!==\s*MODO\.DESLIGADO\s*\)/.test(F),
+     'o proxy consulta licença mesmo com o modo desligado — custo onde devia haver zero');
+
+  /* ORDEM, que é a defesa inteira. A licença tem de ficar DEPOIS do limite de
+     taxa (senão um laço de requisições sem licença bateria no Supabase sem
+     freio) e ANTES do cache (senão bastaria pedir logo após uma embarcação
+     licenciada para pegar carona). */
+  /* ⚠️ ESTA PROVA JÁ NASCEU ERRADA UMA VEZ, e a lição é a mesma da 28.7,
+     repetida por mim duas horas depois de corrigi-la lá.
+
+     A primeira versão procurava `doCache(chave)` e acusava o código CORRETO.
+     Motivo: `function doCache(chave)` — a DEFINIÇÃO, no topo do arquivo —
+     casa com o mesmo texto da chamada, e vem antes de tudo. A prova estava
+     medindo a posição da declaração e chamando aquilo de ordem de execução.
+
+     Oitava vez que esta casa tropeça na família "a varredura casou com a
+     coisa errada". A emenda é ancorar na linha de CHAMADA, que é única e
+     carrega a atribuição. */
+  const iTaxa  = F.indexOf('limiteDeTaxa(guarda');
+  const iLic   = F.indexOf('decidirAtendimento(modo');
+  const iCache = F.indexOf('const guardado = doCache(chave)');
+  const iFus   = F.indexOf('pedirGasto(guarda');
+  ok(iTaxa > 0 && iLic > 0 && iCache > 0 && iFus > 0, 'não encontrei os quatro degraus no proxy');
+  ok(iTaxa < iLic,
+     'a licença é conferida ANTES do limite de taxa — um laço bateria no Supabase sem freio');
+  ok(iLic < iCache,
+     'a licença é conferida DEPOIS do cache — daria carona a quem pedir logo após um licenciado');
+  ok(iCache < iFus, 'o fusível deixou de ser o último portão antes do Open-Meteo');
+
+  /* A recusa nunca é cacheada pela CDN: um 402 guardado na borda negaria
+     serviço a quem acabou de comprar licença. Mesmo defeito que a v2.16.0
+     corrigiu para o 403. */
+  const trecho = F.slice(F.indexOf('402'), F.indexOf('402') + 400);
+  ok(/semCache/.test(trecho), 'a recusa 402 pode ser cacheada pela CDN — negaria quem acabou de licenciar');
+});
+
+t(S29, '29.8', 'O selo de licença não entra no cache compartilhado', () => {
+  const F = semComentarios(fs16.readFileSync(ROOT + '/netlify/functions/tempo.mjs', 'utf8'));
+  /* `guardar(chave, dado)` tem de receber o dado PURO. Se o selo fosse junto,
+     a próxima embarcação herdaria o estado de licença da anterior — vazamento
+     silencioso clássico de cache compartilhado. */
+  /* ⚠️ E ESTA PROVA TAMBÉM NASCEU ERRADA — nona vez na mesma família, segunda
+     vez no mesmo dia, e desta vez numa prova escrita JUSTAMENTE sobre o
+     perigo de varredura casar com a coisa errada.
+
+     A versão anterior exigia a presença de `guardar(chave, dado)`. Mutei o
+     código para `guardar(chave, Object.assign({}, dado, selo))` — contaminando
+     o cache compartilhado, que é exatamente o defeito que esta prova existe
+     para impedir — e ela seguiu VERDE. Motivo: `function guardar(chave, dado)`,
+     a DECLARAÇÃO lá em cima, satisfaz o padrão sozinha.
+
+     Não basta exigir que a chamada certa exista; é preciso exigir que a
+     ERRADA não exista. Uma prova que só procura o bom nunca vê o mau que foi
+     acrescentado ao lado. */
+  ok(/\n\s+guardar\(chave, dado\);/.test(F),
+     'a chamada que guarda no cache mudou de forma — confira se o selo não foi junto');
+  ok(!/guardar\(chave,\s*Object\.assign/.test(F),
+     '🔴 o selo de licença está indo para o CACHE COMPARTILHADO — a próxima embarcação herdaria o estado de licença da anterior');
+  ok(/return new Response\(JSON\.stringify\(Object\.assign\(\{\},\s*dado,\s*selo\)\)/.test(F),
+     'o selo não é anexado por cópia só na resposta');
+});
+
+t(S29, '29.9', 'O cliente manda em cabeçalho, não deixa o código na tela, e não usa innerHTML', () => {
+  const C = semComentarios(fs16.readFileSync(ROOT + '/assets/js/tempo.js', 'utf8'));
+
+  ok(/'x-licenca'/.test(C), 'o cliente não envia o cabeçalho da licença');
+  ok(!/licenca=\$\{|[?&]licenca=/.test(C), 'o cliente voltou a mandar a licença na URL');
+
+  /* Depois de guardar, o campo é limpo: 64 caracteres de licença numa tela
+     que pode estar sendo espelhada ou fotografada é a licença entregue. */
+  ok(/campo\.value\s*=\s*''/.test(C), 'o código fica na tela depois de guardado');
+
+  /* O eco do estado vai para textContent. A C1 já pagou o preço de escrever
+     entrada de usuário como HTML — não se repete. */
+  ok(!/innerHTML/.test(C), '🔴 innerHTML voltou ao cliente do tempo');
+
+  /* E a ligação é por addEventListener: cada atributo onclick= a menos é um
+     passo para fechar o aviso 9.7. */
+  ok(/addEventListener/.test(C), 'o campo foi ligado por atributo embutido, piorando o 9.7');
+  const H = semComentariosHtml(fs16.readFileSync(ROOT + '/app.html', 'utf8'));
+  ok(/id="licencaCodigo"/.test(H), 'o campo de licença não existe no formulário');
+  ok(!/id="licencaGuardar"[^>]*onclick/.test(H), 'o botão da licença usa onclick embutido');
+});
+
+t(S29, '29.10', '402 é tratado como "falta licença", não como "servidor caiu"', () => {
+  const C = semComentarios(fs16.readFileSync(ROOT + '/assets/js/tempo.js', 'utf8'));
+  /* Confundir os dois manda o comandante procurar sinal de rádio quando o que
+     ele precisa é mandar uma mensagem pelo WhatsApp. */
+  ok(/r\.status\s*===\s*402/.test(C), 'o cliente não distingue 402 de falha de serviço');
+  const i = C.indexOf('402');
+  ok(/tempoLicenca\s*=/.test(C.slice(i, i + 500)),
+     'o cliente não registra o estado da licença ao receber 402');
+  /* E não apaga o último bom conhecido: o dado velho rotulado continua
+     servindo, que é a decisão já aprovada para falha de tempo. */
+  ok(!/tempoAtual\s*=\s*null/.test(C.slice(i, i + 500)),
+     'o 402 apagou o último tempo conhecido — o passadiço ficaria sem nada');
+});
+
 /* ═══ RELATÓRIO ═══ */
 const byStatus = s => results.filter(r=>r.status===s).length;
 const ICON = { PASS:'\x1b[32m✔\x1b[0m', FAIL:'\x1b[31m✘\x1b[0m', WARN:'\x1b[33m▲\x1b[0m' };

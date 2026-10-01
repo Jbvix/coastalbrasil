@@ -2,7 +2,10 @@
 ════════════════════════════════════════════════════════════════════════════════
   PROXY DE TEMPO — Open-Meteo sem expor a chave paga
 ════════════════════════════════════════════════════════════════════════════════
-  Versão: 1.0.0  ·  Autor: Jossian Brito (Charlie Bravo)  ·  2026-09-20 19:05 UTC
+  Versão: 2.0.0  ·  Autor: Jossian Brito (Charlie Bravo)  ·  2026-10-01 16:20 UTC
+  v2.0.0 (C4) — o degrau da licença entra entre as coordenadas e o cache, com
+                três modos e falha BENIGNA. Ver netlify/lib/licenca.mjs.
+  v1.0.0       ·  2026-09-20 19:05 UTC
   SPRINT 2.0 — decisão arquitetural aprovada em 20/09/2026, registrada em
   docs/arquitetura.md.
 
@@ -26,9 +29,13 @@
 
   CONTRATO
     GET /.netlify/functions/tempo?lat=-23.05&lng=-41.90
+    cabeçalho opcional: x-licenca: <64 hex>                             (C4)
     -> 200 { ok, lat, lng, emitidoEm, mar:{…}, ar:{…} }
     -> 400 coordenadas inválidas
+    -> 402 { ok:false, motivo, estadoLicenca, contato }  licença exigida (C4)
+    -> 429 limite de chamadas excedido
     -> 502 { ok:false, motivo } quando o Open-Meteo não responde
+    -> 503 teto diário atingido
 
   O cliente NUNCA recebe a chave, e também não recebe a URL de origem.
 */
@@ -120,9 +127,95 @@ import {
   limiteDeTaxa, limparOciosos, pedirGasto, GUARDA_JANELA_MS
 } from '../lib/guarda.mjs';
 
+import {
+  MODO, ESTADO, CABECALHO_LICENCA, lerModo, extrairLicenca, formatoDeLicenca,
+  vereditoDaLinha, decidirAtendimento,
+  novoCacheVeredito, lerVeredito, guardarVeredito
+} from '../lib/licenca.mjs';
+import { resumoDoToken } from '../lib/admin.mjs';
+
 /* O estado do guarda vive na memória da instância, igual ao cache acima.
    A limitação está declarada em netlify/lib/guarda.mjs e é dívida conhecida. */
 const guarda = novoEstado();
+
+/* Vereditos de licença, mesma memória de instância, mesmo motivo.     (C4) */
+const cacheLicenca = novoCacheVeredito();
+
+const SUPA_URL = 'https://nsbeddfkcdyssrirrhzt.supabase.co';
+
+/*
+════════════════════════════════════════════════════════════════════════════════
+  conferirLicenca — o EFEITO. A decisão está em netlify/lib/licenca.mjs.
+════════════════════════════════════════════════════════════════════════════════
+
+  Devolve sempre um veredito, NUNCA levanta exceção. Quem chama não precisa de
+  try/catch, e é por isso que não existe caminho em que uma falha daqui derrube
+  a busca de tempo.
+
+  🔴 TODA FALHA VIRA `indisponivel`, e `indisponivel` ATENDE (ver a tabela em
+  decidirAtendimento). Banco pausado, rede caída, chave ausente, resposta
+  ilegível, estouro de tempo — tudo cai no mesmo balde, e o balde é benigno. É
+  a aplicação concreta da regra do cabeçalho de licenca.mjs: o verificador
+  falhar não pode custar o vento do comandante.
+
+  ESTOURO DE TEMPO CURTO, E ESTE NÚMERO É DELIBERADO.
+  3 segundos, contra os 8 que o proxy dá ao Open-Meteo. A assimetria é
+  intencional: o Open-Meteo é o SERVIÇO: esperar por ele é esperar pelo dado
+  que se quer. O Supabase aqui é só o porteiro — fazer o comandante esperar 8 s
+  por um porteiro, para então receber o dado de qualquer jeito, seria somar
+  latência sem somar informação. Três segundos é generoso para uma consulta por
+  índice e curto o bastante para o degradado ser imperceptível.
+*/
+async function conferirLicenca(codigo, agora) {
+  if (!codigo) return { ok: false, estado: ESTADO.AUSENTE,
+                        motivo: 'nenhuma licença informada' };
+
+  /* Formato errado não merece viagem de rede. */
+  if (!formatoDeLicenca(codigo)) return { ok: false, estado: ESTADO.MALFORMADA,
+                                          motivo: 'código de licença malformado' };
+
+  const guardado = lerVeredito(cacheLicenca, codigo, agora);
+  if (guardado) return guardado;
+
+  const chave = process.env.SUPABASE_SERVICE_KEY || '';
+  /* Sem chave o verificador não existe — e não existir é indisponível, não
+     inválido. A diferença decide se o comandante é atendido. */
+  if (!chave) return { ok: false, estado: ESTADO.INDISPONIVEL,
+                       motivo: 'verificador não configurado' };
+
+  try {
+    const r = await fetch(`${SUPA_URL}/rest/v1/rpc/check_license`, {
+      method: 'POST',
+      headers: {
+        'apikey': chave,
+        'Authorization': `Bearer ${chave}`,
+        'Content-Type': 'application/json'
+      },
+      /* O banco recebe o RESUMO, nunca o código. Quem calcula o SHA-256 é
+         quem chama, de modo que o token em claro não entra sequer num log de
+         consulta lenta do Postgres. Mesma decisão da C3. */
+      body: JSON.stringify({ p_token_hash: resumoDoToken(codigo) }),
+      signal: AbortSignal.timeout(3000)
+    });
+    if (!r.ok) return { ok: false, estado: ESTADO.INDISPONIVEL,
+                        motivo: `verificador respondeu ${r.status}` };
+
+    const texto = await r.text();
+    const dado = texto ? JSON.parse(texto) : null;
+    /* check_license devolve conjunto: o PostgREST entrega array. Nenhuma linha
+       significa código desconhecido — que é veredito legítimo, não falha. */
+    const linha = Array.isArray(dado) ? (dado[0] || null) : (dado || null);
+
+    const veredito = vereditoDaLinha(linha, agora);
+    guardarVeredito(cacheLicenca, codigo, veredito, agora);
+    return veredito;
+  } catch (e) {
+    /* Inclui AbortError do estouro de tempo, falha de DNS com o projeto
+       pausado, e JSON ilegível. Nenhum deles é culpa da embarcação. */
+    return { ok: false, estado: ESTADO.INDISPONIVEL,
+             motivo: 'verificador de licença inacessível' };
+  }
+}
 
 export default async (req) => {
   const u = new URL(req.url);
@@ -182,11 +275,58 @@ export default async (req) => {
                         { status: 400, headers: semCache });
   }
 
+  /* ═══════════════════════════════════════════════════════════════════════
+     O DEGRAU DA LICENÇA.                                              (C4)
+
+     POSIÇÃO: depois das coordenadas, ANTES do cache. As duas escolhas têm
+     motivo, e nenhuma é arbitrária.
+
+     · Depois das COORDENADAS porque validar número é de graça e local,
+       enquanto conferir licença pode custar uma ida ao Supabase. Barato antes
+       de caro, a mesma regra que rege o resto desta função.
+
+     · Antes do CACHE — e aqui é o ponto fino. Servir do cache não custa nada,
+       então seria tentador atender qualquer um com dado já guardado. Mas isso
+       abriria uma carona óbvia: bastaria pedir logo depois de uma embarcação
+       licenciada para receber de graça, e a licença viraria enfeite. É o mesmo
+       raciocínio que já põe a trava de ORIGEM antes do cache nesta função.
+
+     MODO DESLIGADO NÃO CONSULTA NADA. Quando a variável não está ligada, não
+     há leitura de cabeçalho, não há ida ao banco, não há latência: o custo da
+     C4 implantada e desligada é exatamente zero. Uma etapa que pesa mesmo
+     quando está desligada é uma etapa que ninguém deixa desligada em paz.
+     ═══════════════════════════════════════════════════════════════════════ */
+  const modo = lerModo(process.env);
+  let licenca = { atende: true, degradado: false, exigiu: false };
+  if (modo !== MODO.DESLIGADO) {
+    const codigo = extrairLicenca(ler);
+    const veredito = await conferirLicenca(codigo, agora);
+    licenca = decidirAtendimento(modo, veredito);
+
+    if (!licenca.atende) {
+      /* 402 Payment Required: a embarcação tem direito ao aplicativo, só não
+         tem licença corrente para o serviço pago. Não é 403 — 403 diria que
+         ela não deveria estar aqui, e deveria. O cliente distingue os dois e
+         a C5 transforma isso em mensagem honesta no passadiço. */
+      return new Response(JSON.stringify({
+        ok: false, motivo: licenca.motivo, estadoLicenca: licenca.estado,
+        contato: 'https://wa.me/5585997737230'
+      }), { status: 402, headers: Object.assign({}, semCache, { 'Retry-After': '300' }) });
+    }
+  }
+
+  /* Tudo que o cliente precisa saber sobre a licença, anexado a QUALQUER
+     resposta de sucesso — inclusive às servidas do cache. Em modo observar é
+     o que permite ver quem seria barrado antes de barrar. */
+  const selo = {};
+  if (licenca.exigiu && licenca.degradado) selo.licencaDegradada = true;
+  if (licenca.observado) selo.licencaObservada = licenca.observado;
+
   const la = arredondar(lat), ln = arredondar(lng);
   const chave = `${la.toFixed(2)},${ln.toFixed(2)}`;
   const guardado = doCache(chave);
   if (guardado) {
-    return new Response(JSON.stringify(Object.assign({}, guardado, { doCache: true })),
+    return new Response(JSON.stringify(Object.assign({}, guardado, { doCache: true }, selo)),
                         { status: 200, headers: cabecalhos });
   }
 
@@ -237,8 +377,13 @@ export default async (req) => {
       ar: ar.status === 'fulfilled' ? (ar.value.current || null) : null,
       falhou: [mar.status === 'rejected' && 'mar', ar.status === 'rejected' && 'ar'].filter(Boolean)
     };
+    /* O dado vai para o cache SEM o selo: o selo é de quem pergunta, não do
+       lugar. Guardá-lo junto faria a próxima embarcação herdar o estado de
+       licença da anterior — que é exatamente o tipo de vazamento silencioso
+       que um cache compartilhado produz quando ninguém pensa nisso. */
     guardar(chave, dado);
-    return new Response(JSON.stringify(dado), { status: 200, headers: cabecalhos });
+    return new Response(JSON.stringify(Object.assign({}, dado, selo)),
+                        { status: 200, headers: cabecalhos });
   } catch (e) {
     // A mensagem do Open-Meteo pode conter a URL, e a URL contém a chave.
     // Nunca repassar o erro cru para o cliente.

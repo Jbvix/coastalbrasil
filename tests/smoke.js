@@ -778,6 +778,66 @@ const srv = http.createServer((req, res) => {
     await tela.close();
   }
 
+  /* ══════════════════════════════════════════════════════════════════════
+     CAMPO DE LICENÇA — no navegador de verdade                   (C4)
+     ══════════════════════════════════════════════════════════════════════
+     O banco de provas confere a tabela de decisão; aqui se confere que o
+     campo EXISTE, aceita, recusa e — o que nenhuma varredura prova — que o
+     código não fica na tela depois de guardado. */
+  {
+    const COD = 'abcdef0123456789'.repeat(4);
+    const existe = await page.evaluate(() =>
+      !!document.getElementById('licencaCodigo') && !!document.getElementById('licencaGuardar'));
+    ok('Campo de licença existe no formulário', existe, existe ? 'campo e botão' : 'ausente');
+
+    /* Código malformado é recusado, e NADA é guardado. */
+    const ruim = await page.evaluate(() => {
+      localStorage.removeItem('cnb.licenca');
+      document.getElementById('licencaCodigo').value = 'nao-sou-uma-licenca';
+      document.getElementById('licencaGuardar').click();
+      return { aviso: document.getElementById('licencaAviso').textContent,
+               guardado: localStorage.getItem('cnb.licenca') };
+    });
+    ok('Licença malformada é recusada e nada é guardado',
+       ruim.guardado === null && /64 caracteres/.test(ruim.aviso),
+       ruim.guardado === null ? 'recusada' : 'GUARDOU LIXO');
+
+    /* Código bem formado é aceito… */
+    const bom = await page.evaluate((c) => {
+      document.getElementById('licencaCodigo').value = c.toUpperCase() + '  ';
+      document.getElementById('licencaGuardar').click();
+      return { guardado: localStorage.getItem('cnb.licenca'),
+               campo: document.getElementById('licencaCodigo').value,
+               aviso: document.getElementById('licencaAviso').textContent };
+    }, COD);
+    ok('Licença válida é guardada, normalizada', bom.guardado === COD,
+       bom.guardado === COD ? 'minúscula e sem espaço' : 'guardou "' + bom.guardado + '"');
+
+    /* …e o CÓDIGO NÃO FICA NA TELA. 64 caracteres num passadiço que pode
+       estar sendo espelhado ou fotografado é a licença entregue. */
+    ok('O código não permanece no campo após guardar', bom.campo === '',
+       bom.campo === '' ? 'campo limpo' : 'CÓDIGO VISÍVEL NA TELA');
+
+    /* O aviso é texto, não HTML: se fosse innerHTML, uma licença contendo
+       marcação viraria elemento. A C1 já pagou esse preço uma vez. */
+    const semHtml = await page.evaluate(() => {
+      document.getElementById('licencaCodigo').value = '<img src=x onerror="window.__xss=1">';
+      document.getElementById('licencaGuardar').click();
+      return { xss: !!window.__xss, img: !!document.querySelector('#licencaAviso img') };
+    });
+    ok('O aviso da licença não executa marcação', !semHtml.xss && !semHtml.img,
+       semHtml.xss ? 'XSS DISPAROU' : 'texto puro');
+
+    /* Apagar devolve ao estado livre — o aplicativo funciona sem licença. */
+    const limpo = await page.evaluate(() => {
+      document.getElementById('licencaCodigo').value = '';
+      document.getElementById('licencaGuardar').click();
+      return localStorage.getItem('cnb.licenca');
+    });
+    ok('Campo vazio apaga a licença do aparelho', limpo === null,
+       limpo === null ? 'apagada' : 'sobrou');
+  }
+
   await page.screenshot({ path: path.join(__dirname, 'smoke.png'), fullPage: false });
   await browser.close(); srv.close();
 

@@ -11,6 +11,134 @@ executável.
 
 ```
 
+## v2.20.0 (01/10/2026) — A LICENÇA VIRA PORTA, SEM VIRAR PONTO ÚNICO DE FALHA · ETAPA C4
+
+Autor: Jossian Brito (Charlie Bravo)
+Data: 01/10/2026 · Versão 2.20.0
+
+### A decisão que vem antes do código
+
+A C3 passou a emitir licenças. A C4 faz o proxy de tempo **perguntar** por
+elas. Feita do jeito óbvio, essa etapa põe o **Supabase no caminho crítico da
+previsão de tempo** — e esse mesmo Supabase ficou **pausado três dias** em
+setembro, com o monitor falhando duas vezes sem ninguém atender.
+
+"Sem licença, sem tempo" viraria, na prática, **"sem banco, sem tempo"**.
+
+Por isso o modo de falhar aqui é o **contrário** do portão administrativo da
+C3, e a assimetria é deliberada:
+
+| O que se protege | Como deve falhar |
+|---|---|
+| Portão administrativo (poder) | **Fecha.** Na dúvida, ninguém entra. |
+| Previsão de tempo (segurança da navegação) | **Abre.** Na dúvida, o passadiço recebe o vento. |
+
+A bordo a distinção é rotina: um *damper* de incêndio falha **fechado**, porque
+fechar é o estado seguro. A alimentação de combustível da máquina principal
+**não** falha fechada porque um sensor morreu — ela alarma e continua, porque
+parar no meio do canal é pior que o risco que o sensor media.
+
+E o argumento econômico aponta para o mesmo lado: o que a licença protege aqui
+é **orçamento**, não segurança, e o orçamento já tem três travas independentes
+da Sprint A (origem, limite por IP, fusível diário). Negar previsão a uma
+embarcação no mar para poupar fração de centavo, quando o fusível já garante o
+teto da fatura, é trocar custo de segurança real por economia marginal.
+
+### Os três modos
+
+`LICENCA_MODO`, no Netlify:
+
+| Valor | Comportamento |
+|---|---|
+| ausente / `desligado` | **Padrão.** Nada muda. Implantar a C4 não altera comportamento nenhum, e **não custa nada**: sem leitura de cabeçalho, sem ida ao banco, sem latência. |
+| `observar` | Confere e **anota** o veredito na resposta, mas atende todo mundo. É o alarme novo rodando em paralelo antes de ser ligado no desligamento automático. |
+| `exigir` | Sem licença válida, sem previsão — **exceto** quando o verificador é que falhou. |
+
+Qualquer valor desconhecido (inclusive `exijir`) cai em **desligado**. Um erro
+de digitação no painel não pode barrar a frota.
+
+### A tabela, que é a etapa inteira
+
+| modo | veredito | resultado |
+|---|---|---|
+| desligado | (nem consulta) | atende |
+| observar | qualquer | atende, e anota |
+| exigir | válida | atende |
+| exigir | **indisponível** | **atende**, marcado degradado 🔴 |
+| exigir | qualquer outro | **nega, HTTP 402** |
+
+**402 e não 403:** a embarcação **tem** direito ao aplicativo, só não tem
+licença corrente para o serviço pago. O 403 diria que ela não deveria estar
+ali. Usar o código certo deixa o cliente distinguir "preciso de licença" de
+"estou barrado" — matéria-prima da C5.
+
+### Decisões de desenho que valem a leitura
+
+**Posição do degrau:** `origem → taxa → coordenadas → LICENÇA → cache → fusível`.
+Depois das coordenadas porque validar número é de graça; **antes do cache**
+porque, servindo cache a quem não tem licença, bastaria pedir logo após uma
+embarcação licenciada para pegar carona — e a licença viraria enfeite.
+
+**Cabeçalho, nunca URL.** `x-licenca`. URL aparece em log de CDN, histórico,
+`Referer` e na barra de endereço de quem olha por cima do ombro. É a diferença
+entre levar a chave no bolso e prendê-la do lado de fora da mochila.
+
+**Estouro de tempo de 3 s**, contra 8 s do Open-Meteo. O Open-Meteo é o
+serviço; o Supabase aqui é só o porteiro. Fazer o comandante esperar 8 s por um
+porteiro, para então ser atendido de qualquer jeito, soma latência sem somar
+informação.
+
+**O cache de vereditos guarda o SHA-256**, nunca o código, e **nunca** guarda
+`indisponível` — guardá-lo prenderia a embarcação ao modo degradado por cinco
+minutos depois de o banco já ter voltado. Guarda os negativos legítimos, sim:
+sem isso, um código digitado errado viraria enxurrada de consultas.
+
+**O selo de licença não entra no cache compartilhado.** O selo é de quem
+pergunta, não do lugar.
+
+### O que a bancada encontrou
+
+Catorze mutações. **Uma sobreviveu**, e a lição já é conhecida desta casa:
+
+> **M10 · o selo de licença contaminando o cache compartilhado.** A prova 29.8
+> exigia a presença de `guardar(chave, dado)` — e `function guardar(chave, dado)`,
+> a **declaração**, satisfaz o padrão sozinha. Mutei a chamada para incluir o
+> selo e a prova seguiu verde.
+
+Mais: a prova **29.7** nasceu errada e acusou o código **correto**, procurando
+`doCache(chave)` — que também casa com a própria declaração da função.
+
+São a **oitava** e a **nona** ocorrências da mesma família nesta casa, as duas
+no mesmo dia, e a segunda numa prova escrita **justamente sobre** o perigo de
+varredura casar com a coisa errada.
+
+> **Não basta exigir que a chamada certa exista; é preciso exigir que a errada
+> não exista.** Uma prova que só procura o bom nunca vê o mau acrescentado ao
+> lado.
+
+### Provas
+
+294 provas (283 → 294), 29 suítes, 0 FAIL, 2 WARN. Fumaça **99/99**, nenhum erro
+de console. Comportamento do manipulador medido fora de varredura:
+
+| Modo | Licença | Resultado |
+|---|---|---|
+| desligado · observar | ausente | atravessa o degrau |
+| exigir | ausente | **402** `[ausente]` |
+| exigir | malformada | **402** `[malformada]`, sem ir ao banco |
+| exigir | válida, **verificador fora do ar** | **atravessa** 🎯 |
+
+### ⚠️ O que esta etapa NÃO faz
+
+1. **Nada muda em produção.** `LICENCA_MODO` nasce ausente, logo desligado.
+2. **`supabase/licenca.sql` continua NÃO aplicado.** Sem a tabela, o
+   verificador responde "indisponível" — e indisponível **atende**.
+3. **O limite de aparelhos segue declarado, não imposto.**
+4. **A mensagem honesta no passadiço** (402 e degradação virando texto para o
+   comandante) é a **C5**. Hoje o cliente registra o estado e não pinta tela.
+
+---
+
 ## v2.19.0 (01/10/2026) — O PORTÃO SAI DO NAVEGADOR · ETAPA C3
 
 Autor: Jossian Brito (Charlie Bravo)

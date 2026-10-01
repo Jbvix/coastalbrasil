@@ -403,17 +403,88 @@ function falarTempo(t) {
 const TEMPO_URL = '/.netlify/functions/tempo';
 const TEMPO_INTERVALO_MS = 15 * 60 * 1000;
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   A LICENÇA DO LADO DO CLIENTE                                       (C4)
+
+   Guardada em localStorage e enviada em CABEÇALHO, nunca na URL — pelo mesmo
+   motivo que o servidor a espera em cabeçalho: URL vaza em log de CDN, em
+   histórico, em Referer e na barra de endereço. Ver netlify/lib/licenca.mjs.
+
+   Por que localStorage e não sessionStorage: a licença é da EMBARCAÇÃO e vale
+   dias. Fazer o comandante redigitar 64 caracteres hexadecimais a cada aba
+   nova, de madrugada, com o barco jogando, é desenhar para o erro. O risco
+   aceito está declarado: quem tem o aparelho tem a licença — e a licença dá
+   acesso a previsão de tempo, não ao sistema.
+
+   O código é normalizado na entrada (sem espaços, minúsculo) porque ele chega
+   colado de WhatsApp, e espaço grudado no fim não deveria ser a diferença
+   entre ter e não ter vento no passadiço.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const LICENCA_CHAVE = 'cnb.licenca';
+
+function lerLicenca() {
+  try { return String(localStorage.getItem(LICENCA_CHAVE) || '').trim().toLowerCase(); }
+  catch (e) { return ''; }   // modo privado, armazenamento bloqueado
+}
+
+/* Devolve o que aconteceu, para a interface poder dizer a verdade: aceita,
+   apagada, ou recusada por formato. Validade quem decide é o servidor — o
+   cliente só recusa o que é obviamente impossível, para não mandar lixo. */
+function definirLicenca(codigo) {
+  const c = String(codigo == null ? '' : codigo).trim().toLowerCase();
+  try {
+    if (!c) { localStorage.removeItem(LICENCA_CHAVE); return { ok: true, estado: 'apagada' }; }
+    if (!/^[0-9a-f]{64}$/.test(c)) {
+      return { ok: false, estado: 'malformada',
+               motivo: 'o código deve ter 64 caracteres de 0-9 e a-f' };
+    }
+    localStorage.setItem(LICENCA_CHAVE, c);
+    return { ok: true, estado: 'guardada' };
+  } catch (e) {
+    return { ok: false, estado: 'sem-armazenamento',
+             motivo: 'este navegador não permite guardar a licença' };
+  }
+}
+
 let tempoAtual = null;            // último pacote bom conhecido
 let tempoBarometro = [];          // série de pressão para a tendência
 let tempoTimer = null;
 let tempoFalhas = 0;
+/* Último estado de licença visto pelo servidor. É o que a C5 vai transformar
+   em mensagem; por ora fica registrado e exposto, sem pintar tela. */
+let tempoLicenca = { estado: 'desconhecido', degradada: false, motivo: '' };
 
 async function buscarTempo(lat, lng) {
   if (!isFinite(lat) || !isFinite(lng)) return null;
   try {
-    const r = await fetch(`${TEMPO_URL}?lat=${lat.toFixed(4)}&lng=${lng.toFixed(4)}`);
+    const lic = lerLicenca();
+    const r = await fetch(`${TEMPO_URL}?lat=${lat.toFixed(4)}&lng=${lng.toFixed(4)}`,
+                          lic ? { headers: { 'x-licenca': lic } } : undefined);
     const j = await r.json();
+
+    /* 402 é o único código que NÃO é falha de serviço: o proxy está vivo,
+       respondeu depressa, e disse que falta licença. Tratar isso como "o
+       servidor caiu" mandaria o comandante procurar sinal de rádio quando o
+       que ele precisa é mandar uma mensagem pelo WhatsApp. */
+    if (r.status === 402) {
+      tempoLicenca = { estado: (j && j.estadoLicenca) || 'ausente', degradada: false,
+                       motivo: (j && j.motivo) || 'licença necessária',
+                       contato: j && j.contato };
+      tempoFalhas++;
+      console.warn('tempo: licença exigida —', tempoLicenca.motivo);
+      return null;
+    }
+
     if (!j || !j.ok) throw new Error((j && j.motivo) || `HTTP ${r.status}`);
+
+    /* Atendido. Pode ter sido atendido em modo DEGRADADO — o verificador de
+       licença não respondeu e o proxy serviu assim mesmo. Isso é informação
+       de manutenção, não de navegação: o dado do tempo é igualmente bom. */
+    tempoLicenca = {
+      estado: j.licencaObservada || (j.licencaDegradada ? 'indisponivel' : 'ok'),
+      degradada: !!j.licencaDegradada, motivo: ''
+    };
+
     tempoAtual = j;
     tempoFalhas = 0;
     const p = j.ar && Number(j.ar.pressure_msl);
@@ -504,6 +575,49 @@ function linhaDeTempoNoPainel() {
   const idade = idadeDoTempo(tempoAtual.emitidoEm);
   if (idade && idade.rotulo) p.push(`⏳ ${idade.minutos} min`);
   return p.join(' · ');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIGAÇÃO DO CAMPO DE LICENÇA                                         (C4)
+
+   `addEventListener`, nunca `onclick=` no HTML. O aviso 9.7 existe porque a
+   CSP precisa admitir 'unsafe-inline' enquanto houver atributos de evento na
+   página; cada campo novo ligado assim é um a menos no caminho de fechá-lo.
+   A C1 andou para trás nesse aviso pela primeira vez — não vou andar de volta.
+
+   O campo NUNCA é preenchido de volta com o código guardado. Mostrar 64
+   caracteres de licença numa tela que pode estar sendo espelhada, fotografada
+   ou projetada no passadiço é entregá-la a quem estiver olhando. O que a tela
+   confirma é o ESTADO ("guardada"), não o segredo.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function ligarCampoDeLicenca() {
+  const campo = document.getElementById('licencaCodigo');
+  const botao = document.getElementById('licencaGuardar');
+  const aviso = document.getElementById('licencaAviso');
+  if (!campo || !botao) return false;
+
+  /* textContent, nunca innerHTML: o conteúdo vem de um campo digitado, e a
+     C1 já pagou o preço de escrever entrada de usuário como HTML. */
+  const dizer = (txt, cor) => { if (aviso) { aviso.textContent = txt; aviso.style.color = cor || ''; } };
+
+  if (lerLicenca()) dizer('Licença guardada neste aparelho. Para trocar, cole outra e Guardar.');
+
+  botao.addEventListener('click', () => {
+    const r = definirLicenca(campo.value);
+    campo.value = '';                       // nunca deixa o código na tela
+    if (!r.ok)                       dizer(r.motivo, '#ff6b6b');
+    else if (r.estado === 'apagada') dizer('Licença apagada deste aparelho.');
+    else                             dizer('Licença guardada. Vale na próxima busca de tempo.', '#4caf50');
+  });
+  return true;
+}
+
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', ligarCampoDeLicenca);
+  } else {
+    ligarCampoDeLicenca();
+  }
 }
 
 /* Pinta a linha. Chamada a cada fixo, junto do resto do HUD. */
