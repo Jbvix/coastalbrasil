@@ -149,6 +149,64 @@ const srv = http.createServer((req, res) => {
     'https://coastalbrasil.netlify.app/.netlify/functions/tempo?lat=-23&lng=-42', { headers: h }));
   const codigo = async (h) => { const r = await bater(h); return { s: r.status, c: r.headers.get('cache-control') }; };
 
+  /* ═══════════════════════════════════════════════════════════════════════
+     A VITRINE NO NAVEGADOR.                                      (v2.17.0)
+
+     Até esta versão o index.html NÃO tinha nenhuma cobertura de navegador —
+     e foi exatamente ele que embarcou um XSS que ficou meses no ar. A suíte
+     16 varre o texto da página; só o navegador diz se a carga hostil
+     EXECUTA. Decisão aqui, efeito ali, como de hábito.
+     ═══════════════════════════════════════════════════════════════════════ */
+  const vitrine = await ctx.newPage();
+  let scriptDaUrlExecutou = false;
+  vitrine.on('dialog', async d => { scriptDaUrlExecutou = true; await d.dismiss(); });
+
+  /* A carga é a mesma que executou antes da emenda, e o formato do link é o
+     que a própria página ensinava o usuário a esperar por WhatsApp. */
+  const hostil = encodeURIComponent('<img src=x onerror=alert(1)>');
+  await vitrine.goto(`http://localhost:8099/index.html?token=abc123&user=${hostil}`,
+                     { waitUntil: 'load', timeout: 30000 });
+  await vitrine.waitForTimeout(1800);
+
+  const depois = await vitrine.evaluate(() => ({
+    url: location.pathname + location.search,
+    temBotao: !!document.getElementById('btn-abrir-app'),
+    corpo: document.body.innerText.slice(0, 400)
+  }));
+
+  ok('Vitrine: parâmetro da URL não vira script', !scriptDaUrlExecutou,
+     scriptDaUrlExecutou ? 'ALERT DISPAROU — injeção aberta' : 'nada executou');
+  ok('Vitrine: link antigo é limpo da barra de endereço', !/token|user=/.test(depois.url), depois.url);
+  /* O portão antigo SUBSTITUÍA a página por uma tela de "Acesso Autorizado".
+     Agora o visitante simplesmente continua na vitrine. */
+  ok('Vitrine: a página não é substituída por tela de acesso', depois.temBotao,
+     depois.temBotao ? 'continua na vitrine' : 'a página foi trocada');
+  ok('Vitrine: ninguém é acusado por um token que ninguém validou',
+     !/Acesso Negado|Acesso Autorizado/i.test(depois.corpo), 'sem veredito de acesso');
+
+  /* O caminho normal tem de continuar funcionando — tranca que impede o
+     visitante de entrar seria trocar um defeito por outro. */
+  const limpa = await ctx.newPage();
+  await limpa.goto('http://localhost:8099/index.html', { waitUntil: 'load', timeout: 30000 });
+  await limpa.click('#btn-abrir-app');
+  await limpa.waitForTimeout(1200);
+  ok('Vitrine: o botão abre o aplicativo', /app\.html$/.test(await limpa.evaluate(() => location.pathname)),
+     await limpa.evaluate(() => location.pathname));
+
+  const contato = await ctx.newPage();
+  await contato.goto('http://localhost:8099/index.html', { waitUntil: 'load', timeout: 30000 });
+  await contato.click('#btn-contato-whatsapp');
+  await contato.waitForTimeout(500);
+  const jan = await contato.evaluate(() => {
+    const m = document.getElementById('contato-modal');
+    return { aberta: !!m && getComputedStyle(m).display !== 'none',
+             titulo: ((m && m.querySelector('h3')) || {}).textContent || '' };
+  });
+  ok('Vitrine: a janela de contato abre e NÃO promete acesso',
+     jan.aberta && /Falar com o autor/i.test(jan.titulo) && !/Solicitar Acesso/i.test(jan.titulo),
+     jan.aberta ? jan.titulo.trim() : 'não abriu');
+  await vitrine.close(); await limpa.close(); await contato.close();
+
   const curl     = await codigo({});
   const terceiro = await codigo({ 'sec-fetch-site': 'cross-site',  'x-nf-client-connection-ip': '5.5.5.5' });
   const barra    = await codigo({ 'sec-fetch-site': 'none',        'x-nf-client-connection-ip': '6.6.6.6' });

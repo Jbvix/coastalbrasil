@@ -80,6 +80,16 @@ function semComentariosToml(txt) {
   return String(txt || '').replace(/^\s*#.*$/gm, ' ');
 }
 
+/* HTML comenta com <!-- -->, que nem o removedor de JS nem o de '#' conhecem.
+   Foi a SEXTA ocorrência da mesma armadilha, e de novo no mesmo dia em que o
+   removedor nasceu: ao reescrever a janela da vitrine, escrevi um comentário
+   HTML explicando que ela ANTES se chamava "Solicitar Acesso" — exatamente a
+   frase que a prova 16.10 exige que não exista mais. Sem recortar, a prova
+   leria a minha prosa e ficaria vermelha por motivo errado.                 */
+function semComentariosHtml(txt) {
+  return String(txt || '').replace(/<!--[\s\S]*?-->/g, ' ');
+}
+
 function semComentarios(txt) {
   return String(txt || '')
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
@@ -606,10 +616,47 @@ t(S9, '9.4', 'O portão administrativo compara hash, não senha literal', () => 
   return { warn: 'continua sendo trinco, não fechadura: o hash está no cliente. ' +
                  'Controle real exige validação no servidor (ver check_nav_share)' };
 });
-t(S9, '9.5', 'Gatekeeper não promete autenticação que não entrega', () => {
-  const gk = require('fs').readFileSync(ROOT + '/assets/js/gatekeeper.js', 'utf8');
-  ok(!/any new token is valid/i.test(gk) && /não é uma credencial|não autentica/i.test(gk),
-     'a limitação do token precisa estar declarada no código, não escondida');
+t(S9, '9.5', 'A vitrine não finge autenticar — nem com ressalva', () => {
+  /* ═══════════════════════════════════════════════════════════════════════
+     ESTA PROVA MUDOU DE EXIGÊNCIA, E PARA MAIS SEVERA.             (v2.17.0)
+
+     Antes ela aceitava o portão de mentira DESDE QUE ele declarasse a
+     própria limitação em comentário. Era o possível na época: o código
+     fingia validar, e ao menos avisava que fingia.
+
+     O caminho C tornou isso desnecessário e a ressalva, insuficiente: a
+     carta fica aberta, não há portão na vitrine, e o que não existe não
+     precisa de aviso. A exigência passa a ser a ausência do mecanismo, não
+     a honestidade do rótulo — porque um comentário honesto não impedia o
+     `innerHTML` que vinha junto do portão de executar script da URL.
+
+     Lição que vale além deste arquivo: declarar uma limitação é melhor que
+     escondê-la, mas é pior que remover o código que a cria.
+     ═══════════════════════════════════════════════════════════════════════ */
+  const gk = semComentarios(require('fs').readFileSync(ROOT + '/assets/js/gatekeeper.js', 'utf8'));
+
+  /* Nenhum mecanismo de validação, nem de mentira: sem leitura de token, sem
+     lista de usados, sem veredito sobre quem entra.
+
+     A primeira versão desta prova proibia a palavra "token" e acusou o
+     próprio código correto: ele APAGA o parâmetro antigo da barra de
+     endereço, que é o oposto de validá-lo. Proibir a palavra confundia ler
+     com limpar. A exigência certa é mais fina — toda menção a token precisa
+     estar dentro de um `has` ou um `delete`, nunca de um `get`: saber que o
+     parâmetro existe, para apagá-lo, não deixa conteúdo nenhum entrar. */
+  const mencoes = (gk.match(/token/gi) || []).length;
+  const seguras = (gk.match(/searchParams\.(has|delete)\('token'\)/g) || []).length;
+  ok(mencoes === seguras,
+     `a vitrine menciona token ${mencoes}x e só ${seguras} são has/delete — ` +
+     'ela pode apagar o parâmetro antigo, nunca lê-lo');
+  ok(!/valid/i.test(gk), 'a vitrine voltou a validar alguma coisa');
+  ok(!/localStorage|sessionStorage/.test(gk), 'voltou a guardar estado de acesso no navegador do visitante');
+  ok(!/Autorizado|Negado|credencial/i.test(gk), 'a vitrine voltou a emitir veredito de acesso');
+
+  /* E o aplicativo continua sendo alcançado por navegação simples, não por
+     liberação: se isto virar uma função que "concede", o portão voltou. */
+  ok(/APP_URL/.test(gk), 'a vitrine não sabe mais onde fica o aplicativo');
+  ok(!/grant|conceder|liberar/i.test(gk), 'alguma função voltou a "conceder" acesso');
 });
 t(S9, '9.6', 'Scripts de CDN com Subresource Integrity e versão fixada', () => {
   const tags = SRC.match(/<script[^>]*src="https:\/\/[^"]+"[^>]*>/g) || [];
@@ -1350,7 +1397,11 @@ t(S16, '16.3', 'A vitrine não anuncia contagem de faróis diferente da base', (
 
 t(S16, '16.4', 'A vitrine não deixou versões antigas para trás', () => {
   // Um "use a versão 2.0.5" esquecido manda o usuário procurar algo que não existe.
-  const antigas = [...IDX16.matchAll(/[Vv]ers[ãa]o\s+(\d+\.\d+\.\d+)|v(\d+\.\d+\.\d+)/g)]
+  /* O visitante não lê comentário de HTML — e o histórico às vezes precisa
+     citar uma versão antiga para explicar o que mudou. Recortar antes de
+     varrer é o que separa "a página mostra versão velha" de "o código
+     documenta de onde veio". Sexta vez que esta armadilha aparece. */
+  const antigas = [...semComentariosHtml(IDX16).matchAll(/[Vv]ers[ãa]o\s+(\d+\.\d+\.\d+)|v(\d+\.\d+\.\d+)/g)]
     .map(m => m[1] || m[2])
     .filter(v => v !== VER);
   ok(antigas.length === 0, 'versão obsoleta citada na página: ' + [...new Set(antigas)].join(', '));
@@ -1388,6 +1439,129 @@ t(S16, '16.8', 'A ressalva de finalidade educativa continua na página', () => {
   // ferramenta de estudo de algo que alguém usaria no lugar da carta náutica.
   ok(/FINALIDADE ESTRITAMENTE EDUCATIVA/i.test(IDX16), 'a ressalva educativa sumiu da vitrine');
   ok(/carta[s]? n[áa]utica/i.test(IDX16), 'sumiu o aviso de que não substitui a carta náutica');
+});
+
+t(S16, '16.0', 'O recortador de comentário HTML recorta mesmo', () => {
+  /* ═══════════════════════════════════════════════════════════════════════
+     PROVAR A FERRAMENTA, NÃO TORCER PARA UMA MUTAÇÃO EXERCITÁ-LA.
+
+     Mutei a vitrine para que "Abrir o aplicativo" existisse só dentro de um
+     comentário HTML, esperando que a 16.10 acusasse. Ela SOBREVIVEU — e o
+     motivo é instrutivo: o rodapé traz "ABRIR O APLICATIVO" e a expressão é
+     indiferente a maiúsculas, então a 16.10 continuava satisfeita por outro
+     caminho. A mutação era INÓCUA (a página segue oferecendo o aplicativo),
+     mas deixava o recortador sem prova nenhuma.
+
+     Lição: quando uma mutação não distingue, não se force o teste — prove a
+     ferramenta de frente. Varredura que depende de um removedor só vale o
+     que o removedor valer.
+     ═══════════════════════════════════════════════════════════════════════ */
+  eq(semComentariosHtml('<p>visível</p><!-- escondido -->').includes('escondido') ? 1 : 0, 0, 0,
+     'comentário de uma linha sobreviveu ao recorte');
+  eq(semComentariosHtml('<!--\n  Solicitar Acesso\n  v2.16.0\n-->ok').includes('Solicitar') ? 1 : 0, 0, 0,
+     'comentário de VÁRIAS linhas sobreviveu — e é essa a forma que eu escrevo');
+  ok(semComentariosHtml('<p>fica</p><!-- sai -->').includes('fica'),
+     'o recortador comeu o conteúdo visível junto');
+  /* Dois comentários no mesmo arquivo: um regex guloso comeria tudo entre o
+     primeiro <!-- e o último -->, apagando o código do meio. */
+  const dois = semComentariosHtml('<!--a--><b>MEIO</b><!--c-->');
+  ok(dois.includes('MEIO'), 'o recorte é guloso e apagou o que estava ENTRE dois comentários');
+  eq((dois.match(/a|c/g) || []).length, 0, 0, 'sobrou conteúdo de comentário');
+});
+
+t(S16, '16.10', 'A vitrine NÃO promete um portão que não existe', () => {
+  /* ═══════════════════════════════════════════════════════════════════════
+     O CAMINHO C, decidido em 01/10/2026: a carta fica aberta e cobra-se pelo
+     que roda em servidor e custa. Logo a vitrine não pode anunciar portão.
+
+     Até a v2.16.0 ela se contradizia dentro de si mesma: no topo, um botão
+     "Acesso: Leitor LinkedIn" e uma janela "Solicitar Acesso" que pedia nome
+     e e-mail para o administrador liberar um link; no rodapé, um link cru
+     para app.html. O link nunca existiu — app.html sempre abriu direto.
+
+     Consequência, que é o que esta prova guarda: a pessoa HONESTA pedia e
+     ficava esperando; a outra digitava o endereço e entrava. Promessa de
+     segurança que não se cumpre é pior que ausência de segurança, porque
+     pune justamente quem respeita a regra.
+     ═══════════════════════════════════════════════════════════════════════ */
+  const V = semComentariosHtml(IDX16);
+
+  ok(!/Solicitar Acesso/i.test(V), 'a vitrine ainda oferece "Solicitar Acesso" — não há acesso a solicitar');
+  ok(!/Acesso:\s*Leitor/i.test(V), 'ainda há botão de "Acesso:" para um público específico');
+  ok(!/link de acesso/i.test(V), 'a vitrine ainda fala em "link de acesso"');
+
+  /* E diz o que é verdade: o aplicativo abre. */
+  ok(/Abrir o aplicativo/i.test(V), 'a vitrine não oferece abrir o aplicativo em lugar nenhum');
+  ok(/href="app\.html"/.test(V), 'a vitrine não liga para o aplicativo');
+  /* O botão do alto, por id: é dele que a fumaça depende, e é ele que o
+     visitante vê antes de rolar a página. Exigir o id, e não só o texto,
+     impede que a oferta exista apenas no rodapé. */
+  ok(/id="btn-abrir-app"/.test(V), 'o botão do topo sumiu — a oferta ficaria só no rodapé');
+
+  /* A ressalva que sustenta o caminho C: o que é livre e o que custa.
+     Sem ela, "abrir o aplicativo" vira promessa de que tudo é gratuito
+     para sempre — e o tempo e o espelho saem do bolso do autor. */
+  ok(/custeados pelo autor|custeado pelo autor/i.test(V),
+     'a vitrine não diz que os serviços de servidor saem do bolso do autor');
+  ok(/sem cadastro/i.test(V), 'a vitrine não deixa claro que o aplicativo abre sem cadastro');
+});
+
+t(S16, '16.11', 'A vitrine não lê a URL para dentro da página — a injeção morreu com o portão', () => {
+  /* ═══════════════════════════════════════════════════════════════════════
+     O BURACO QUE O PORTÃO DE MENTIRA ABRIA.                        (v2.17.0)
+
+     O `?user=` ia direto para innerHTML:
+
+         const userMdg = `Bem-vindo, ${decodeURIComponent(this.username)}!`;
+         document.body.innerHTML = `…<h1>${userMdg}</h1>…`;
+
+     Medido em Chromium antes da emenda: `?user=<img src=x onerror=alert(1)>`
+     EXECUTOU. Injeção de script na origem do aplicativo — a mesma origem que
+     guarda a derrota no localStorage e fala com o Supabase.
+
+     E o vetor é o que agrava: a página ensinava o usuário a ESPERAR links
+     `?token=…&user=…` chegando por WhatsApp. O ritual de acesso do produto
+     era o veículo de entrega do ataque.
+
+     A emenda não foi escapar o parâmetro — foi parar de lê-lo. Código que
+     não existe não tem defeito.
+     ═══════════════════════════════════════════════════════════════════════ */
+  const G = semComentarios(fs16.readFileSync(ROOT + '/assets/js/gatekeeper.js', 'utf8'));
+
+  ok(!/innerHTML/.test(G), 'a vitrine voltou a escrever innerHTML — era por aí que a injeção entrava');
+  ok(!/decodeURIComponent/.test(G), 'voltou a decodificar parâmetro de URL para dentro da página');
+  ok(!/searchParams\.get|params\.get/.test(G), 'voltou a LER parâmetro da URL');
+
+  /* O portão de mentira inteiro tem de estar fora. */
+  ['validateAndRedirect', 'burnToken', 'isTokenUsed', 'grantLinkedInAccess'].forEach(f =>
+    ok(!new RegExp(f).test(G), `o portão de mentira sobreviveu: ${f}`));
+
+  /* E nada de localStorage fingindo controlar acesso: a lista de "usados"
+     morava no navegador do próprio visitante, que a apagava quando quisesse. */
+  ok(!/localStorage/.test(G), 'a vitrine voltou a guardar estado de acesso no navegador do visitante');
+});
+
+t(S16, '16.12', 'Link antigo (?token=…) não quebra, não acusa e não fica na barra', () => {
+  /* Links no formato antigo continuam circulando em conversas de WhatsApp e
+     em capturas de tela. Três coisas não podem acontecer com eles:
+
+       · o visitante NÃO pode ler "Acesso Negado" por um token que nunca foi
+         verificado de verdade — seria recusar alguém por um motivo inventado;
+       · os parâmetros não podem ser lidos para dentro da página (16.11);
+       · não podem ficar na barra de endereço, para não serem recompartilhados
+         e não voltarem pelo botão "voltar". */
+  const G = semComentarios(fs16.readFileSync(ROOT + '/assets/js/gatekeeper.js', 'utf8'));
+  const V = semComentariosHtml(IDX16);
+
+  ok(!/Acesso Negado/i.test(G) && !/Acesso Negado/i.test(V),
+     'o visitante ainda pode ser acusado por um token que ninguém validou');
+  ok(/replaceState/.test(G), 'os parâmetros antigos não são apagados da barra de endereço');
+  ok(/searchParams\.delete\('token'\)/.test(G) && /searchParams\.delete\('user'\)/.test(G),
+     'nem todos os parâmetros do link antigo são removidos');
+  /* `replaceState` e não `assign`: trocar sem recarregar e sem empilhar
+     histórico, senão o botão "voltar" devolve o visitante ao link antigo. */
+  ok(!/location\.assign|location\.replace\(/.test(G),
+     'a limpeza recarrega a página em vez de trocar o endereço em silêncio');
 });
 
 t(S16, '16.9', 'O número de provas anunciado na vitrine é o real', () => {

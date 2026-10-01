@@ -604,3 +604,41 @@ Os dois mapas compartilham as UV, então as caixas medidas na cor servem à
 rugosidade. Um detalhe inverte: na cor as letras são **mais claras** que o fundo;
 na rugosidade são **mais escuras**. Amostrar a cor da letra com o mesmo critério
 nos dois casos devolve o valor do fundo num deles, e a letra sai invisível.
+
+---
+
+## 4.7 Injeção pela URL da vitrine — e por que ela existia  (v2.17.0)
+
+**O defeito.** `assets/js/gatekeeper.js` lia `?user=` da URL e escrevia o
+valor em `innerHTML`:
+
+```js
+const userMdg = `Bem-vindo, ${decodeURIComponent(this.username)}!`;
+document.body.innerHTML = `…<h1>${userMdg}</h1>…`;
+```
+
+Medido em Chromium: `?user=<img src=x onerror=alert(1)>` **executou**.
+
+**O alcance.** Script arbitrário na origem do aplicativo — a mesma que guarda
+a derrota no `localStorage` e detém a chave `publishable` do Supabase.
+
+**O vetor, que é o que agrava.** A vitrine ensinava o usuário a **esperar**
+links no formato `?token=…&user=…` chegando por WhatsApp. O ritual de acesso
+do produto era o veículo de entrega. Uma vítima treinada a clicar é pior que
+uma vítima desatenta.
+
+**A emenda.** Não foi escapar o parâmetro: foi **parar de lê-lo**. Os
+parâmetros antigos são apagados da barra com `replaceState`, sem nunca entrar
+na página. Código que não existe não tem defeito.
+
+**A generalização, que vale mais que o conserto.** O buraco não era
+independente do portão de mentira — era **filho dele**. O `innerHTML` existia
+para pintar a tela de "Acesso Autorizado" de um portão que não autorizava
+nada. Mecanismo de segurança decorativo não é neutro: ele carrega código, e
+código carrega defeito. **Remover a encenação removeu a vulnerabilidade
+junto.**
+
+Foi também o que fez a prova 9.5 mudar de exigência. Antes ela aceitava o
+portão desde que ele **declarasse a própria limitação** em comentário — e o
+comentário honesto não impediu o `innerHTML` de executar. Declarar uma
+limitação é melhor que escondê-la, e pior que remover o código que a cria.

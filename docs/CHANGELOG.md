@@ -11,6 +11,152 @@ executável.
 
 ```
 
+## v2.17.0 (01/10/2026) — A VITRINE PARA DE PROMETER UM PORTÃO · ETAPA C1
+
+Autor: Jossian Brito (Charlie Bravo)
+
+### A decisão que veio antes do código: o caminho C
+
+Com a degustação encerrada, havia três caminhos. O escolhido:
+
+> **A carta fica aberta. Cobra-se pelo que roda em servidor e custa.**
+
+O raciocínio é técnico, não comercial: **um aplicativo estático não tem
+segredo**. Mapa, faróis, ETA, GPX, Iara, ondas e RPM são entregues ao
+navegador e rodam nele — trancá-los é teatro, contornável com F12. O que tem
+valor defensável é o que roda **fora** do navegador e sai do bolso do autor:
+a chave paga do Open-Meteo e o espelhamento no Supabase.
+
+A v2.16.0 já trancou o proxy. Esta versão faz a vitrine **dizer a verdade**.
+
+### A contradição que a página carregava
+
+Ela se contradizia dentro de si mesma:
+
+| Onde | O que dizia |
+|---|---|
+| Topo | botão **"Acesso: Leitor LinkedIn"** |
+| Final | janela **"Solicitar Acesso"**, pedindo nome e e-mail ao administrador |
+| Rodapé | `<a href="app.html">ACESSAR APLICATIVO AGORA</a>` — **link cru** |
+
+E `app.html` nunca consultou portão nenhum. Medido:
+
+```
+gatekeeper.js está em produção?  SIM
+app.html exige alguma coisa?     0 — abre direto
+```
+
+**A pessoa honesta pedia acesso e ficava esperando. A outra digitava o
+endereço e entrava.** Promessa de segurança que não se cumpre é pior que
+ausência de segurança, porque pune exatamente quem respeita a regra.
+
+### 🔴 E o portão de mentira abria um buraco de verdade
+
+Ao reescrever o arquivo, encontrei isto:
+
+```js
+const userMdg = `Bem-vindo, ${decodeURIComponent(this.username)}!`;
+document.body.innerHTML = `…<h1>${userMdg}</h1>…`;
+```
+
+`this.username` vem de `?user=` na URL e ia **direto para `innerHTML`**.
+Medido em Chromium, antes da emenda:
+
+```
+alert() disparou?       SIM — XSS CONFIRMADO
+```
+
+Injeção de script na **origem do aplicativo** — a mesma que guarda a derrota
+no `localStorage` e fala com o Supabase.
+
+E o vetor é o que agrava: a página ensinava o usuário a **esperar** links
+`?token=…&user=…` chegando por WhatsApp. **O ritual de acesso do produto era
+o veículo de entrega do ataque.**
+
+A emenda não foi escapar o parâmetro — foi **parar de lê-lo**. Código que não
+existe não tem defeito.
+
+### O que a vitrine diz agora
+
+> **O aplicativo é livre e abre sem cadastro.** Planejamento, 98 faróis, GPS,
+> relatórios, GPX, a Iara e o painel 3D rodam no seu aparelho, inclusive sem
+> internet. Os dois serviços que dependem de servidor — **previsão de tempo**
+> e **espelhamento da viagem** — são custeados pelo autor.
+
+Botão do topo: **"Abrir o aplicativo"**. A janela "Solicitar Acesso" virou
+**"Falar com o autor"**, com a linha que a desarma: *"O aplicativo já está
+aberto — isto aqui é só para conversar."*
+
+A ressalva de **finalidade estritamente educativa** continua intacta (prova
+16.8): ela é a proteção do autor e nada nesta etapa a enfraquece.
+
+### Links antigos não quebram, não acusam e não ficam
+
+Links `?token=…` ainda circulam em conversas e capturas de tela. Três regras:
+
+- o visitante **não** pode ler "Acesso Negado" por um token que ninguém
+  verificou — seria recusar alguém por um motivo inventado;
+- os parâmetros **não** são lidos para dentro da página;
+- são **apagados da barra** com `replaceState` — sem recarregar e sem
+  empilhar histórico, para o botão "voltar" não devolver o link antigo.
+
+### Dívida que DIMINUIU
+
+Os botões tocados saíram de `onclick=` inline para `addEventListener`. O aviso
+9.7 conta esses atributos, e eles são o que obriga a CSP a aceitar
+`'unsafe-inline'`. **Código novo não aumenta a dívida — aqui ela caiu.**
+
+### Sete mutações, seis acusações e uma inócua
+
+| Mutação | Acusou |
+|---|---|
+| **O XSS volta** (`?user=` → `innerHTML`) | 16.11 **e 3 passos da fumaça** |
+| Janela volta a ser "Solicitar Acesso" | 16.10 |
+| Volta a acusar: "Acesso Negado" | 9.5, 16.12 |
+| Link antigo deixa de ser limpo | 16.12 |
+| Volta a guardar "usados" no navegador | 9.5, 16.11 |
+| Recortador de comentário HTML vira guloso | 16.0, 16.9, 16.10 |
+| "Abrir o aplicativo" só no comentário | **sobreviveu — inócua** |
+
+A última merece explicação. Mutei o botão do topo para "Entrar" e deixei a
+frase só num comentário, esperando que a 16.10 acusasse. Ela sobreviveu
+porque o rodapé traz "ABRIR O APLICATIVO" e a expressão é indiferente a
+maiúsculas — a página **continuava oferecendo o aplicativo**, logo não
+mentia. A mutação era inócua, mas deixava o recortador de comentário sem
+prova própria.
+
+> **Quando uma mutação não distingue, não se força o teste — prova-se a
+> ferramenta de frente.** Entrou a 16.0, que exercita o `semComentariosHtml`
+> diretamente, inclusive contra o erro de regex guloso que apagaria tudo
+> entre o primeiro `<!--` e o último `-->`.
+
+### Duas provas que estavam erradas, corrigidas
+
+**9.5** proibia a palavra "token" e acusou o **código correto**: ele *apaga*
+o parâmetro antigo, que é o oposto de validá-lo. Proibir a palavra confundia
+ler com limpar. Agora toda menção precisa estar dentro de `has` ou `delete`,
+nunca de `get`.
+
+**16.4** tropeçou no comentário HTML que explica de onde a janela veio —
+**sexta ocorrência** da armadilha da casa, de novo no mesmo dia em que o
+removedor nasceu. O visitante não lê comentário; a varredura agora também
+não.
+
+E a 9.5 mudou de natureza: antes aceitava o portão de mentira **desde que ele
+declarasse a limitação em comentário**. Agora exige a **ausência do
+mecanismo**. Declarar uma limitação é melhor que escondê-la, mas é pior que
+remover o código que a cria.
+
+| | v2.16.0 | v2.17.0 |
+|---|---:|---:|
+| Provas do banco | 269 | **273** |
+| Passos da fumaça | 79 | **85** |
+| Cobertura de navegador da vitrine | **nenhuma** | 6 passos |
+| XSS em produção | **1** | 0 |
+| `onclick=` inline | 58 | **menos** |
+
+---
+
 ## v2.16.0 (01/10/2026) — A TRANCA QUE FALTAVA NO PROXY · SPRINT A
 
 Autor: Jossian Brito (Charlie Bravo)
