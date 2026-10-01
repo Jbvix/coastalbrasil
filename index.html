@@ -966,9 +966,9 @@
         Modelo de pesquisa pessoal para treinamento e desenvolvimento.
       </p>
       <div style="display: flex; gap: 15px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap;">
-        <button onclick="gatekeeper.grantLinkedInAccess()" class="btn-primary"
-          style="background: #2196F3; border: none; min-width: 250px;">
-          <i class="fa-brands fa-linkedin"></i> Acesso: Leitor LinkedIn
+        <button id="btn-abrir-app" class="btn-primary"
+          style="border: none; cursor: pointer; font-family: inherit; font-size: inherit;">
+          <i class="fa-solid fa-anchor"></i> Abrir o aplicativo
         </button>
         <a href="https://wa.me/5585997737230?text=Ol%C3%A1%20Jossian!%20Vim%20pelo%20App%20CoastalBrasil%20e%20gostaria%20de%20falar%20com%20voc%C3%AA." 
            target="_blank" 
@@ -977,7 +977,14 @@
           <i class="fa-brands fa-whatsapp"></i> Falar no WhatsApp
         </a>
       </div>
-      <div class="version-badge">Versão 2.16.0 &middot; 269 provas automatizadas</div>
+      <p style="color: #90A4AE; font-size: 0.88rem; max-width: 640px; margin: 18px auto 0; line-height: 1.5;">
+        <strong style="color:#A5D6A7;">O aplicativo é livre e abre sem cadastro.</strong>
+        Planejamento, 98 faróis, GPS, relatórios, GPX, a Iara e o painel 3D rodam no seu
+        aparelho, inclusive sem internet. Os dois serviços que dependem de servidor —
+        <strong>previsão de tempo</strong> e <strong>espelhamento da viagem</strong> — são
+        custeados pelo autor.
+      </p>
+      <div class="version-badge">Versão 2.18.0 &middot; 274 provas automatizadas</div>
     </div>
   </section>
 
@@ -1706,9 +1713,9 @@
             <ul>
               <li><strong>Causa:</strong> quase sempre é versão antiga em cache</li>
               <li><strong>Solução:</strong> confira o selo de versão no topo da página inicial.
-                  Se não disser <strong>2.16.0</strong>, recarregue sem cache
+                  Se não disser <strong>2.18.0</strong>, recarregue sem cache
                   (Ctrl+Shift+R, ou Cmd+Shift+R no Mac)</li>
-              <li><strong>Se persistir:</strong> a versão publicada passa por 269 provas
+              <li><strong>Se persistir:</strong> a versão publicada passa por 274 provas
                   automatizadas a cada mudança — um número errado que sobrevive a isso é
                   achado novo. Relate pelo WhatsApp com uma captura de tela</li>
             </ul>
@@ -1979,8 +1986,14 @@
       <h2>🚢 Pronto para Navegar?</h2>
       <p>Comece a planejar suas viagens agora com o Coastal Navigator Brasil</p>
       <a href="app.html" class="btn-primary">
-        ACESSAR APLICATIVO AGORA
+        ABRIR O APLICATIVO
       </a>
+      <p style="color: #90A4AE; font-size: 0.85rem; margin-top: 22px;">
+        Dúvida, sugestão ou achou um defeito?
+        <button id="btn-contato-whatsapp"
+                style="background: none; border: none; color: #4DD0E1; text-decoration: underline;
+                       cursor: pointer; font: inherit; padding: 0;">Fale com o autor</button>.
+      </p>
     </div>
   </section>
 
@@ -2008,7 +2021,7 @@
           <strong>Desenvolvido por:</strong> Jossian Brito (Charlie Bravo)<br>
           Chief Engineer at TugLife Systems | Maritime Technology Specialist<br>
           <br>
-          © 2026 Coastal Navigator Brasil v2.16.0<br>
+          © 2026 Coastal Navigator Brasil v2.18.0<br>
           Todos os direitos reservados.<br>
           <br>
           <small>
@@ -2073,36 +2086,47 @@
     console.log('═══════════════════════════════════════════════════════════════');
   </script>
 
-  <!-- Request Access Modal -->
-  <div id="request-modal"
+  <!-- Janela de contato — NÃO é portão: o aplicativo abre sem ela.      (C1)
+       Até a v2.16.0 esta janela se chamava "Solicitar Acesso" e pedia nome e
+       e-mail para mandar o administrador liberar um link. O link nunca
+       existiu: app.html sempre abriu direto. Quem pedia educadamente ficava
+       esperando; quem digitava o endereço entrava. -->
+  <div id="contato-modal"
     style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 2000; align-items: center; justify-content: center;">
     <div
-      style="background: #1B263B; padding: 30px; border-radius: 12px; width: 90%; max-width: 400px; border: 1px solid #415A77; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
-      <h3 style="color: #FFA726; margin-bottom: 15px; text-align: center;">Solicitar Acesso</h3>
-      <p style="color: #E0E1DD; text-align: center; margin-bottom: 20px; font-size: 0.9rem;">Por favor, informe seus
-        dados para enviar a solicitação ao Administrador.</p>
+      style="background: #1B263B; padding: 30px; border-radius: 12px; width: 90%; max-width: 420px; border: 1px solid #415A77; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+      <h3 style="color: #FFA726; margin-bottom: 15px; text-align: center;">Falar com o autor</h3>
+      <p style="color: #E0E1DD; text-align: center; margin-bottom: 20px; font-size: 0.9rem;">
+        O aplicativo já está aberto — isto aqui é só para conversar.</p>
 
-      <form id="request-form" onsubmit="event.preventDefault(); gatekeeper.submitRequest();">
+      <form id="contato-form">
         <div style="margin-bottom: 15px;">
-          <label style="display: block; color: #778DA9; margin-bottom: 5px; font-size: 0.9rem;">Seu Nome <span
+          <label style="display: block; color: #778DA9; margin-bottom: 5px; font-size: 0.9rem;">Seu nome <span
               style="color: #F44336">*</span></label>
-          <input type="text" id="req-name" required
+          <input type="text" id="cont-nome" required
             style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #415A77; background: rgba(0,0,0,0.2); color: white;">
         </div>
 
-        <div id="req-email-group" style="margin-bottom: 20px;">
-          <label style="display: block; color: #778DA9; margin-bottom: 5px; font-size: 0.9rem;">Seu Email <span
+        <div id="cont-email-group" style="margin-bottom: 15px; display: none;">
+          <label style="display: block; color: #778DA9; margin-bottom: 5px; font-size: 0.9rem;">Seu e-mail <span
               style="color: #F44336">*</span></label>
-          <input type="email" id="req-email"
+          <input type="email" id="cont-email"
+            style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #415A77; background: rgba(0,0,0,0.2); color: white;">
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <label style="display: block; color: #778DA9; margin-bottom: 5px; font-size: 0.9rem;">Assunto <span
+              style="color: #778DA9; font-weight: normal;">(opcional)</span></label>
+          <input type="text" id="cont-assunto" maxlength="160" placeholder="Ex.: achei um erro no alcance de um farol"
             style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #415A77; background: rgba(0,0,0,0.2); color: white;">
         </div>
 
         <div style="display: flex; gap: 10px;">
-          <button type="button" onclick="gatekeeper.closeModal()"
+          <button type="button" id="btn-contato-cancelar"
             style="flex: 1; padding: 10px; background: transparent; border: 1px solid #778DA9; color: #778DA9; border-radius: 6px; cursor: pointer;">Cancelar</button>
           <button type="submit"
             style="flex: 1; padding: 10px; background: linear-gradient(135deg, #FFA726, #FF9800); border: none; color: #0D1B2A; font-weight: bold; border-radius: 6px; cursor: pointer;">Enviar
-            Solicitação</button>
+            mensagem</button>
         </div>
       </form>
     </div>

@@ -11,6 +11,293 @@ executável.
 
 ```
 
+## v2.18.0 (01/10/2026) — O ESQUEMA SAI DA CABEÇA E VAI PARA O REPOSITÓRIO · ETAPA C2
+
+Autor: Jossian Brito (Charlie Bravo)
+
+### Antes da licença, um apagão de três dias
+
+A C2 começou esbarrando em algo que não era da C2: **o projeto Supabase
+estava pausado desde ~28/09** e o espelhamento fora do ar. O monitor
+`manter-supabase-ativo.yml` falhou em 28/09 e 01/10, exatamente como foi
+projetado — `curl: (6) Could not resolve host`.
+
+Duas lições, e a segunda dói mais:
+
+1. **O alarme funcionou e ninguém atendeu.** Alarme só vale com alguém do
+   outro lado.
+2. **O esquema não estava versionado em lugar nenhum.** Zero `.sql` no
+   repositório. Tabelas, funções e políticas existiam só dentro do projeto
+   ao vivo — o mesmo que acabara de dormir. "Pausado" é recuperável;
+   "perdido" teria sido reconstrução de memória.
+
+Nota de campo que vale guardar: durante o apagão, as correções da v2.15.0
+estavam **em serviço real**. Quem acompanhava em terra via *"servidor fora do
+ar · nova tentativa em 2s"* e **não** era acusado de link inválido aos 30 s.
+Foi para este dia que aquele trabalho serviu.
+
+### O retrato: `supabase/esquema_atual.sql`
+
+Extraído do banco vivo — `pg_get_functiondef`, `information_schema`,
+`pg_policies` — não escrito de cabeça.
+
+E o retrato revelou um desenho **correto**, que merece ser dito: `nav_shares`
+tem RLS ativo e **nenhuma política**. Não é esquecimento, é o ponto. Com RLS
+ligado e sem política, `anon` não lê nem escreve nada diretamente, mesmo
+portando a chave publishable. A única porta são as três funções
+`SECURITY DEFINER` — superfície auditável de três portas, e não uma tabela
+inteira. O `SET search_path TO 'public'` em cada uma fecha o sequestro de
+resolução de nomes.
+
+### A licença: `supabase/licenca.sql` — proposta, **não aplicada**
+
+Segue a convenção da casa, com duas diferenças deliberadas.
+
+**1 · Guarda SHA-256, nunca o token.** `nav_shares` guarda em claro, e lá é
+tolerável — o link expõe a posição de uma viagem. Licença é credencial de
+serviço pago. Com só o resumo, um vazamento do banco entrega hashes inúteis.
+O que o hash **não** protege, dito antes que alguém se iluda: roubo em
+trânsito ou cópia do aparelho. Hash guarda contra vazamento do banco.
+
+E o resumo é calculado por **quem chama**, nunca no SQL — o banco nunca vê o
+token, nem num log de consulta lenta. Consequência aceita: **nem o autor
+recupera um token perdido.** Emite-se outro.
+
+**2 · Grant estreito.** As funções do espelho são de `anon` porque o
+observador chama do navegador. A licença não: quem consulta é a Função
+Netlify, do lado do servidor.
+
+### 🔴 A trava que parecia certa e não trancava nada
+
+A primeira versão trazia:
+
+```sql
+revoke execute on function public.create_license(...) from anon;
+```
+
+Lido, parece correto. **Executado, não faz nada.** O Postgres concede
+`EXECUTE` a `public` por padrão, e revogar de `anon` revoga uma concessão
+direta que nunca existiu. O comando roda sem reclamar.
+
+Medido num Postgres 16 local, com o papel `anon` assumido:
+
+```
+anon → check_license    devolveu 1 linha
+anon → create_license   EMITIU uma licença de 99 dias para si mesmo
+anon → revoke_license   revogou a licença de outra embarcação
+```
+
+**Qualquer portador da chave publishable fabricaria a própria licença.**
+
+A correção é revogar de `public` primeiro, e só então conceder a
+`service_role`.
+
+> **Nenhuma varredura de texto pegaria isto — o texto estava certo.** É o
+> limite duro da varredura, e a razão de o esquema passar a rodar de verdade.
+
+### O CI ganha um terceiro job: `esquema`
+
+Postgres 16 descartável a cada execução, **nunca o banco de produção**. Carrega
+os dois arquivos e roda `tests/esquema_provas.sql`, que prova:
+
+| | |
+|---|---|
+| válida / **vencida** / **revogada** | distinguíveis, com o motivo |
+| hash desconhecido | nenhuma linha |
+| 6 travas de integridade | recusam |
+| reemissão do mesmo hash | **levanta exceção**, não silencia |
+| `anon` → consultar, emitir, revogar, ler a tabela | **negado** |
+| `anon` → `check_nav_share` | **continua aberto** |
+
+A última linha importa tanto quanto as outras: trancar a licença não pode
+trancar junto o que deve ficar aberto.
+
+**Códigos de saída medidos:** `3` com a trava furada, `0` com a correta.
+`ON_ERROR_STOP` é o que faz isso — sem ele o `psql` imprime o erro e sai com
+**zero**. Mesma família do defeito do código de saída da v2.14.0:
+**mecanismo de prova que falha para o lado do verde.**
+
+### Mutações
+
+| Mutação | Acusou |
+|---|---|
+| `revoke from anon` em vez de `from public` | **provas do esquema** (saída 3) |
+| CI roda as provas sem `ON_ERROR_STOP` | 26.2.1 |
+| O job de esquema some do CI | 26.2.1 |
+
+E uma prova que apanhou **o próprio autor**: tentei "vencer" uma licença
+empurrando `expires_at` para o passado, e a trava `expires_at > created_at`
+recusou. A trava tem razão — **encurtar não é vencer**. Para cortar existe
+`revoke_license`, e a distinção é o que permite dizer "revogada" em vez de
+"vencida". Uma licença vencida é uma emitida há 20 dias para valer 15.
+
+### O que esta etapa NÃO faz
+
+- **Nada foi aplicado em produção.** O SQL entra para ser revisado no pull
+  request, que é onde decisão de esquema se discute — não no painel, às
+  pressas, sem registro.
+- **O proxy ainda não exige licença.** É a C4, e ela precisará de uma chave
+  de serviço do Supabase no Netlify: segredo novo é decisão, não detalhe.
+- **O limite de dispositivos é declarado, não imposto.** Está na tabela para
+  a decisão ficar registrada; nada no servidor conta aparelhos ainda.
+  Declarar um limite que não se aplica é aceitável; **fingir que ele se
+  aplica não seria.**
+
+| | v2.17.0 | v2.18.0 |
+|---|---:|---:|
+| Provas do banco | 273 | **274** |
+| Jobs de CI | 2 | **3** |
+| Provas de esquema executáveis | 0 | **4 blocos** |
+| Arquivos `.sql` versionados | **0** | 3 |
+
+---
+
+## v2.17.0 (01/10/2026) — A VITRINE PARA DE PROMETER UM PORTÃO · ETAPA C1
+
+Autor: Jossian Brito (Charlie Bravo)
+
+### A decisão que veio antes do código: o caminho C
+
+Com a degustação encerrada, havia três caminhos. O escolhido:
+
+> **A carta fica aberta. Cobra-se pelo que roda em servidor e custa.**
+
+O raciocínio é técnico, não comercial: **um aplicativo estático não tem
+segredo**. Mapa, faróis, ETA, GPX, Iara, ondas e RPM são entregues ao
+navegador e rodam nele — trancá-los é teatro, contornável com F12. O que tem
+valor defensável é o que roda **fora** do navegador e sai do bolso do autor:
+a chave paga do Open-Meteo e o espelhamento no Supabase.
+
+A v2.16.0 já trancou o proxy. Esta versão faz a vitrine **dizer a verdade**.
+
+### A contradição que a página carregava
+
+Ela se contradizia dentro de si mesma:
+
+| Onde | O que dizia |
+|---|---|
+| Topo | botão **"Acesso: Leitor LinkedIn"** |
+| Final | janela **"Solicitar Acesso"**, pedindo nome e e-mail ao administrador |
+| Rodapé | `<a href="app.html">ACESSAR APLICATIVO AGORA</a>` — **link cru** |
+
+E `app.html` nunca consultou portão nenhum. Medido:
+
+```
+gatekeeper.js está em produção?  SIM
+app.html exige alguma coisa?     0 — abre direto
+```
+
+**A pessoa honesta pedia acesso e ficava esperando. A outra digitava o
+endereço e entrava.** Promessa de segurança que não se cumpre é pior que
+ausência de segurança, porque pune exatamente quem respeita a regra.
+
+### 🔴 E o portão de mentira abria um buraco de verdade
+
+Ao reescrever o arquivo, encontrei isto:
+
+```js
+const userMdg = `Bem-vindo, ${decodeURIComponent(this.username)}!`;
+document.body.innerHTML = `…<h1>${userMdg}</h1>…`;
+```
+
+`this.username` vem de `?user=` na URL e ia **direto para `innerHTML`**.
+Medido em Chromium, antes da emenda:
+
+```
+alert() disparou?       SIM — XSS CONFIRMADO
+```
+
+Injeção de script na **origem do aplicativo** — a mesma que guarda a derrota
+no `localStorage` e fala com o Supabase.
+
+E o vetor é o que agrava: a página ensinava o usuário a **esperar** links
+`?token=…&user=…` chegando por WhatsApp. **O ritual de acesso do produto era
+o veículo de entrega do ataque.**
+
+A emenda não foi escapar o parâmetro — foi **parar de lê-lo**. Código que não
+existe não tem defeito.
+
+### O que a vitrine diz agora
+
+> **O aplicativo é livre e abre sem cadastro.** Planejamento, 98 faróis, GPS,
+> relatórios, GPX, a Iara e o painel 3D rodam no seu aparelho, inclusive sem
+> internet. Os dois serviços que dependem de servidor — **previsão de tempo**
+> e **espelhamento da viagem** — são custeados pelo autor.
+
+Botão do topo: **"Abrir o aplicativo"**. A janela "Solicitar Acesso" virou
+**"Falar com o autor"**, com a linha que a desarma: *"O aplicativo já está
+aberto — isto aqui é só para conversar."*
+
+A ressalva de **finalidade estritamente educativa** continua intacta (prova
+16.8): ela é a proteção do autor e nada nesta etapa a enfraquece.
+
+### Links antigos não quebram, não acusam e não ficam
+
+Links `?token=…` ainda circulam em conversas e capturas de tela. Três regras:
+
+- o visitante **não** pode ler "Acesso Negado" por um token que ninguém
+  verificou — seria recusar alguém por um motivo inventado;
+- os parâmetros **não** são lidos para dentro da página;
+- são **apagados da barra** com `replaceState` — sem recarregar e sem
+  empilhar histórico, para o botão "voltar" não devolver o link antigo.
+
+### Dívida que DIMINUIU
+
+Os botões tocados saíram de `onclick=` inline para `addEventListener`. O aviso
+9.7 conta esses atributos, e eles são o que obriga a CSP a aceitar
+`'unsafe-inline'`. **Código novo não aumenta a dívida — aqui ela caiu.**
+
+### Sete mutações, seis acusações e uma inócua
+
+| Mutação | Acusou |
+|---|---|
+| **O XSS volta** (`?user=` → `innerHTML`) | 16.11 **e 3 passos da fumaça** |
+| Janela volta a ser "Solicitar Acesso" | 16.10 |
+| Volta a acusar: "Acesso Negado" | 9.5, 16.12 |
+| Link antigo deixa de ser limpo | 16.12 |
+| Volta a guardar "usados" no navegador | 9.5, 16.11 |
+| Recortador de comentário HTML vira guloso | 16.0, 16.9, 16.10 |
+| "Abrir o aplicativo" só no comentário | **sobreviveu — inócua** |
+
+A última merece explicação. Mutei o botão do topo para "Entrar" e deixei a
+frase só num comentário, esperando que a 16.10 acusasse. Ela sobreviveu
+porque o rodapé traz "ABRIR O APLICATIVO" e a expressão é indiferente a
+maiúsculas — a página **continuava oferecendo o aplicativo**, logo não
+mentia. A mutação era inócua, mas deixava o recortador de comentário sem
+prova própria.
+
+> **Quando uma mutação não distingue, não se força o teste — prova-se a
+> ferramenta de frente.** Entrou a 16.0, que exercita o `semComentariosHtml`
+> diretamente, inclusive contra o erro de regex guloso que apagaria tudo
+> entre o primeiro `<!--` e o último `-->`.
+
+### Duas provas que estavam erradas, corrigidas
+
+**9.5** proibia a palavra "token" e acusou o **código correto**: ele *apaga*
+o parâmetro antigo, que é o oposto de validá-lo. Proibir a palavra confundia
+ler com limpar. Agora toda menção precisa estar dentro de `has` ou `delete`,
+nunca de `get`.
+
+**16.4** tropeçou no comentário HTML que explica de onde a janela veio —
+**sexta ocorrência** da armadilha da casa, de novo no mesmo dia em que o
+removedor nasceu. O visitante não lê comentário; a varredura agora também
+não.
+
+E a 9.5 mudou de natureza: antes aceitava o portão de mentira **desde que ele
+declarasse a limitação em comentário**. Agora exige a **ausência do
+mecanismo**. Declarar uma limitação é melhor que escondê-la, mas é pior que
+remover o código que a cria.
+
+| | v2.16.0 | v2.17.0 |
+|---|---:|---:|
+| Provas do banco | 269 | **273** |
+| Passos da fumaça | 79 | **85** |
+| Cobertura de navegador da vitrine | **nenhuma** | 6 passos |
+| XSS em produção | **1** | 0 |
+| `onclick=` inline | 58 | **menos** |
+
+---
+
 ## v2.16.0 (01/10/2026) — A TRANCA QUE FALTAVA NO PROXY · SPRINT A
 
 Autor: Jossian Brito (Charlie Bravo)

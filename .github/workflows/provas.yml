@@ -231,3 +231,77 @@ jobs:
             tests/smoke-espelho.png
           if-no-files-found: ignore
           retention-days: 14
+
+  # ════════════════════════════════════════════════════════════════════════
+  #  3 · ESQUEMA DO BANCO — Postgres de verdade, nunca o de produção
+  # ════════════════════════════════════════════════════════════════════════
+  #
+  #  POR QUE EXECUTAR, E NÃO VARRER
+  #
+  #  A primeira versão do supabase/licenca.sql trazia:
+  #
+  #      revoke execute on function public.create_license(...) from anon;
+  #
+  #  Lido, parece correto. Executado, não faz NADA: o Postgres concede
+  #  EXECUTE a `public` por padrão, e revogar de `anon` revoga uma concessão
+  #  direta que nunca existiu. Medido, com o papel anon assumido, o `anon`
+  #  EMITIU uma licença de 99 dias para si mesmo.
+  #
+  #  Nenhuma varredura de texto pegaria: o texto estava certo. Por isso o
+  #  esquema roda num Postgres descartável a cada execução.
+  #
+  #  NUNCA no banco de produção. O serviço abaixo sobe vazio, recebe os dois
+  #  arquivos e é jogado fora no fim do job. Prova de esquema que precisa do
+  #  banco do cliente não é prova — é risco.
+  esquema:
+    name: Esquema do banco
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: provas
+        ports:
+          - 5432:5432
+        # Sem a espera de saúde, o primeiro psql corre antes de o banco
+        # aceitar conexão e o job falha por motivo que não é do esquema.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: provas
+      PGDATABASE: postgres
+
+    steps:
+      - name: Obter o código
+        uses: actions/checkout@v5
+
+      - name: Criar os papéis que o Supabase traz de fábrica
+        # `anon` é o papel que o navegador assume com a chave publishable —
+        # a que vai no JavaScript de qualquer visitante. Sem ele, a prova da
+        # tranca não teria contra quem medir.
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -c "create role anon;"
+          psql -v ON_ERROR_STOP=1 -c "create role authenticated;"
+          psql -v ON_ERROR_STOP=1 -c "create role service_role;"
+
+      - name: Carregar o esquema atual e a licença
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -q -f supabase/esquema_atual.sql
+          psql -v ON_ERROR_STOP=1 -q -f supabase/licenca.sql
+
+      - name: Provar o esquema
+        # ON_ERROR_STOP é o que transforma uma prova falha em job vermelho:
+        # sem ele o psql imprime o erro e sai com zero. Medido: 3 quando a
+        # trava fura, 0 quando está correta.
+        run: psql -v ON_ERROR_STOP=1 -f tests/esquema_provas.sql

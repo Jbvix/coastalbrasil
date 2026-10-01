@@ -4,7 +4,7 @@
 npm test
 ```
 
-269 provas em 27 suítes, executadas sobre as **funções reais** extraídas do
+273 provas em 27 suítes, executadas sobre as **funções reais** extraídas do
 `app.html` e dos módulos por contagem de chaves — não sobre uma
 reimplementação. Sem dependências: Node puro.
 
@@ -46,7 +46,7 @@ v2.2.0 isso deixou de ser hipotético.
 
 `npm run smoke` abre o app de verdade e percorre o fluxo completo — configurar
 viagem, criar waypoints, apagar o primeiro, exportar GPX, gerar relatório — e
-falha se aparecer **um único** erro de console. São 79 passos.
+falha se aparecer **um único** erro de console. São 85 passos.
 
 Um deles confere a **premissa** das provas do banner — o canal de telemetria
 é bloqueado de propósito (`routeWebSocket`), porque `route()` intercepta HTTP e
