@@ -46,7 +46,7 @@
                 <h3><i class="fa-solid fa-lock"></i> Login Administrativo</h3>
                 <p class="small-text">Ferramenta local para gerar links de acesso.</p>
 
-                <form id="admin-login-form" onsubmit="event.preventDefault(); accessManager.login();">
+                <form id="admin-login-form">
                     <div class="input-group" style="margin: 10px 0;">
                         <input type="password" id="admin-pass" placeholder="Frase-senha" autocomplete="current-password"
                             style="background: rgba(0,0,0,0.2); border: 1px solid var(--ocean-blue); color: white;">
@@ -102,7 +102,7 @@
             <div class="nav-brand">Coastal Admin</div>
             <div class="user-info">
                 <span id="user-display">Usuário</span>
-                <button onclick="accessManager.logout()" class="btn-sm btn-outline"><i
+                <button id="admin-sair" class="btn-sm btn-outline"><i
                         class="fa-solid fa-right-from-bracket"></i> Sair</button>
             </div>
         </nav>
@@ -117,31 +117,42 @@
             </div>
 
             <div class="dash-grid">
-                <!-- Tool: Link Generator -->
-                <div class="dash-card"
-                    style="border-color: var(--lighthouse-amber); background: rgba(255, 167, 38, 0.05);">
-                    <h4 style="color: var(--lighthouse-amber);"><i class="fa-solid fa-key"></i> Gerador de Acesso</h4>
-                    <p>Gera um link exclusivo para o usuário.</p>
+                <!-- Emissor de licença.                                            (C3)
+                     Até a v2.18.0 este cartão gerava links `?token=…&user=…` que a
+                     vitrine nunca validou e que a etapa C1 parou de ler. Era um
+                     gerador de chaves para uma porta inexistente. Agora emite
+                     LICENÇA de serviço: por embarcação, com faixa de validade, e
+                     guardada no banco só como SHA-256. -->
+                <div class="dash-card">
+                    <h4><i class="fa-solid fa-id-card"></i> Emitir licença</h4>
+                    <p>Libera previsão de tempo e espelhamento. O aplicativo em si é livre.</p>
 
-                    <div style="margin-top: 15px;">
-                        <input type="text" id="gen-username" placeholder="Nome do Usuário"
-                            style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--ocean-blue); background: rgba(0,0,0,0.3); color: white; margin-bottom: 10px;">
-                        <button onclick="accessManager.generateToken()" class="btn btn-primary"
-                            style="width: 100%; font-size: 0.9rem; padding: 10px;">Gerar Link</button>
-                    </div>
+                    <input type="text" id="lic-vessel" placeholder="Embarcação (ex.: SAAM ORION)"
+                           maxlength="60" style="width:100%;margin-bottom:8px;">
+                    <select id="lic-faixa" style="width:100%;margin-bottom:8px;">
+                        <option value="24h">24 horas</option>
+                        <option value="72h">72 horas</option>
+                        <option value="7d">7 dias</option>
+                        <option value="15d" selected>15 dias</option>
+                    </select>
+                    <input type="number" id="lic-devices" min="1" max="20" value="3"
+                           placeholder="Aparelhos" style="width:100%;margin-bottom:8px;">
+                    <input type="text" id="lic-contact" placeholder="Contato (WhatsApp ou e-mail)"
+                           maxlength="120" style="width:100%;margin-bottom:8px;">
+                    <button id="lic-emitir" class="btn btn-primary" style="width:100%;">Emitir</button>
 
-                    <div id="gen-result" class="hidden"
-                        style="margin-top: 15px; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 4px;">
-                        <p style="font-size: 0.8rem; margin-bottom: 5px; color: var(--steel-blue);">Link Gerado:</p>
-                        <input type="text" id="gen-url-display" readonly
-                            style="width: 100%; padding: 5px; background: transparent; border: none; color: var(--success-green); font-family: monospace; font-size: 0.8rem; word-break: break-all;">
-                        <div style="display: flex; gap: 5px; margin-top: 10px;">
-                            <button onclick="accessManager.copyLink()" class="btn-sm btn-outline" style="flex: 1;"><i
-                                    class="fa-regular fa-copy"></i> Copiar</button>
-                            <button onclick="accessManager.shareLink('whatsapp')" class="btn-sm btn-outline"
-                                style="flex: 1;"><i class="fa-brands fa-whatsapp"></i> Enviar</button>
+                    <div id="lic-resultado" class="hidden" style="margin-top:14px;">
+                        <p style="color:#FFA726;font-weight:bold;margin-bottom:4px;">
+                            Código da licença — anote agora:</p>
+                        <input type="text" id="lic-token" readonly
+                               style="width:100%;font-family:monospace;font-size:0.78rem;">
+                        <div style="margin-top:8px;">
+                            <button id="lic-copiar" class="btn-sm btn-outline">
+                                <i class="fa-regular fa-copy"></i> Copiar</button>
                         </div>
+                        <p id="lic-nota" style="color:#90A4AE;font-size:0.8rem;margin-top:8px;"></p>
                     </div>
+                </div>
                 </div>
 
                 <!-- Placeholder content for admin tools -->
@@ -179,9 +190,20 @@
         </div>
     </div>
 
-    <!-- Gerado no build (scripts/build-config.js) a partir das variáveis de
-         ambiente do Netlify. Publica window.ADMIN_GATE_HASH. Ausente em
-         desenvolvimento local — o painel então abre direto, com o aviso. -->
+    <!-- Gerado no build a partir das variáveis do Netlify. Publica o token
+         do Cesium e, por herança, window.ADMIN_GATE_HASH.
+
+         ⚠️ ADMIN_GATE_HASH NÃO É MAIS LIDO POR ESTE PAINEL.          (C3)
+         Até a v2.18.0 era com ele que o login era conferido — no navegador,
+         que é o aviso 9.4. E a ausência dele ABRIA o painel direto, com um
+         aviso na tela: ambiente mal configurado virava porta escancarada.
+
+         Agora a senha vai para /.netlify/functions/licenca e é conferida com
+         scrypt contra ADMIN_SENHA_HASH, variável que nunca chega ao
+         navegador. Sem configuração, o portão NEGA.
+
+         A variável antiga segue publicada porque é do autor e ele decide o
+         que fazer com ela; este painel apenas parou de depender dela. -->
     <script src="cesium-config.js"></script>
     <script src="assets/js/admin.js"></script>
 </body>

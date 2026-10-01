@@ -207,6 +207,66 @@ const srv = http.createServer((req, res) => {
      jan.aberta ? jan.titulo.trim() : 'não abriu');
   await vitrine.close(); await limpa.close(); await contato.close();
 
+  /* ═══════════════════════════════════════════════════════════════════════
+     O PAINEL ADMINISTRATIVO, NO HANDLER DE VERDADE.              (v2.19.0)
+
+     A suíte 28 prova as decisões do portão (scrypt, faixas, validação). O
+     que ela não pode provar é a LIGAÇÃO — se a função confere a senha na
+     ordem certa, devolve o código certo e barra a força bruta.
+
+     SEM REDE: a chave de serviço é removida do ambiente antes de importar, e
+     o caminho autorizado para em 503 ANTES de qualquer chamada ao Supabase.
+     Por isso o 503 é SINAL DE APROVAÇÃO no caso da senha certa: ele só é
+     alcançável depois de passar pela origem, pelo limite e pela senha.
+     ═══════════════════════════════════════════════════════════════════════ */
+  delete process.env.SUPABASE_SERVICE_KEY;
+  const { gerarHashDeSenha } = await import('../netlify/lib/admin.mjs');
+  const SENHA_PROVA = 'frase-de-bordo-para-prova';
+  process.env.ADMIN_SENHA_HASH = gerarHashDeSenha(SENHA_PROVA);
+  const { default: painel } = await import('../netlify/functions/licenca.mjs');
+
+  const admBater = (corpo, cab = {}, metodo = 'POST') => painel(new Request(
+    'https://coastalbrasil.netlify.app/.netlify/functions/licenca',
+    { method: metodo, headers: { 'content-type': 'application/json', ...cab },
+      body: metodo === 'POST' ? JSON.stringify(corpo) : undefined }));
+  const admCodigo = async (corpo, cab, metodo) => (await admBater(corpo, cab, metodo)).status;
+  const daCasa = (ip) => ({ 'sec-fetch-site': 'same-origin', 'x-nf-client-connection-ip': ip });
+
+  ok('Painel recusa método que não é POST',
+     await admCodigo({}, daCasa('1.0.0.1'), 'GET') === 405, 'GET');
+  ok('Painel recusa curl cru',
+     await admCodigo({ senha: SENHA_PROVA }, {}) === 403, 'sem cabeçalho');
+  ok('Painel recusa site de terceiro',
+     await admCodigo({ senha: SENHA_PROVA }, { 'sec-fetch-site': 'cross-site', 'x-nf-client-connection-ip': '1.0.0.2' }) === 403, 'cross-site');
+  ok('Painel recusa senha errada',
+     await admCodigo({ senha: 'chute-bem-longo-errado' }, daCasa('1.0.0.3')) === 401, '401');
+  ok('Painel recusa senha vazia',
+     await admCodigo({ acao: 'emitir' }, daCasa('1.0.0.4')) === 401, '401');
+  /* O caso que importa mais que os outros: a senha CERTA tem de passar. Se
+     este falhar, o portão trancou o próprio administrador para fora. */
+  const comSenha = await admCodigo({ senha: SENHA_PROVA, acao: 'emitir', vessel: 'SAAM ORION', faixa: '15d' },
+                                   daCasa('1.0.0.5'));
+  ok('Painel ACEITA a senha certa', comSenha !== 401 && comSenha !== 403,
+     'HTTP ' + comSenha + ' (401/403 = administrador trancado fora)');
+
+  /* Sem hash configurado o portão NEGA — inversão do admin.js antigo, que
+     abria direto quando a variável faltava. */
+  const guardado = process.env.ADMIN_SENHA_HASH;
+  delete process.env.ADMIN_SENHA_HASH;
+  ok('Sem hash configurado o portão NEGA (o antigo abria)',
+     await admCodigo({ senha: SENHA_PROVA, acao: 'emitir' }, daCasa('1.0.0.6')) === 503,
+     'era: painel aberto com aviso na tela');
+  process.env.ADMIN_SENHA_HASH = guardado;
+
+  /* Força bruta: o teto é de 12/h, muito mais apertado que o do tempo. */
+  let adm401 = 0, adm429 = 0, admPrimeira = 0;
+  for (let i = 1; i <= 15; i++) {
+    const r = await admBater({ senha: 'chute-numero-' + i, acao: 'emitir' }, daCasa('9.0.0.9'));
+    if (r.status === 429) { adm429++; if (!admPrimeira) admPrimeira = i; } else adm401++;
+  }
+  ok('Força bruta no painel é cortada no teto', admPrimeira === 13,
+     `respondidas ${adm401}, primeira recusa na ${admPrimeira}ª (esperado 13ª)`);
+
   const curl     = await codigo({});
   const terceiro = await codigo({ 'sec-fetch-site': 'cross-site',  'x-nf-client-connection-ip': '5.5.5.5' });
   const barra    = await codigo({ 'sec-fetch-site': 'none',        'x-nf-client-connection-ip': '6.6.6.6' });

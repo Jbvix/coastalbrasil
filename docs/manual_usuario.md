@@ -167,6 +167,36 @@ já não há o que fazer.
 
 ---
 
+## 7.9 Licença de serviço — o que é, e o que ela ainda NÃO faz
+
+**O aplicativo é livre e abre sem cadastro.** Isto não mudou e não está em
+discussão. O que custa dinheiro ao autor são dois serviços de fora:
+
+- a **previsão de tempo** (Open-Meteo, plano comercial, cobrado por consulta);
+- o **espelhamento** da navegação para quem ficou em terra (Supabase).
+
+A partir da v2.19.0 existe uma **licença de serviço**: um código emitido por
+embarcação, com prazo (24h, 72h, 7 dias ou 15 dias) e número de aparelhos. Ela
+é pedida pelo WhatsApp [+55 85 99773-7230](https://wa.me/5585997737230).
+
+**Seja franco com o estado disto:** hoje a licença é **emitida e guardada, mas
+ainda não é exigida por nada**. Nenhuma função do aplicativo pergunta por ela.
+A etapa que liga a licença ao proxy de tempo (C4) ainda não foi feita, e este
+manual não vai fingir o contrário — um manual que descreve o que o programa
+*vai* fazer é um manual errado.
+
+Quando a exigência entrar, ela entrará com aviso dentro do aplicativo e com o
+link do WhatsApp à mão, nunca com uma porta fechada sem explicação.
+
+### Guarde o código quando ele aparecer
+
+O código da licença é mostrado **uma única vez**, no momento da emissão. O
+servidor guarda apenas uma impressão digital dele (SHA-256), não o código —
+assim, se o banco de dados vazar, ninguém sai com acesso na mão.
+
+A contrapartida é a de qualquer chave de cofre: **perdeu, não se recupera, se
+emite outra**. Copie e guarde antes de fechar a tela.
+
 ## 8. O rebocador em 3D — e como escolher o casco
 
 Toque em **🚢** na barra de navegação para abrir o painel de atitude. Ele mostra
