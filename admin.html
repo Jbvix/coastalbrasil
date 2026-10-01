@@ -155,6 +155,21 @@
                 </div>
                 </div>
 
+                <!-- LISTAGEM E REVOGAÇÃO.                                   (C6)
+                     Até a v2.22.0 o painel SÓ emitia. Quem emitia não tinha como
+                     saber o que havia emitido, e revogar exigiria conhecer de cor
+                     o resumo de 64 caracteres da licença certa — ou seja, era
+                     emissor cego. Um diário de bordo que só aceita escrita e não
+                     deixa reler não é diário, é desabafo. -->
+                <div class="dash-card" style="grid-column: 1 / -1;">
+                    <h4><i class="fa-solid fa-list-check"></i> Licenças emitidas</h4>
+                    <p>O código nunca aparece aqui — o banco guarda só o resumo dele.</p>
+                    <button id="lic-listar" class="btn-sm btn-outline">
+                        <i class="fa-solid fa-rotate"></i> Atualizar lista</button>
+                    <p id="lic-lista-nota" style="color:#90A4AE;font-size:0.8rem;margin-top:8px;"></p>
+                    <div id="lic-lista" style="margin-top:10px;"></div>
+                </div>
+
                 <!-- Placeholder content for admin tools -->
                 <div class="dash-card">
                     <h4><i class="fa-solid fa-database"></i> Dados de Cartas</h4>

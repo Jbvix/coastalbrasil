@@ -404,6 +404,42 @@ serviço é mais velho que a última edição. Um deploy do diretório local
 **quebraria** este site, porque `cesium-config.js` nasce no build e está no
 `.gitignore`.
 
+### 4.11 Duas provas que partem da mesma suposição não são duas provas (v2.23.0)
+
+Defeito encontrado ao abrir a C6, antes de escrever a primeira linha dela.
+
+`check_license` devolve a coluna **`revoked`** (booleana). A C4 lia
+**`revoked_at`** — coluna que nunca existiu. Em JavaScript, campo inexistente é
+`undefined`, `undefined` é falso: **licença revogada e dentro do prazo voltava
+como VÁLIDA**. Revogar não revogaria nada.
+
+Duas baterias olharam para esse código e nenhuma viu, cada uma por um motivo
+legítimo: `esquema_provas.sql` mede o SQL sem JavaScript; a suíte 29 mede o
+JavaScript com fixtures escritas à mão — **e elas diziam `revoked_at`, porque
+nasceram do mesmo modelo mental do código.** As duas concordavam numa coluna
+imaginária.
+
+> É a bomba aprovada no banco de ensaio, a tubulação aprovada na bancada, e
+> ninguém ligando uma na outra.
+
+**A emenda estrutural** é `tests/integracao_licenca.sql` + `.mjs`, no job
+`esquema` da CI: as linhas vêm do Postgres de verdade e alimentam a função que
+roda em produção. É a única das três baterias que não pode ser enganada por uma
+suposição do autor. Medido: com o código antigo, fica vermelha.
+
+**O conserto** foi confiar nas colunas do banco (`revoked`, `expired`, `valid`),
+calculadas com o `now()` **do banco** — recalcular no Node abriria divergência
+de relógio entre Netlify e Supabase, dois juízes para a mesma causa. O
+JavaScript apenas ordena as razões (revogação vence vencimento) e deriva as
+horas restantes.
+
+**C6, de passagem:** `list_licenses()` fecha o buraco que fazia do painel um
+emissor cego. Devolve `token_hash` (o SHA-256, não o token — é a chave por onde
+a revogação pega a linha), revoga de `public` antes de conceder a
+`service_role`, e a lista é montada com **nós do DOM**: nome de embarcação e
+contato são entrada de usuário que deu a volta pelo servidor e voltou, e não
+deixam de ser entrada de usuário por ter dormido numa tabela.
+
 ### 4.6 Pendências registradas
 
 Coberta pela prova 9.7, que passa com **alerta**, não em verde:

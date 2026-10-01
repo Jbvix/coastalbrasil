@@ -210,25 +210,69 @@ export function vereditoDaLinha(linha, agora) {
   if (!linha) return { ok: false, estado: ESTADO.DESCONHECIDA,
                        motivo: 'licença não encontrada' };
 
-  if (linha.revoked_at) return { ok: false, estado: ESTADO.REVOGADA,
-                                 motivo: 'licença revogada',
-                                 embarcacao: linha.vessel || '' };
+  const embarcacao = linha.vessel || '';
 
-  const vence = Date.parse(linha.expires_at);
-  /* Data ilegível é tratada como vencida, não como válida: se o banco devolveu
-     algo que não dá para interpretar, a resposta prudente é "não vale", porque
-     o custo é o usuário pedir renovação — e não acesso indevido e perpétuo. */
-  if (!isFinite(vence) || vence <= agora) {
-    return { ok: false, estado: ESTADO.VENCIDA, motivo: 'licença vencida',
-             embarcacao: linha.vessel || '', expiraEm: linha.expires_at || null };
+  /* ═══════════════════════════════════════════════════════════════════════
+     🔴 CORRIGIDO NA C6 — e o defeito era grave.
+
+     Até aqui esta função lia `linha.revoked_at`. A coluna NÃO EXISTE: o
+     `check_license` de supabase/licenca.sql devolve `revoked`, booleano. Em
+     JavaScript, campo inexistente é `undefined`, `undefined` é falso, e o
+     código caía no teste seguinte — de modo que uma licença REVOGADA, ainda
+     dentro do prazo, seria aceita como VÁLIDA. Revogar não revogaria nada.
+
+     Ficou dormente porque LICENCA_MODO nunca foi ligado e o SQL nunca foi
+     aplicado. Teria acordado no primeiro corte de acesso.
+
+     POR QUE AS PROVAS NÃO VIRAM: `tests/esquema_provas.sql` mede o SQL no
+     Postgres; a suíte 29 mede este JavaScript com fixtures que EU escrevi —
+     e elas traziam `revoked_at` porque nasceram do mesmo modelo mental
+     errado que o código. Nada atravessava a fronteira entre os dois.
+     A prova de integração em tests/integracao_licenca.* existe para isso.
+
+     Lição: duas provas que partem da mesma suposição não são duas provas.
+     ═══════════════════════════════════════════════════════════════════════ */
+
+  /* O BANCO JÁ DECIDIU, e a decisão dele é a autoridade: `check_license`
+     calcula `valid`, `revoked` e `expired` com o `now()` DO BANCO. Recalcular
+     aqui abriria divergência de relógio entre a Netlify e o Supabase — dois
+     juízes para a mesma causa. O que se faz aqui é ORDENAR as razões. */
+
+  /* Revogação vence vencimento: é ato deliberado do dono e vale mesmo dentro
+     do prazo. Inverter mandaria o comandante pedir renovação quando o acesso
+     foi CORTADO — a mensagem errada manda a pessoa ao caminho errado. */
+  if (linha.revoked === true) {
+    return { ok: false, estado: ESTADO.REVOGADA, motivo: 'licença revogada', embarcacao };
   }
 
-  return { ok: true, estado: ESTADO.VALIDA, embarcacao: linha.vessel || '',
+  if (linha.expired === true) {
+    return { ok: false, estado: ESTADO.VENCIDA, motivo: 'licença vencida',
+             embarcacao, expiraEm: linha.expires_at || null };
+  }
+
+  /* Rede de segurança para resposta truncada ou data ilegível. Tratar como
+     vencida custa ao usuário pedir renovação; o contrário custaria acesso
+     indevido e perpétuo. */
+  const vence = Date.parse(linha.expires_at);
+  if (!isFinite(vence) || vence <= agora) {
+    return { ok: false, estado: ESTADO.VENCIDA, motivo: 'licença vencida',
+             embarcacao, expiraEm: linha.expires_at || null };
+  }
+
+  /* O banco disse "não vale" e nenhuma razão acima explicou. Contradição —
+     e diante de contradição quem manda é o banco, não este processo. */
+  if (linha.valid === false) {
+    return { ok: false, estado: ESTADO.VENCIDA, motivo: 'licença não vale',
+             embarcacao, expiraEm: linha.expires_at || null };
+  }
+
+  return { ok: true, estado: ESTADO.VALIDA, embarcacao,
            expiraEm: linha.expires_at,
-           /* Quanto falta, em horas inteiras — é o que o aplicativo usa para
-              avisar "sua licença vence em 9 h" antes de ela morrer no mar. */
+           /* Quanto falta, em horas inteiras — alimenta o aviso "sua licença
+              vence em 9 h" antes de ela morrer no mar. */
            horasRestantes: Math.floor((vence - agora) / 3600000) };
 }
+
 
 /*
 ═══════════════════════════════════════════════════════════════════════════════

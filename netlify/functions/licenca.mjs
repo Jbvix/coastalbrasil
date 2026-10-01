@@ -167,6 +167,26 @@ export default async (req) => {
       return resp({ ok: true }, 200);
     }
 
+    /* ═══════════════════════════════════════════════════════════════════════
+       LISTAR — a ação que faltava para o painel ser operável          (C6)
+
+       Sem ela, quem emite não sabe o que emitiu, e revogar exige conhecer de
+       cor o resumo de 64 caracteres da licença certa. Era o buraco que
+       transformava o painel num emissor cego.
+
+       O que volta inclui o `token_hash`. É o SHA-256, não o token: não se
+       inverte, não abre nada, e é a única chave por onde a revogação pega a
+       linha certa. Quem chega aqui já passou pelo scrypt.
+
+       O token EM CLARO não volta nunca — e não por cuidado de quem escreveu
+       esta linha, mas porque o banco não o tem. A propriedade é do desenho.
+       ═══════════════════════════════════════════════════════════════════════ */
+    if (acao === 'listar') {
+      const linhas = await rpc('list_licenses', {}, chave);
+      const lista = Array.isArray(linhas) ? linhas : [];
+      return resp({ ok: true, total: lista.length, licencas: lista }, 200);
+    }
+
     return resp({ ok: false, motivo: `ação desconhecida: ${acao || '(vazia)'}` }, 400);
 
   } catch (e) {

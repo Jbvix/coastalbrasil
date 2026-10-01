@@ -305,3 +305,28 @@ jobs:
         # sem ele o psql imprime o erro e sai com zero. Medido: 3 quando a
         # trava fura, 0 quando está correta.
         run: psql -v ON_ERROR_STOP=1 -f tests/esquema_provas.sql
+
+      - name: Provar a FRONTEIRA entre o SQL e o JavaScript
+        # ═══════════════════════════════════════════════════════════════════
+        # Este passo existe por causa de um defeito que duas baterias de
+        # provas não viram, cada uma por um motivo legítimo:
+        #
+        #   · esquema_provas.sql mede o SQL, no Postgres, sem JavaScript;
+        #   · a suíte 29 mede o JavaScript, com fixtures escritas à mão.
+        #
+        # O código lia `linha.revoked_at`; o banco devolve `revoked`. As
+        # fixtures também diziam `revoked_at`, porque nasceram do mesmo
+        # modelo mental do código — e por isso as duas concordavam numa
+        # coluna imaginária. Licença revogada e dentro do prazo passava como
+        # VÁLIDA: revogar não revogaria nada.
+        #
+        # Duas provas que partem da mesma suposição não são duas provas.
+        # Aqui as linhas vêm do banco DE VERDADE e alimentam a função que
+        # roda em produção. É a única das três que não pode ser enganada por
+        # uma suposição do autor.
+        # ═══════════════════════════════════════════════════════════════════
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -q -f tests/integracao_licenca.sql > /tmp/linhas.json
+          test -s /tmp/linhas.json
+          node tests/integracao_licenca.mjs /tmp/linhas.json

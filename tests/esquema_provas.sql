@@ -159,6 +159,67 @@ begin
            when others then reset role; raise;
   end;
   perform pg_temp.exigir(negou, 'anon LÊ a tabela de licenças direto');
+
+  --  C6 — a listagem é a mais perigosa de todas se vazar: ela devolve a
+  --  frota INTEIRA de uma vez, com embarcação, contato e vencimento. As
+  --  outras exigem adivinhar um hash de 256 bits; esta não exige nada.
+  negou := false;
+  begin
+    set local role anon;
+    perform public.list_licenses();
+    reset role;
+  exception when insufficient_privilege then negou := true; reset role;
+           when others then reset role; raise;
+  end;
+  perform pg_temp.exigir(negou, 'anon LISTA a frota inteira — embarcação, contato e vencimento de todos');
+end $$;
+
+-- ── 3b · A listagem devolve o que o painel precisa, e na ordem certa ──────
+--  Provada EXECUTANDO, com o service_role. Ordem: ativas primeiro, e dentro
+--  delas as que vencem mais cedo — é a ordem em que o autor precisa agir.
+do $$
+declare
+  n_total   integer;
+  primeira  text;
+  tem_hash  boolean;
+begin
+  --  Três situações, uma de cada tipo. A vencida precisa nascer no passado:
+  --  o `check (expires_at > created_at)` impede inserir já vencida, e a
+  --  trava está certa — encurtar não é vencer.
+  delete from public.licenses;
+  insert into public.licenses (token_hash, vessel, expires_at, devices)
+  values (repeat('1',64), 'ATIVA TARDE', now() + interval '10 days', 3);
+  insert into public.licenses (token_hash, vessel, expires_at, devices)
+  values (repeat('2',64), 'ATIVA CEDO',  now() + interval '1 day',  3);
+  insert into public.licenses (token_hash, vessel, created_at, expires_at, devices)
+  values (repeat('3',64), 'JA VENCIDA', now() - interval '9 days', now() - interval '2 days', 3);
+  insert into public.licenses (token_hash, vessel, expires_at, devices)
+  values (repeat('4',64), 'REVOGADA', now() + interval '5 days', 3);
+  perform public.revoke_license(repeat('4',64));
+
+  select count(*) into n_total from public.list_licenses();
+  perform pg_temp.exigir(n_total = 4, 'list_licenses não devolveu as 4 linhas: ' || n_total);
+
+  --  A que vence mais cedo entre as ATIVAS tem de vir primeiro.
+  select vessel into primeira from public.list_licenses() limit 1;
+  perform pg_temp.exigir(primeira = 'ATIVA CEDO',
+    'a ordem está errada: veio "' || primeira || '" em vez de ATIVA CEDO');
+
+  --  O token_hash volta, porque é por ele que a revogação pega a linha. É o
+  --  SHA-256, não o token: não se inverte e não abre nada.
+  select bool_and(token_hash ~ '^[0-9a-f]{64}$') into tem_hash from public.list_licenses();
+  perform pg_temp.exigir(tem_hash, 'list_licenses não devolve token_hash utilizável para revogar');
+
+  --  E o token EM CLARO não existe em lugar nenhum desta tabela: a coluna
+  --  nunca foi criada. A propriedade é do desenho, não da disciplina de quem
+  --  escreve a consulta.
+  perform pg_temp.exigir(
+    not exists (select 1 from information_schema.columns
+                 where table_schema = 'public' and table_name = 'licenses'
+                   and column_name in ('token', 'token_plain', 'codigo')),
+    'apareceu coluna de token em claro na tabela de licenças');
+
+  delete from public.licenses;
 end $$;
 
 -- ── 4 · O espelhamento continua aberto ao navegador ───────────────────────
