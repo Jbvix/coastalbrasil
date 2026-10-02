@@ -11,6 +11,108 @@ executável.
 
 ```
 
+## v2.23.1 (02/10/2026) — A RLS NÃO DETÉM TRUNCATE · ETAPA C8
+##            BANCO SOMENTE; NENHUMA LINHA DE APLICAÇÃO MUDOU
+
+Autor: Jossian Brito (Charlie Bravo)
+Data: 02/10/2026, 00:50 UTC · Versão 2.23.1
+
+### O que me fez olhar
+
+Uma tela do painel do Supabase, aberta para criar uma política de RLS em
+`public.licenses`. A política certa para essa tabela é NENHUMA — RLS ligada
+com zero políticas significa que nenhuma chave de navegador enxerga uma
+linha sequer, e é assim de propósito. Mas ao conferir o estado para
+responder, medi os privilégios de TABELA e vi o que não tinha olhado antes.
+
+### O defeito, e a frase minha que ele desmente
+
+Eu havia afirmado, nesta mesma empreitada, que «RLS ligada com zero
+políticas = tabela selada». **Incompleto, e a incompletude importa:**
+
+    TRUNCATE NÃO PASSA PELA RLS.
+
+O Postgres trata `TRUNCATE` como DDL — consulta o `GRANT` da tabela e ignora
+toda e qualquer política, permissiva ou restritiva. `REFERENCES` e `TRIGGER`
+idem. E o Supabase, por `default privileges`, concede aos papéis `anon` e
+`authenticated` os sete privilégios em cada tabela nova do schema `public`:
+
+    licenses | anon | DELETE, INSERT, REFERENCES, SELECT, TRIGGER,
+             |      | TRUNCATE, UPDATE
+
+A tabela estava selada para ler, inserir, alterar e apagar linha a linha —
+isso era verdade e continua sendo. Mas o papel público carregava um
+`TRUNCATE` capaz de esvaziar a frota inteira de uma vez.
+
+**Era alcançável?** Não pela Data API: o PostgREST não expõe `TRUNCATE`, e
+nenhuma função executável por `anon` o chama. Carga mal peada no porão, não
+rombo no casco. Corrigido mesmo assim, porque carga mal peada é exatamente o
+que vira navio quando o tempo muda — e o conserto custou duas linhas.
+
+### O que mudou
+
+| tabela | antes (`anon`) | depois (`anon`) |
+|---|---|---|
+| `licenses` | os sete privilégios | **nenhum** |
+| `scores` | os sete privilégios | `INSERT, SELECT` |
+
+`scores` recebeu tratamento diferente de propósito: o jogo PRECISA ler o
+ranque e gravar pontuação pela Data API. `GRANT` e política são dois cadeados
+**em série** — o Postgres exige os dois — e ali só a política segurava.
+Devolvido exatamente o que as duas políticas existentes usam, nada mais.
+
+Nada em `service_role` nem nas funções `SECURITY DEFINER`, que rodam como
+`postgres` (dono da tabela, `relforcerowsecurity = false`). **Nenhum arquivo
+de aplicação foi tocado.**
+
+### Provas medidas pela porta do navegador, não prometidas
+
+| sonda | resultado |
+|---|---|
+| `GET /rest/v1/scores` | `200` — o jogo lê |
+| `POST /rest/v1/scores` | `400 · 23502 null value in column "time"` |
+| `GET /rest/v1/licenses` | `401 · 42501 permission denied for table` |
+| `POST /rpc/check_nav_share` | `200` — intacta |
+| `POST /rpc/create_license` | `401 · 42501 permission denied for function` |
+
+A segunda merece leitura: `23502` é restrição de COLUNA, que o Postgres só
+confere **depois** de aprovar privilégio e política. O `INSERT` passou os dois
+cadeados; quem recusou foi o payload incompleto da minha sonda. Prova mais
+forte que a pretendida, e sem sujar a tabela de placares com linha de teste.
+
+A terceira também: antes da C8, essa chamada devolvia **lista vazia** (negada
+pela RLS). Agora é negada antes, no privilégio. Dois anteparos em série.
+
+### Correção de uma afirmação anterior, no lugar onde ela foi escrita
+
+O `supabase/esquema_atual.sql` v1.0.0 dizia que «qualquer portador da chave
+publishable pode ESVAZIAR a tabela de placares». **Exagerado:** pela Data API
+o `DELETE` era barrado pela RLS e o `TRUNCATE` nem é exposto. O privilégio era
+real; o caminho até ele, não. Retificado no próprio parágrafo, que é onde
+quem leu a primeira versão vai voltar a ler.
+
+### Lição que fica no arquivo
+
+> «RLS responde *quais linhas*. GRANT responde *qual comando*.
+>  Quem só olha a RLS não enxerga os comandos que a RLS não governa.»
+
+### ⚠️ Dívida declarada, não corrigida
+
+O `default privileges` do schema `public` continua de pé: a PRÓXIMA tabela
+nascerá de novo com os sete privilégios para `anon`. A correção de raiz é um
+`alter default privileges`, que afeta todo o schema e todo trabalho futuro —
+larga demais para entrar de carona numa correção de duas tabelas. Fica
+registrada para ser decidida de frente.
+
+### Manual do usuário
+
+**Não alterado, e isto é deliberado.** A C8 é invisível para quem navega:
+nenhuma tela, nenhum passo, nenhum comportamento muda. Escrever parágrafo
+sobre ela no manual seria encher documentação de usuário com assunto de
+servidor — e manual inchado é manual não lido.
+
+---
+
 ## v2.23.0 (01/10/2026) — O PAINEL DEIXA DE SER CEGO · ETAPA C6
 ##            E UM DEFEITO QUE DUAS BATERIAS DE PROVAS NÃO VIRAM
 

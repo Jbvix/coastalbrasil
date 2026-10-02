@@ -1,14 +1,30 @@
 -- ═══════════════════════════════════════════════════════════════════════════
---  LICENÇA DE SERVIÇO — proposta, NÃO aplicada em produção
+--  LICENÇA DE SERVIÇO — esquema APLICADO em produção
 --  Autor: Jossian Brito (Charlie Bravo)
---  Versão 1.0.0 — 01/10/2026 · Etapa C2 do caminho C
+--  Versão 1.1.0 — 02/10/2026, 00:50 UTC · Etapas C2…C6 + C8
+--  Projeto: nsbeddfkcdyssrirrhzt  (sa-east-1)
+--
+--  HISTÓRICO DE MODIFICAÇÕES
+--   1.0.0 — 01/10/2026 · C2…C6. Proposta, revisada em pull request, não
+--           executada em banco nenhum.
+--   1.1.0 — 02/10/2026 · APLICADA em produção sob autorização explícita
+--           (migração `licencas_de_servico_c2_c6`). Acrescentada a SEÇÃO C8
+--           ao final: revogação dos privilégios de TABELA que o Supabase
+--           concede ao `anon` por padrão. Motivo medido, não suposto — a
+--           RLS NÃO detém TRUNCATE.
 -- ═══════════════════════════════════════════════════════════════════════════
 --
---  ⚠️  ESTE ARQUIVO AINDA NÃO FOI EXECUTADO NO BANCO.
---      Aplicar migração em produção é ato separado e precisa de autorização
---      explícita. Aqui ele entra para ser LIDO e revisado no pull request,
---      que é onde uma decisão de esquema deve ser discutida — e não no
---      painel do Supabase, às pressas, sem registro.
+--  ✅  ESTE ARQUIVO JÁ FOI EXECUTADO NO BANCO DE PRODUÇÃO.
+--      Aplicado em 02/10/2026 sob autorização explícita, depois de revisado
+--      em pull request — que é onde uma decisão de esquema deve ser
+--      discutida, e não no painel do Supabase, às pressas, sem registro.
+--      As pós-condições foram MEDIDAS após a aplicação, não presumidas:
+--      tabela criada, RLS ligada, 0 políticas, 4 funções SECURITY DEFINER
+--      com search_path fixo, `anon` negado nas quatro, `service_role`
+--      liberado nas quatro, `check_nav_share` intacta para o `anon`.
+--
+--      Quem for reaplicar do zero: rode o arquivo INTEIRO, seção C8
+--      inclusive. Parar antes dela deixa a tabela esvaziável.
 --
 --  O QUE A LICENÇA COBRE, E POR QUÊ SÓ ISSO
 --
@@ -265,3 +281,89 @@ revoke execute on function public.revoke_license(text) from public, anon, authen
 grant  execute on function public.create_license(text, text, text, timestamptz, smallint, text)
                  to service_role;
 grant  execute on function public.revoke_license(text) to service_role;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+--  SEÇÃO C8 — PRIVILÉGIOS DE TABELA
+--  Versão 1.1.0 — 02/10/2026, 00:50 UTC · Jossian Brito (Charlie Bravo)
+--  Aplicada em produção pela migração `c8_revogar_privilegios_de_tabela_do_anon`
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+--  O DEFEITO QUE ESTA SEÇÃO CORRIGE, E POR QUE ELE PASSOU DESPERCEBIDO
+--
+--  Tudo acima desta linha tranca o acesso às licenças por DUAS vias: a RLS
+--  ligada sem política nenhuma (nenhuma linha sai) e o REVOKE EXECUTE nas
+--  quatro funções (nenhuma chamada entra). Eu dei isso por "tabela selada".
+--
+--  Estava incompleto, e a incompletude tem nome: TRUNCATE NÃO PASSA PELA RLS.
+--  O Postgres trata TRUNCATE como DDL — consulta o GRANT da tabela e ignora
+--  TODA e QUALQUER política, permissiva ou restritiva. REFERENCES e TRIGGER
+--  têm a mesma natureza.
+--
+--  E o Supabase, por `default privileges` do schema `public`, concede aos
+--  papéis `anon` e `authenticated` os SETE privilégios em cada tabela nova:
+--      DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
+--
+--  Medido em 02/10/2026 00:4x UTC, antes desta seção existir:
+--      licenses | anon | DELETE, INSERT, REFERENCES, SELECT, TRIGGER,
+--               |      | TRUNCATE, UPDATE
+--
+--  Quer dizer: a tabela estava selada para LER, INSERIR, ALTERAR e APAGAR
+--  linha a linha — isso era verdade e continua sendo — mas o papel público
+--  carregava um TRUNCATE capaz de ESVAZIAR A FROTA INTEIRA de uma vez, RLS e
+--  tudo. Não era alcançável pela Data API (o PostgREST não expõe TRUNCATE, e
+--  nenhuma função executável por `anon` o chama), então nunca houve água
+--  entrando pelo casco. Era carga mal peada no porão: inofensiva com bom
+--  tempo, e é o que vira o navio quando o tempo muda.
+--
+--  Analogia de praxe: a RLS é o controle de quem pode abrir cada porta do
+--  compartimento. O TRUNCATE não abre porta — ele derruba o anteparo. De
+--  nada adianta trancar as portas de um anteparo que qualquer um pode cortar.
+--
+--  LIÇÃO, para ficar no arquivo e não só na cabeça:
+--  «RLS responde "quais linhas". GRANT responde "qual comando". Quem só
+--   olha a RLS não enxerga os comandos que a RLS não governa.»
+
+--  ── licenses ───────────────────────────────────────────────────────────
+--  O navegador não tem absolutamente nenhum assunto com esta tabela. Toda
+--  conversa passa pelas quatro funções SECURITY DEFINER, que rodam como
+--  `postgres` (dono da tabela, e `relforcerowsecurity = false`) e portanto
+--  continuam passando por fora da RLS e dos GRANTs revogados aqui.
+--  Depois desta linha, o anon não aparece nem na lista de concessões.
+revoke all on public.licenses from anon, authenticated;
+
+--  ── scores ─────────────────────────────────────────────────────────────
+--  Caso DIFERENTE, e a diferença é o ensinamento. Aqui o navegador PRECISA
+--  falar com a tabela: o jogo lê o ranque e grava a pontuação pela Data API.
+--
+--  GRANT e política são dois cadeados EM SÉRIE — o Postgres exige os dois
+--  abertos para deixar passar. A tabela já tinha as duas políticas certas
+--  («leitura pública» SELECT, «inserção pública» INSERT), mas o GRANT estava
+--  escancarado nos sete. Só a política segurava, e política não segura
+--  TRUNCATE. Revoga-se tudo e devolve-se EXATAMENTE o que as políticas usam.
+revoke all on public.scores    from anon, authenticated;
+grant  select, insert on public.scores to anon, authenticated;
+
+--  PÓS-CONDIÇÕES MEDIDAS em 02/10/2026 00:5x UTC, pela mesma porta que o
+--  navegador usa (chave publicável, via PostgREST):
+--    1. GET  /rest/v1/scores?select=id&limit=1        → 200        (lê)
+--    2. POST /rest/v1/scores                          → 400 «23502 null value
+--       in column "time"» — restrição de COLUNA, que o Postgres só confere
+--       DEPOIS de aprovar privilégio e política: o INSERT passou os dois
+--       cadeados, quem recusou foi o payload incompleto da sonda. Prova mais
+--       forte que a pretendida, e sem sujar a tabela com linha de teste.
+--    3. GET  /rest/v1/licenses?select=vessel          → 401 «42501 permission
+--       denied for table licenses». Antes da C8 isto devolvia lista VAZIA
+--       (negado pela RLS); agora é negado antes, no privilégio. Dois
+--       anteparos em série em vez de um.
+--    4. POST /rest/v1/rpc/check_nav_share             → 200        (intacta)
+--    5. POST /rest/v1/rpc/create_license              → 401 «42501 permission
+--       denied for function create_license»
+--
+--  ⚠️  DÍVIDA DECLARADA, NÃO CORRIGIDA AQUI
+--  Isto conserta as tabelas que EXISTEM. O `default privileges` do Supabase
+--  continua de pé: a PRÓXIMA tabela criada no schema `public` nascerá de novo
+--  com os sete privilégios para `anon`. A correção de raiz é um
+--  `alter default privileges`, que afeta todo o schema e todo trabalho
+--  futuro — decisão larga demais para entrar de carona numa correção de duas
+--  tabelas. Fica registrada aqui para ser decidida de frente.

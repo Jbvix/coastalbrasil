@@ -1,7 +1,14 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 --  ESQUEMA ATUAL DO SUPABASE — retrato fiel do que está em produção
 --  Autor: Jossian Brito (Charlie Bravo)
---  Versão 1.0.0 — 01/10/2026 · Etapa C2 do controle de acesso
+--  Versão 1.1.0 — 02/10/2026, 00:50 UTC · Etapas C2…C6 aplicadas + C8
+--
+--  HISTÓRICO DE MODIFICAÇÕES
+--   1.0.0 — 01/10/2026 · Primeiro retrato fiel do banco ao vivo.
+--   1.1.0 — 02/10/2026 · `public.licenses` passa a existir (3 tabelas).
+--           Ressalva do `anon` em `scores` corrigida — e a conclusão
+--           exagerada da v1.0.0 retificada no próprio lugar onde foi
+--           escrita, que é onde quem a leu vai voltar a ler.
 --  Projeto: nsbeddfkcdyssrirrhzt  (sa-east-1)
 -- ═══════════════════════════════════════════════════════════════════════════
 --
@@ -141,15 +148,29 @@ grant execute on function public.revoke_nav_share(text) to anon, authenticated;
 --
 --  O projeto Supabase se chama "tugrush" e hospeda também os placares de
 --  outro aplicativo. Fica registrado aqui para que ninguém o apague achando
---  que é resto, e com uma ressalva que NÃO é da alçada do Coastal Navigator
---  mas foi vista ao levantar este retrato:
+--  que é resto.
 --
---     o papel `anon` tem SELECT, INSERT, UPDATE, DELETE e TRUNCATE em
---     `scores`, com política de leitura e inserção públicas.
+--  ── RESSALVA LEVANTADA NA v1.0.0, E CORRIGIDA NA v1.1.0 ──
 --
---  Ou seja: qualquer portador da chave publishable pode ESVAZIAR a tabela de
---  placares. Se o tugrush ainda importa, isso merece uma olhada — e não foi
---  tocado aqui porque não é deste produto.
+--  O retrato de 01/10/2026 registrou que o papel `anon` tinha os sete
+--  privilégios em `scores`, TRUNCATE inclusive, e concluiu que «qualquer
+--  portador da chave publishable pode ESVAZIAR a tabela de placares».
+--
+--  Essa conclusão estava EXAGERADA, e a correção importa mais que o erro:
+--  pela Data API o DELETE era barrado pela RLS (não existe política de
+--  DELETE) e o TRUNCATE sequer é exposto pelo PostgREST. O privilégio era
+--  real; o caminho até ele, não. Era carga mal peada, não rombo no casco.
+--
+--  Corrigido mesmo assim em 02/10/2026 pela SEÇÃO C8 de `licenca.sql`, que
+--  revoga tudo e devolve a `anon`/`authenticated` apenas SELECT e INSERT —
+--  exatamente o que as duas políticas existentes usam. Medido depois:
+--
+--     scores | anon          | INSERT, SELECT
+--     scores | authenticated | INSERT, SELECT
+--
+--  O jogo continua lendo o ranque (200) e gravando pontuação (o INSERT passa
+--  privilégio e política). A tabela deixou de ser esvaziável por quem só tem
+--  a chave pública, agora por DUAS razões independentes em vez de uma.
 
 create table if not exists public.scores (
   id          bigint generated always as identity primary key,
